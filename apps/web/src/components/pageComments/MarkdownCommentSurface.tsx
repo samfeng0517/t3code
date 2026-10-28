@@ -35,7 +35,7 @@ function useMarkdownPlacements(
   contentRef: RefObject<HTMLDivElement | null>,
 ): PageCommentPlacements {
   const [placements, setPlacements] = useState<PageCommentPlacements>(NO_PLACEMENTS);
-  // oxlint-disable-next-line t3code/react-effect-budget -- measures the rendered DOM with ResizeObserver and MutationObserver, disconnected on cleanup
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- measures the rendered DOM with ResizeObserver and MutationObserver, disconnected on cleanup
   useEffect(() => {
     const frame = frameRef.current;
     const content = contentRef.current;

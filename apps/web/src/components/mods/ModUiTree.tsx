@@ -343,7 +343,7 @@ export function ModSite({ visible, ...props }: ModUiTreeProps & { readonly visib
   // Runs after every commit, not on a dependency list: a control drawn disabled
   // (while a press is in flight, or without permission) waits for the redraw
   // that enables it, without spending the site's one autofocus.
-  // oxlint-disable-next-line t3code/react-effect-budget -- focuses a DOM element imperatively after each commit, as the control may only be enabled by a later redraw
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses a DOM element imperatively after each commit, as the control may only be enabled by a later redraw
   useEffect(() => {
     const container = containerRef.current;
     if (!autoFocus || !visible || autoFocusedRef.current || container === null) return;

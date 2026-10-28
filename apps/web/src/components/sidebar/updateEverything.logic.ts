@@ -10,7 +10,6 @@ import {
   resolveServerSelfUpdateCapability,
   resolveVersionMismatch,
   supportsDesktopAppUpdate,
-  supportsServerUpdateThreadContinuation,
 } from "~/versionSkew";
 import type { ServerUpdateOutcome, ServerUpdateTarget } from "../ServerUpdateAction";
 
@@ -53,9 +52,7 @@ export function collectRestartingMachines(
     return [
       {
         environmentId: machine.environmentId,
-        continuesThreads:
-          config.environment.capabilities.threadRestartContinuation === true &&
-          config.settings.continueThreadsAfterServerUpdate === true,
+        continuesThreads: config.settings.continueThreadsAfterServerUpdate === true,
       },
     ];
   });
@@ -129,8 +126,6 @@ export function collectServerUpdateTargets(
       selfUpdate,
       installation: config.environment.capabilities.serverInstallation,
       desktopAppUpdate,
-      threadContinuation: supportsServerUpdateThreadContinuation(config),
-      continueThreadsAfterServerUpdate: config.settings.continueThreadsAfterServerUpdate ?? false,
       targetVersion,
     });
   }
@@ -401,6 +396,11 @@ export function getUpdateEverythingToastView(
 
 export interface UpdateEverythingPlan {
   readonly localVersion: string | null;
+  /** Machines whose servers this app hosts; this app's update restarts them. */
+  readonly localMachines: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly label: string;
+  }>;
   readonly servers: ReadonlyArray<
     Pick<ServerUpdateTarget, "environmentId" | "serverLabel" | "selfUpdate" | "targetVersion">
   >;
@@ -409,6 +409,15 @@ export interface UpdateEverythingPlan {
     readonly label: string;
     readonly providers: ReadonlyArray<string>;
   }>;
+  readonly skipped: ReadonlyArray<SkippedMachine>;
+}
+
+export interface UpdateEverythingRow {
+  readonly environmentId: EnvironmentId | null;
+  readonly label: string;
+  readonly app: "this-app" | "server" | "desktop-app" | null;
+  readonly skipped: string | null;
+  readonly providers: ReadonlyArray<string>;
 }
 
 function countLabel(
@@ -431,13 +440,15 @@ function joinList(t: Translate, parts: ReadonlyArray<string>): string {
   });
 }
 
+/** One row per machine: this app's machines first, then servers, provider-only, and skipped. */
 export function describeUpdateEverything(
   plan: UpdateEverythingPlan,
   t: Translate = translateEnglish,
 ): {
   readonly summary: string;
-  readonly items: string;
-  readonly lines: ReadonlyArray<string>;
+  readonly version: string | null;
+  readonly providerCount: number;
+  readonly rows: ReadonlyArray<UpdateEverythingRow>;
 } {
   const providerCount = plan.providerMachines.reduce(
     (count, machine) => count + machine.providers.length,
@@ -453,38 +464,47 @@ export function describeUpdateEverything(
   );
   const summary = t("sidebar.updateSummary.update", { items });
 
-  const machines = new Map<EnvironmentId, { label: string; items: string[] }>();
-  const itemsFor = (environmentId: EnvironmentId, label: string) => {
-    const existing = machines.get(environmentId);
-    if (existing) return existing.items;
-    const items: string[] = [];
-    machines.set(environmentId, { label, items });
-    return items;
+  const rows = new Map<EnvironmentId | null, UpdateEverythingRow>();
+  const update = (
+    environmentId: EnvironmentId | null,
+    label: string,
+    change: Partial<UpdateEverythingRow>,
+  ) => {
+    const row = rows.get(environmentId) ?? {
+      environmentId,
+      label,
+      app: null,
+      skipped: null,
+      providers: [],
+    };
+    rows.set(environmentId, { ...row, ...change });
   };
+  if (plan.localVersion) {
+    if (plan.localMachines.length === 0)
+      update(null, t("sidebar.updateRun.thisApp"), { app: "this-app" });
+    for (const machine of plan.localMachines) {
+      update(machine.environmentId, machine.label, { app: "this-app" });
+    }
+  }
   for (const server of plan.servers) {
-    itemsFor(server.environmentId, server.serverLabel).push(
-      server.selfUpdate === "desktop-managed"
-        ? t("sidebar.updateSummary.desktopAppUpdate")
-        : t("sidebar.updateSummary.serverTo", { version: server.targetVersion }),
-    );
+    update(server.environmentId, server.serverLabel, {
+      app: server.selfUpdate === "desktop-managed" ? "desktop-app" : "server",
+    });
   }
   for (const machine of plan.providerMachines) {
-    itemsFor(machine.environmentId, machine.label).push(...machine.providers);
+    update(machine.environmentId, machine.label, { providers: machine.providers });
+  }
+  for (const machine of plan.skipped) {
+    update(machine.environmentId, machine.label, { skipped: machine.reason });
   }
 
   return {
     summary,
-    items,
-    lines: [
-      ...(plan.localVersion
-        ? [t("sidebar.updateSummary.thisAppLine", { version: plan.localVersion })]
-        : []),
-      ...Array.from(machines.values(), ({ label, items }) =>
-        t("sidebar.updateSummary.labeledLine", {
-          label,
-          detail: items.join(t("sidebar.updateSummary.listSeparator")),
-        }),
-      ),
-    ],
+    version:
+      plan.localVersion ??
+      plan.servers.find((server) => server.selfUpdate !== "desktop-managed")?.targetVersion ??
+      null,
+    providerCount,
+    rows: Array.from(rows.values()),
   };
 }

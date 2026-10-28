@@ -70,7 +70,7 @@ export function usePageCommentSession(
   const leaveCommenting = useEffectEvent(() => setCommenting(false));
 
   // Escape leaves comment mode unless a draft's textarea takes it first to cancel the draft.
-  // oxlint-disable-next-line t3code/react-effect-budget -- subscribes to window keydown for Escape and unsubscribes on cleanup
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to window keydown for Escape and unsubscribes on cleanup
   useEffect(() => {
     if (!commenting) return;
     const onKeyDown = (event: KeyboardEvent) => {

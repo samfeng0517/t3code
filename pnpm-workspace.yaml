@@ -23,7 +23,7 @@ allowBuilds:
   node-pty: true
   # Ships N-API prebuilds; its install script only rebuilds from source.
   objc-js: false
-  "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-558767d9.tgz": true
+  "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-29ddd424.tgz": true
   sharp: true
   "@tsc-rs/typescript": true
   utf-8-validate: false
@@ -282,10 +282,11 @@ overrides:
   "@alchemy.run/sigil>react-reconciler": "-"
   "@alchemy.run/sigil>scheduler": "-"
   # Security advisory floors for the server, web and desktop dependency trees.
-  # The Claude Agent SDK's MCP peer (pinned in apps/server) pulls in express and
-  # hono. The bundled server never loads them, but dev and test runs install them.
+  # The Claude Agent SDK's MCP dependency pulls in express and hono. The bundled
+  # server never loads them, but dev and test runs install them.
   # The relay's @neon/functions declares hono as an optional peer, so it resolves to
   # whichever hono copy the workspace already has.
+  "@anthropic-ai/claude-agent-sdk>@modelcontextprotocol/sdk": ^1.32.1
   "@modelcontextprotocol/sdk>hono": ^4.13.11
   proxy-addr: ^2.0.8
   # TanStack Router's serializer; router-core 1.171.x accepts ^1.5.4.

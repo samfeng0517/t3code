@@ -59,7 +59,7 @@ export function BrowserBookmarkImportDialog(props: {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- lists bookmark sources from the desktop bridge when the dialog opens, ignoring results after cleanup
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- lists bookmark sources from the desktop bridge when the dialog opens, ignoring results after cleanup
   useEffect(() => {
     if (!open || !previewBridge) return;
     let cancelled = false;

@@ -172,6 +172,7 @@ function AuthorizedBrowserWebview(props: ComponentProps<typeof HostedBrowserWebv
   const profileId = useTabProfileId(props.profileId);
   // The address row's extension toolbar must read this exact latched profile.
   const { runtimeTabId } = props;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the latched profile in the tab profile registry until unmount
   useEffect(() => {
     if (profileId === undefined) return;
     const store = useBrowserTabProfileStore.getState();

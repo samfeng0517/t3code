@@ -46,7 +46,6 @@ export const commandPaletteEn = {
   "commandPalette.action.copyPromptLink": "Copy prompt link",
   "commandPalette.action.copyPromptLinkWithContext": "Copy prompt link with repo and model",
   "commandPalette.action.copyPullRequestLink": "Copy PR link",
-  "commandPalette.action.copyThreadId": "Copy thread ID",
   "commandPalette.action.linkPullRequest": "Link pull request to thread",
   "commandPalette.action.showLinkedPullRequests": "Show linked pull requests",
   "commandPalette.action.restartAgentSession": "Restart agent session",

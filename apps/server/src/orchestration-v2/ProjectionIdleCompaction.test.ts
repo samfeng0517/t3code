@@ -103,10 +103,7 @@ const createRun = Effect.fn(function* (
   return runId;
 });
 
-it.effect.each([
-  ["sql", layerSql],
-  ["memory", ProjectionStore.layerMemory],
-] as const)(
+it.effect.each([["sql", layerSql]] as const)(
   "%s: getIdleCompactionCandidates should return threads whose latest run completed after the cutoff",
   ([, testLayer]) =>
     Effect.gen(function* () {

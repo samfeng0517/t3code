@@ -18,7 +18,7 @@ import { AppMark } from "../AppMark";
 import { isDesktopAppUpdateEnabled } from "../desktopUpdate.logic";
 import {
   resolveEnvironmentIdentificationPillLabel,
-  resolveSidebarHeaderBackdropVariant,
+  resolveSidebarStageBackdropVariant,
   SidebarStageBackdrop,
   useEnvironmentStageLabel,
 } from "../SidebarStageBackdrop";
@@ -50,9 +50,9 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   const t = useT();
   const stageLabel = useEnvironmentStageLabel();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
-  const backdropVariant = resolveSidebarHeaderBackdropVariant(
+  const backdropVariant = resolveSidebarStageBackdropVariant(
     stageLabel,
-    environmentIdentificationMode === "artwork",
+    environmentIdentificationMode,
   );
   const pillLabel =
     environmentIdentificationMode === "pill"

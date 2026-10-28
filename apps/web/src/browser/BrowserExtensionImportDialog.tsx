@@ -53,7 +53,7 @@ export function BrowserExtensionImportDialog(props: {
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const [adding, setAdding] = useState(false);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- lists extension sources from the desktop bridge when the dialog opens, ignoring results after cleanup
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- lists extension sources from the desktop bridge when the dialog opens, ignoring results after cleanup
   useEffect(() => {
     if (!open || !browserExtensionsBridge) return;
     let cancelled = false;

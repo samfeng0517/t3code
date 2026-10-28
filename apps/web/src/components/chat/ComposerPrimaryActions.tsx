@@ -5,7 +5,7 @@ import { MorphIcon } from "~/components/MorphIcon";
 import { useEnvironmentIdentificationMode } from "~/hooks/useSettings";
 import { useT, type Translate } from "~/i18n";
 import { formatContextWindowTokens } from "~/lib/contextWindow";
-import { cn } from "~/lib/utils";
+import { cn, isMacPlatform } from "~/lib/utils";
 import { useShortcutModifierState } from "../../shortcutModifierState";
 import { StageBackdropButtonArt, useSidebarStageBackdropVariant } from "../SidebarStageBackdrop";
 import { Button } from "../ui/button";
@@ -36,7 +36,6 @@ interface ComposerPrimaryActionsProps {
   promptHasText: boolean;
   isSendBusy: boolean;
   sendDisabledReason: string | null;
-  isConnecting: boolean;
   isEnvironmentUnavailable: boolean;
   isPreparingWorktree: boolean;
   hasSendableContent: boolean;
@@ -96,7 +95,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   promptHasText,
   isSendBusy,
   sendDisabledReason,
-  isConnecting,
   isEnvironmentUnavailable,
   isPreparingWorktree,
   hasSendableContent,
@@ -127,9 +125,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       alternateModifier: shortcutModifiers.metaKey || shortcutModifiers.ctrlKey,
     }) === "queue";
   const isSendDisabled = !canOperateThread || sendDisabledReason !== null;
-  const stageBackdropVariant = useSidebarStageBackdropVariant(
-    environmentIdentificationMode === "artwork",
-  );
+  const stageBackdropVariant = useSidebarStageBackdropVariant(environmentIdentificationMode);
 
   const renderStopGenerationButton = (insidePendingAction: boolean) => (
     <Tooltip key="interrupt">
@@ -215,9 +211,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           type="submit"
           className={cn(messageActionPillClassName, "h-9 sm:h-8", compact ? "px-3" : "px-4")}
           {...pointerFocusProps}
-          disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
+          disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
         >
-          {isConnecting || isSendBusy ? t("composer.plan.sending") : t("composer.plan.refine")}
+          {isSendBusy ? t("composer.plan.sending") : t("composer.plan.refine")}
         </button>
       );
     }
@@ -228,9 +224,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           type="submit"
           className={cn(messageActionPillClassName, "h-9 rounded-r-none px-4 sm:h-8")}
           {...pointerFocusProps}
-          disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
+          disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
         >
-          {isConnecting || isSendBusy ? t("composer.plan.sending") : t("composer.plan.implement")}
+          {isSendBusy ? t("composer.plan.sending") : t("composer.plan.implement")}
         </button>
         <Menu>
           <MenuTrigger
@@ -245,7 +241,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
                 onMouseDown={
                   preserveComposerFocusOnPointerDown ? (event) => event.preventDefault() : undefined
                 }
-                disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
+                disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
               />
             }
           >
@@ -253,7 +249,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           </MenuTrigger>
           <MenuPopup align="end" side="top" {...composerFloatingLayerProps}>
             <MenuItem
-              disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
+              disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
               onClick={() => {
                 if (canOperateThread) onImplementPlanInNewThread();
               }}
@@ -292,15 +288,13 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   const submitStatus = isEnvironmentUnavailable
     ? t("composer.send.status.environmentDisconnected")
     : (sendDisabledReason ??
-      (isConnecting
-        ? t("composer.send.status.connecting")
-        : isPreparingWorktree
-          ? t("composer.send.status.preparingWorktree")
-          : isSendBusy
-            ? isEditingQueuedMessage
-              ? t("composer.send.status.updatingQueued")
-              : t("composer.send.status.submitting")
-            : null));
+      (isPreparingWorktree
+        ? t("composer.send.status.preparingWorktree")
+        : isSendBusy
+          ? isEditingQueuedMessage
+            ? t("composer.send.status.updatingQueued")
+            : t("composer.send.status.submitting")
+          : null));
   const alternateShortcutHint = alternateShortcutLabel
     ? t("composer.send.tooltip.orShortcut", { shortcut: alternateShortcutLabel })
     : "";
@@ -313,7 +307,10 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             followUpBehavior === "queue"
               ? "composer.send.tooltip.queueOrSteer"
               : "composer.send.tooltip.steerOrQueue",
-            { shortcut: alternateShortcutHint },
+            {
+              modifier: isMacPlatform(navigator.platform) ? "⌘" : "Ctrl",
+              shortcut: alternateShortcutHint,
+            },
           )
         : submitLabel);
 
@@ -331,7 +328,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       disabled={
         isSendBusy ||
         isSendDisabled ||
-        isConnecting ||
         isEnvironmentUnavailable ||
         (!hasSendableContent && !showResume)
       }
@@ -342,7 +338,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           <StageBackdropButtonArt variant={stageBackdropVariant} />
         </span>
       ) : null}
-      {isConnecting || isSendBusy ? (
+      {isSendBusy ? (
         <Spinner size="sm" aria-hidden="true" />
       ) : showResume ? (
         <PlayIcon className="size-4 fill-current" aria-hidden="true" />

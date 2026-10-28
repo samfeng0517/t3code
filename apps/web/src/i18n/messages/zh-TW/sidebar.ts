@@ -240,10 +240,7 @@ export const sidebarZhTW: Readonly<Record<keyof typeof sidebarEn, string>> = {
   "sidebar.updateDialog.interrupted": "{threads}將會中斷。",
   "sidebar.updateDialog.interruptedSomeResume":
     "{threads}將會中斷。其中 {continuing} 個可在重新啟動後繼續。",
-  "sidebar.updateDialog.skips": "略過 {machine}：{reason}",
   "sidebar.updateDialog.confirm": "更新",
-
-  "sidebar.updateDialog.titleWithItems": "要更新{items}嗎？",
 
   "sidebar.updateCapsule.restartIn": "{seconds} 秒後重新啟動",
   "sidebar.updateCapsule.restarting": "正在重新啟動…",
@@ -275,8 +272,5 @@ export const sidebarZhTW: Readonly<Record<keyof typeof sidebarEn, string>> = {
   "sidebar.updateSummary.stillRestarting.one": "{machines} 仍在重新啟動。",
   "sidebar.updateSummary.stillRestarting.other": "{machines} 仍在重新啟動。",
   "sidebar.updateSummary.labeledLine": "{label}：{detail}",
-  "sidebar.updateSummary.thisAppLine": "此應用程式：{version}，最後重新啟動",
-  "sidebar.updateSummary.desktopAppUpdate": "桌面應用程式更新",
-  "sidebar.updateSummary.serverTo": "伺服器更新至 {version}",
   "sidebar.updateSummary.providerInterrupted": "提供者更新已中斷",
 };

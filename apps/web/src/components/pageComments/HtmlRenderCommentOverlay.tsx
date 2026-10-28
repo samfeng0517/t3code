@@ -115,7 +115,7 @@ export function useFrameCommentPlacements(
     }, ANSWER_TIMEOUT_MS);
   });
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- syncs with the sandboxed frame by window message events and debounced timers, torn down on cleanup
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- syncs with the sandboxed frame by window message events and debounced timers, torn down on cleanup
   useEffect(() => {
     if (!frame || !watching) return;
     let timer: number | undefined;
@@ -235,7 +235,7 @@ export function HtmlRenderCommentOverlay({
   // that scrolls inside gets the wheel forwarded; one that shows the whole page
   // lets it reach the thread. React's wheel listener is passive, hence native.
   const commenting = session.commenting;
-  // oxlint-disable-next-line t3code/react-effect-budget -- drives the sandboxed frame's scroll through a non-passive wheel listener on the layer, removed on cleanup
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives the sandboxed frame's scroll through a non-passive wheel listener on the layer, removed on cleanup
   useEffect(() => {
     const layer = layerRef.current;
     if (!commenting || !layer || !frame || showsWholePage) return;

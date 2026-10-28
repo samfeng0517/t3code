@@ -36,7 +36,7 @@ export function ModsStatusBand(props: {
   const toasts = data?.toasts;
   const { environmentId, threadId } = props;
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- raises toasts through the external toast manager and records them in the registry, a side effect outside render
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- raises toasts through the external toast manager and records them in the registry, a side effect outside render
   useEffect(() => {
     if (toasts === undefined) return;
     // Kept outside this view, so mounting it again does not raise kept toasts twice.

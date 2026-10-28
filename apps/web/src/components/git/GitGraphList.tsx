@@ -41,7 +41,7 @@ export function GitGraphList(props: {
   // A jump can land before the list renders the pages it loaded, so the request waits here
   // until its commit is in the data.
   const handledScrollTarget = useRef<GitGraphScrollTarget | null>(null);
-  // oxlint-disable-next-line t3code/react-effect-budget -- scrolls the virtualized list, an imperative external API, once the target commit has rendered
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the virtualized list, an imperative external API, once the target commit has rendered
   useEffect(() => {
     if (scrollTarget === null || handledScrollTarget.current === scrollTarget) return;
     const index = commits.findIndex((commit) => commit.hash === scrollTarget.hash);

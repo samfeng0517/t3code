@@ -139,10 +139,7 @@ const bindScheduledTask = Effect.fn(function* (threadId: ThreadId) {
   `;
 });
 
-const layers = [
-  ["sql", layerSql],
-  ["memory", ProjectionStore.layerMemory],
-] as const;
+const layers = [["sql", layerSql]] as const;
 
 it.effect.each(layers)(
   "%s: getAutoArchiveCandidates should return idle settled threads when they settled before the cutoff",

@@ -20,6 +20,7 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { TestClock } from "effect/testing";
 
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as IdleCompactionService from "./IdleCompactionService.ts";
 import * as Orchestrator from "./Orchestrator.ts";
@@ -204,7 +205,7 @@ describe("IdleCompactionService", () => {
           Effect.provide(
             Layer.mergeAll(
               layerOrchestrator,
-              ProjectionStore.layerMemory,
+              ProjectionStore.layer.pipe(Layer.provide(SqlitePersistence.layerMemory)),
               ServerSettings.layerTest(),
             ),
           ),
@@ -242,7 +243,7 @@ describe("IdleCompactionService", () => {
           Effect.provide(
             Layer.mergeAll(
               layerOrchestrator,
-              ProjectionStore.layerMemory,
+              ProjectionStore.layer.pipe(Layer.provide(SqlitePersistence.layerMemory)),
               ServerSettings.layerTest({
                 compactIdleThreads: "onReturn",
                 providerInstances: {

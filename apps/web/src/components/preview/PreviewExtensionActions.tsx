@@ -74,7 +74,7 @@ function measureGroupWidth(list: HTMLElement, row: HTMLElement): number {
  * so the change lands in the same frame as the measurement instead of a later render.
  */
 function useHideWhenAddressFieldTooNarrow(list: HTMLElement | null) {
-  // oxlint-disable-next-line t3code/react-effect-budget -- observes the address field's size and toggles an imperative attribute on the extension list, cleaned up on unmount
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- observes the address field's size and toggles an imperative attribute on the extension list, cleaned up on unmount
   useEffect(() => {
     const row = list?.closest("form");
     const field = row?.querySelector<HTMLElement>("[data-preview-address-field]");

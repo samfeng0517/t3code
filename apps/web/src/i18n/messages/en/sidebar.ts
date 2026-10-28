@@ -243,10 +243,7 @@ export const sidebarEn = {
   "sidebar.updateDialog.interrupted": "{threads} will be interrupted.",
   "sidebar.updateDialog.interruptedSomeResume":
     "{threads} will be interrupted. {continuing} can resume after the restart.",
-  "sidebar.updateDialog.skips": "Skips {machine}: {reason}",
   "sidebar.updateDialog.confirm": "Update",
-
-  "sidebar.updateDialog.titleWithItems": "Update {items}?",
 
   "sidebar.updateCapsule.restartIn": "Restart in {seconds}s",
   "sidebar.updateCapsule.restarting": "Restarting…",
@@ -278,8 +275,5 @@ export const sidebarEn = {
   "sidebar.updateSummary.stillRestarting.one": "{machines} is still restarting.",
   "sidebar.updateSummary.stillRestarting.other": "{machines} are still restarting.",
   "sidebar.updateSummary.labeledLine": "{label}: {detail}",
-  "sidebar.updateSummary.thisAppLine": "This app: {version}, restarts last",
-  "sidebar.updateSummary.desktopAppUpdate": "desktop app update",
-  "sidebar.updateSummary.serverTo": "server to {version}",
   "sidebar.updateSummary.providerInterrupted": "Provider update interrupted",
 } as const;

@@ -67,6 +67,7 @@ export interface SettingsSearchItem {
   readonly localEnvironmentOnly?: boolean;
   readonly wslAvailableOnly?: boolean;
   readonly managedTunnelOnly?: boolean;
+  readonly peerLinksOnly?: boolean;
   readonly secondary?: boolean;
   readonly requiresThreadAutoSettlement?: boolean;
   readonly requiresThreadAutoCleanup?: boolean;
@@ -83,6 +84,7 @@ export interface SettingsSearchAvailability {
   readonly hasThreadAutoSettlement: boolean;
   readonly hasThreadAutoCleanup: boolean;
   readonly managedTunnelActive?: boolean;
+  readonly hasPeerLinkHost?: boolean;
 }
 
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
@@ -349,7 +351,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "environment-identification",
     title: "Environment identification",
     to: "/settings/appearance",
-    searchTerms: ["dev nightly artwork pill label hide none"],
+    searchTerms: ["dev nightly latest channel artwork pill label hide none"],
     targetId: "appearance-interface",
   },
   {
@@ -419,6 +421,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["sort projects sidebar manual created recent"],
   },
   {
+    id: "snooze-options",
+    title: "Snooze options",
+    to: "/settings/threads",
+    searchTerms: ["snooze presets times later tonight tomorrow next week remind"],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "snooze-limited-threads",
     title: "Snooze until limits reset",
     to: "/settings/threads",
@@ -442,6 +452,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/labs",
     scope: "environment",
     searchTerms: ["beta share guest invite link teammate watch t3 connect tunnel"],
+  },
+  {
+    id: "linked-environments-beta",
+    title: "Linked environments",
+    to: "/settings/labs",
+    scope: "environment",
+    searchTerms: ["beta link another machine vps peer agents work there delegate"],
   },
   {
     id: "auto-settle-inactive-threads",
@@ -1115,6 +1132,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "linked-environments",
+    peerLinksOnly: true,
+    title: "Linked environments",
+    to: "/settings/connections",
+    targetId: "linked-environments",
+    searchTerms: ["link peer another machine vps agents work there handoff pairing code"],
+  },
+  {
     id: "remote-environments",
     title: "Environments",
     to: "/settings/connections",
@@ -1226,7 +1251,7 @@ interface ThreadAutomationSearchEnvironment {
   readonly connection: { readonly phase: EnvironmentConnectionPhase };
   readonly serverConfig: {
     readonly environment: {
-      readonly capabilities: { readonly [K in ThreadAutomationCapability]?: boolean };
+      readonly capabilities: { readonly threadAutoCleanup?: boolean };
     };
   } | null;
 }
@@ -1241,9 +1266,12 @@ export function getThreadAutomationSearchAvailability(
     (environment) =>
       environment.connection.phase === "connected" && environment.serverConfig !== null,
   );
+  // Every supported server auto-settles; auto-cleanup is a fork capability older servers lack.
   const eligibleEnvironmentIds = connected
     .filter(
-      (environment) => environment.serverConfig?.environment.capabilities[capability] === true,
+      (environment) =>
+        capability !== "threadAutoCleanup" ||
+        environment.serverConfig?.environment.capabilities.threadAutoCleanup === true,
     )
     .map((environment) => environment.environmentId);
   const selected = connected.filter((environment) =>
@@ -1307,7 +1335,8 @@ export function filterAvailableSettingsSearchItems(
       (!item.wslAvailableOnly || availability.isWslSettingsRowVisible) &&
       (!item.requiresThreadAutoSettlement || availability.hasThreadAutoSettlement) &&
       (!item.requiresThreadAutoCleanup || availability.hasThreadAutoCleanup) &&
-      (!item.managedTunnelOnly || availability.managedTunnelActive === true),
+      (!item.managedTunnelOnly || availability.managedTunnelActive === true) &&
+      (!item.peerLinksOnly || availability.hasPeerLinkHost === true),
   );
 }
 

@@ -510,6 +510,7 @@ export function BranchToolbarBranchSelector({
 
   // The server sets started threads' branches; defaulting here would detach the agent from its worktree.
   const threadStarted = serverSession !== null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes a default base branch to the server thread or draft once branches load for a new worktree thread
   useEffect(() => {
     if (
       threadStarted ||
@@ -543,7 +544,7 @@ export function BranchToolbarBranchSelector({
       selectedRef,
       branchByName,
     });
-  // oxlint-disable-next-line t3code/react-effect-budget -- clears the stored thread branch when the selection is stale, a store write outside render
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears the stored thread branch when the selection is stale, a store write outside render
   useEffect(() => {
     if (clearExistingBranchSelection) setThreadBranch(null, null, true);
   }, [clearExistingBranchSelection, setThreadBranch]);

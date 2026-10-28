@@ -39,7 +39,7 @@ export function BrowserWorkspaceController() {
       serverConfigs.get(id)?.environment.capabilities.serverBrowser === true,
   });
   const closePreview = useAtomCommand(previewEnvironment.close, { reportFailure: false });
-  // oxlint-disable-next-line t3code/react-effect-budget -- hands the preview close command to the external workspace store
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- hands the preview close command to the external workspace store
   useEffect(() => {
     setBrowserWorkspaceEnvironment({ environmentId, closePreview });
   }, [closePreview, environmentId]);
@@ -50,7 +50,7 @@ export function BrowserWorkspaceController() {
     routeTarget?.kind === "server" ? routeTarget.threadRef.environmentId : null;
   const routeThreadId = routeTarget?.kind === "server" ? routeTarget.threadRef.threadId : null;
   const routeDraftId = routeTarget?.kind === "draft" ? routeTarget.draftId : null;
-  // oxlint-disable-next-line t3code/react-effect-budget -- mirrors the route target into the external workspace store
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- mirrors the route target into the external workspace store
   useEffect(() => {
     const store = useBrowserWorkspaceStore.getState();
     if (routeKind === "server" && routeEnvironmentId && routeThreadId) {
@@ -82,7 +82,7 @@ function BrowserWorkspaceSessionSync({ threadRef }: { readonly threadRef: Scoped
   const activeSessionTabId = previewState.activeTabId;
   const opening = useBrowserWorkspaceStore(isBrowserWorkspaceOpening);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- registers the thread's history project in the external history store
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the thread's history project in the external history store
   useEffect(() => {
     useBrowserHistoryStore
       .getState()
@@ -92,7 +92,7 @@ function BrowserWorkspaceSessionSync({ threadRef }: { readonly threadRef: Scoped
       );
   }, [environmentId, threadId]);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- mirrors preview sessions into the external browser workspace store
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- mirrors preview sessions into the external browser workspace store
   useEffect(() => {
     if (!listLoaded || opening) return;
     useBrowserWorkspaceStore.getState().syncSessions({ sessions, activeSessionTabId });
