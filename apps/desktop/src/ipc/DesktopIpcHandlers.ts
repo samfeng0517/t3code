@@ -67,6 +67,7 @@ import {
 } from "./methods/snapShot.ts";
 import * as PreviewIpc from "./methods/preview.ts";
 import * as BrowserExtensionsIpc from "./methods/browserExtensions.ts";
+import * as BrowserNotificationPermissionsIpc from "./methods/browserNotificationPermissions.ts";
 import * as AppActivationIpc from "./methods/appActivation.ts";
 import * as WebLinksIpc from "./methods/webLinks.ts";
 import {
@@ -175,4 +176,6 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(BrowserExtensionsIpc.listBrowserExtensionSources);
   yield* ipc.handle(BrowserExtensionsIpc.addBrowserExtensionFromSource);
   yield* ipc.handle(BrowserExtensionsIpc.updateBrowserExtensionsFromSources);
+  yield* ipc.handle(BrowserNotificationPermissionsIpc.listBrowserNotificationPermissions);
+  yield* ipc.handle(BrowserNotificationPermissionsIpc.removeBrowserNotificationPermission);
 });

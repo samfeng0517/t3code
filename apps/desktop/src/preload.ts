@@ -364,6 +364,11 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       updateFromSources: () =>
         ipcRenderer.invoke(IpcChannels.BROWSER_EXTENSIONS_UPDATE_FROM_SOURCES_CHANNEL),
     },
+    notificationPermissions: {
+      list: () => ipcRenderer.invoke(IpcChannels.BROWSER_NOTIFICATION_PERMISSIONS_LIST_CHANNEL),
+      remove: (origin) =>
+        ipcRenderer.invoke(IpcChannels.BROWSER_NOTIFICATION_PERMISSIONS_REMOVE_CHANNEL, { origin }),
+    },
     clearCookies: (environmentId, profileId) =>
       ipcRenderer.invoke(IpcChannels.PREVIEW_CLEAR_COOKIES_CHANNEL, { environmentId, profileId }),
     clearCache: (environmentId, profileId) =>

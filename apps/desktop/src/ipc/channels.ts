@@ -134,3 +134,7 @@ export const BROWSER_EXTENSIONS_ADD_FROM_SOURCE_CHANNEL =
   "desktop:browser-extensions-add-from-source";
 export const BROWSER_EXTENSIONS_UPDATE_FROM_SOURCES_CHANNEL =
   "desktop:browser-extensions-update-from-sources";
+export const BROWSER_NOTIFICATION_PERMISSIONS_LIST_CHANNEL =
+  "desktop:browser-notification-permissions-list";
+export const BROWSER_NOTIFICATION_PERMISSIONS_REMOVE_CHANNEL =
+  "desktop:browser-notification-permissions-remove";

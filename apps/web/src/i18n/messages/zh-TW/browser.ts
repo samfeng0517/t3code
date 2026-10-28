@@ -74,6 +74,13 @@ export const browserZhTW: Readonly<Record<keyof typeof browserEn, string>> = {
   "browser.bookmarks.import.readFailed": "無法讀取這些書籤。",
   "browser.bookmarks.import.fileEmpty": "這個檔案裡找不到書籤。",
 
+  "browser.notifications.title": "網站通知",
+  "browser.notifications.description":
+    "瀏覽器裡的網站要顯示通知前會先詢問你。移除網站後，下次會重新詢問。",
+  "browser.notifications.allowed": "已允許",
+  "browser.notifications.blocked": "已封鎖",
+  "browser.notifications.removeAria": "忘記 {origin} 的通知選擇",
+  "browser.notifications.removeFailed": "無法移除這個網站",
   "browser.extensions.title": "擴充功能",
   "browser.extensions.description":
     "將 Chrome 擴充功能載入到除了無痕模式以外的所有瀏覽器設定檔。從其他瀏覽器加入的擴充功能會跟著該瀏覽器自動更新。重新載入已開啟的分頁即可套用變更。",

@@ -72,6 +72,13 @@ export const browserEn = {
   "browser.bookmarks.import.readFailed": "Those bookmarks could not be read.",
   "browser.bookmarks.import.fileEmpty": "No bookmarks were found in that file.",
 
+  "browser.notifications.title": "Site notifications",
+  "browser.notifications.description":
+    "Sites in the browser ask before showing notifications. Remove a site to be asked again.",
+  "browser.notifications.allowed": "Allowed",
+  "browser.notifications.blocked": "Blocked",
+  "browser.notifications.removeAria": "Forget the notification choice for {origin}",
+  "browser.notifications.removeFailed": "Could not forget this site",
   "browser.extensions.title": "Extensions",
   "browser.extensions.description":
     "Load Chrome extensions into every browser profile except incognito. Extensions added from another browser stay in sync with it. Reload open tabs to apply changes.",

@@ -58,6 +58,7 @@ export * from "./mcpApps.ts";
 export * from "./mods.ts";
 export * from "./browserImport.ts";
 export * from "./browserExtension.ts";
+export * from "./browserNotifications.ts";
 export * from "./browserProfile.ts";
 export * from "./device.ts";
 export * from "./preview.ts";

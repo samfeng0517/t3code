@@ -8,6 +8,7 @@ import type {
   BrowserExtensionUpdateResult,
 } from "./browserExtension.ts";
 
+import type { BrowserNotificationPermission } from "./browserNotifications.ts";
 import { SnapShotSource } from "./chatAttachment.ts";
 import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { BrowserProfileId } from "./browserProfile.ts";
@@ -1180,6 +1181,11 @@ export interface DesktopPreviewBridge {
     ) => Promise<BrowserExtensionMutationResult>;
     /** Re-copies every copied extension whose browser now has a newer version, live. */
     updateFromSources: () => Promise<BrowserExtensionUpdateResult>;
+  };
+  /** Sites' remembered answers to the notification prompt; removing one asks again next time. */
+  notificationPermissions?: {
+    list: () => Promise<ReadonlyArray<BrowserNotificationPermission>>;
+    remove: (origin: string) => Promise<ReadonlyArray<BrowserNotificationPermission>>;
   };
   setAnnotationTheme: (theme: DesktopPreviewAnnotationTheme) => Promise<void>;
   setAnnotationSendEnabled: (tabId: string, enabled: boolean) => Promise<void>;

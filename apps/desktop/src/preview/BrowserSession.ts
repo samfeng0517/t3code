@@ -11,6 +11,7 @@ import * as Schema from "effect/Schema";
 import * as SynchronizedRef from "effect/SynchronizedRef";
 
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
+import * as BrowserNotificationPermissions from "./BrowserNotificationPermissions.ts";
 import { attachChromeExtensions } from "./ChromeExtensions.ts";
 
 const PREVIEW_PARTITION_PREFIX = "persist:t3code-preview-";
@@ -27,7 +28,7 @@ const ALLOWED_PREVIEW_PERMISSIONS: ReadonlySet<string> = new Set([
   // DesktopWindow confines HTML fullscreen to the guest's webview.
   "fullscreen",
   // Deny local-fonts to untrusted previews: it exposes installed-font fingerprints and file bytes.
-  // Deny notifications: pages could impersonate T3 Code; app notifications use the default session.
+  // Notifications are asked per site (see `requestNotifications`): a page's notification shows as T3 Code's.
 ]);
 
 const NEVER_EXTERNAL_PROTOCOLS: ReadonlySet<string> = new Set([
@@ -64,6 +65,17 @@ const permissionOrigin = (rawUrl: string | undefined): string | null => {
   try {
     const { origin } = new URL(rawUrl);
     return origin === "null" ? null : origin;
+  } catch {
+    return null;
+  }
+};
+
+/** The http(s) origin a notification permission is remembered under, or null for any other page. */
+const notificationOrigin = (rawUrl: string | undefined): string | null => {
+  if (!rawUrl) return null;
+  try {
+    const url = new URL(rawUrl);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.origin : null;
   } catch {
     return null;
   }
@@ -197,6 +209,8 @@ const previewHostWindow = (guest: WebContents | null): BrowserWindow | undefined
 export const make = Effect.gen(function* BrowserSessionMake() {
   const crypto = yield* Crypto.Crypto;
   const electronDialog = yield* ElectronDialog.ElectronDialog;
+  const notificationPermissions =
+    yield* BrowserNotificationPermissions.BrowserNotificationPermissions;
   const runFork = Effect.runForkWith(yield* Effect.context<never>());
   // One prompt at a time, so a page cannot stack dialogs by looping a deep link.
   let permissionPromptOpen = false;
@@ -261,6 +275,76 @@ export const make = Effect.gen(function* BrowserSessionMake() {
         detail: `A page in the browser wants to open another application:\n\n${truncateForPrompt(url)}`,
       },
       (answer) => callback(answer === true),
+    );
+  };
+  const notificationsAllowed = (requestingOrigin: string): boolean => {
+    const origin = notificationOrigin(requestingOrigin);
+    return origin !== null && notificationPermissions.decisionFor(origin) === "allow";
+  };
+  // One prompt at a time across sites; the same site's later requests share its answer.
+  const notificationPrompt: {
+    origin: string | null;
+    callbacks: Array<(granted: boolean) => void>;
+  } = { origin: null, callbacks: [] };
+  // "Not now" holds for the rest of this run, so a page cannot re-prompt by asking again.
+  const notificationsDeferred = new Set<string>();
+  const requestNotifications = (
+    requester: WebContents | null,
+    request: { readonly requestingUrl?: string; readonly isMainFrame?: boolean },
+    callback: (granted: boolean) => void,
+  ): void => {
+    const origin = notificationOrigin(request.requestingUrl);
+    const remembered = origin === null ? undefined : notificationPermissions.decisionFor(origin);
+    if (remembered !== undefined) {
+      callback(remembered === "allow");
+      return;
+    }
+    // Like Chrome, an embedded frame cannot ask: the dialog would name a site the user is not on.
+    if (origin === null || request.isMainFrame === false || notificationsDeferred.has(origin)) {
+      callback(false);
+      return;
+    }
+    if (notificationPrompt.origin !== null) {
+      if (notificationPrompt.origin === origin) notificationPrompt.callbacks.push(callback);
+      else callback(false);
+      return;
+    }
+    notificationPrompt.origin = origin;
+    notificationPrompt.callbacks = [callback];
+    const settle = (granted: boolean) =>
+      Effect.sync(() => {
+        const callbacks = notificationPrompt.callbacks;
+        notificationPrompt.origin = null;
+        notificationPrompt.callbacks = [];
+        for (const resolve of callbacks) resolve(granted);
+      });
+    runFork(
+      electronDialog
+        .showMessageBox(
+          {
+            type: "question",
+            buttons: ["Allow", "Block", "Not now"],
+            defaultId: 0,
+            cancelId: 2,
+            message: `Allow ${origin} to show notifications?`,
+            detail:
+              "Its notifications appear as T3 Code notifications. You can change this later in Settings → Browser → Browsing.",
+          },
+          previewHostWindow(requester),
+        )
+        .pipe(
+          Effect.map(({ response }) =>
+            response === 0 ? "allow" : response === 1 ? "block" : null,
+          ),
+          Effect.orElseSucceed(() => null),
+          Effect.tap((decision) =>
+            decision === null
+              ? Effect.sync(() => void notificationsDeferred.add(origin))
+              : notificationPermissions.set(origin, decision),
+          ),
+          Effect.flatMap((decision) => settle(decision === "allow")),
+          Effect.onInterrupt(() => settle(false)),
+        ),
     );
   };
   const sessionsRef = yield* SynchronizedRef.make<ReadonlyMap<string, Session>>(new Map());
@@ -366,6 +450,12 @@ export const make = Effect.gen(function* BrowserSessionMake() {
                   );
                   return;
                 }
+                if (permission === "notifications") {
+                  // Incognito neither asks nor remembers, as in Chrome.
+                  if (!persistent) callback(false);
+                  else requestNotifications(webContents, details, callback);
+                  return;
+                }
                 callback(ALLOWED_PREVIEW_PERMISSIONS.has(permission));
               },
             );
@@ -373,7 +463,9 @@ export const make = Effect.gen(function* BrowserSessionMake() {
               (_webContents, permission, requestingOrigin) =>
                 permission === "clipboard-read"
                   ? clipboardReadDecisions.get(permissionOrigin(requestingOrigin) ?? "") === true
-                  : ALLOWED_PREVIEW_PERMISSIONS.has(permission),
+                  : permission === "notifications"
+                    ? persistent && notificationsAllowed(requestingOrigin)
+                    : ALLOWED_PREVIEW_PERMISSIONS.has(permission),
             );
             // Attached before the session is published or initialized: the toolbar
             // only learns of extensions loaded after it exists, and a missing toolbar

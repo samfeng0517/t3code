@@ -38,27 +38,70 @@ const { attachChromeExtensions } = vi.hoisted(() => ({
 vi.mock("./ChromeExtensions.ts", () => ({ attachChromeExtensions }));
 
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
+import * as BrowserNotificationPermissions from "./BrowserNotificationPermissions.ts";
 import * as BrowserSession from "./BrowserSession.ts";
 
 const { showMessageBox } = vi.hoisted(() => ({
   showMessageBox: vi.fn<
-    (options: Electron.MessageBoxOptions, owner?: Electron.BrowserWindow) => number
+    (
+      options: Electron.MessageBoxOptions,
+      owner?: Electron.BrowserWindow,
+    ) => number | Promise<number>
   >(() => 1),
 }));
 const layerDialog = Layer.succeed(ElectronDialog.ElectronDialog, {
   pickFolder: () => Effect.die("unused"),
   pickFiles: () => Effect.die("unused"),
   showMessageBox: (options, owner) =>
-    Effect.sync(() => ({ response: showMessageBox(options, owner), checkboxChecked: false })),
+    Effect.promise(async () => ({
+      response: await showMessageBox(options, owner),
+      checkboxChecked: false,
+    })),
   showErrorBox: () => Effect.void,
 });
-const layer = BrowserSession.layer.pipe(
-  Layer.provide(Layer.merge(NodeServices.layer, layerDialog)),
+const notificationDecisions = new Map<string, "allow" | "block">();
+const layerNotificationPermissions = Layer.succeed(
+  BrowserNotificationPermissions.BrowserNotificationPermissions,
+  {
+    decisionFor: (origin) => notificationDecisions.get(origin),
+    set: (origin, decision) => Effect.sync(() => void notificationDecisions.set(origin, decision)),
+    remove: (origin) =>
+      Effect.sync(() => {
+        notificationDecisions.delete(origin);
+        return [];
+      }),
+    list: Effect.succeed([]),
+  },
 );
+const layer = BrowserSession.layer.pipe(
+  Layer.provide(Layer.mergeAll(NodeServices.layer, layerDialog, layerNotificationPermissions)),
+);
+
+const notificationRequester = (scope: string, persistent: boolean) =>
+  Effect.gen(function* () {
+    const browserSessions = yield* BrowserSession.BrowserSession;
+    const partition = yield* browserSessions.getPartition(scope, persistent);
+    yield* browserSessions.getSession(scope, persistent);
+    const requestHandler = sessions.get(partition)?.setPermissionRequestHandler.mock.calls[0]?.[0];
+    assert.isFunction(requestHandler);
+    return (requestingUrl: string, isMainFrame = true) =>
+      Effect.callback<boolean>((resume) => {
+        requestHandler(
+          null,
+          "notifications",
+          (granted: boolean) => resume(Effect.succeed(granted)),
+          {
+            requestingUrl,
+            isMainFrame,
+          },
+        );
+      });
+  });
 
 describe("BrowserSession", () => {
   beforeEach(() => {
     sessions.clear();
+    notificationDecisions.clear();
     attachChromeExtensions.mockReset();
     fromPartition.mockReset();
     fromPartition.mockImplementation((partition: string) => {
@@ -187,7 +230,7 @@ describe("BrowserSession", () => {
       // `clipboard-write` is not a real Electron permission — the async write API
       // uses `clipboard-sanitized-write` — so the stale name must not be granted,
       // and unrelated permissions stay denied.
-      for (const permission of ["clipboard-write", "notifications", "midi"]) {
+      for (const permission of ["clipboard-write", "midi"]) {
         assert.isFalse(requestAllows(permission), `request handler should deny ${permission}`);
         assert.isFalse(
           checkHandler(null, permission) as boolean,
@@ -275,6 +318,111 @@ describe("BrowserSession", () => {
       assert.isFalse(checkClipboard("https://blocked.test"));
       assert.isTrue(checkClipboard("https://allowed.test"));
       assert.strictEqual(showMessageBox.mock.calls.length, 2);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect(
+    "should ask once per site and remember the answer when a page requests notifications",
+    () =>
+      Effect.gen(function* () {
+        const browserSessions = yield* BrowserSession.BrowserSession;
+        const partition = yield* browserSessions.getPartition("scope-a");
+        yield* browserSessions.getSession("scope-a");
+        const browserSession = sessions.get(partition);
+        const requestHandler = browserSession?.setPermissionRequestHandler.mock.calls[0]?.[0];
+        const checkHandler = browserSession?.setPermissionCheckHandler.mock.calls[0]?.[0];
+        assert.isFunction(requestHandler);
+        assert.isFunction(checkHandler);
+        const request = (requestingUrl: string) =>
+          Effect.callback<boolean>((resume) => {
+            requestHandler(
+              null,
+              "notifications",
+              (granted: boolean) => resume(Effect.succeed(granted)),
+              {
+                requestingUrl,
+              },
+            );
+          });
+
+        showMessageBox.mockReset();
+        showMessageBox.mockReturnValueOnce(0).mockReturnValueOnce(1);
+        assert.isTrue(yield* request("https://chat.example.com/inbox"));
+        assert.isTrue(yield* request("https://chat.example.com/other"));
+        assert.isFalse(yield* request("https://ads.example.com/"));
+        assert.isFalse(yield* request("https://ads.example.com/again"));
+        assert.strictEqual(showMessageBox.mock.calls.length, 2);
+        assert.include(showMessageBox.mock.calls[0]?.[0].message, "https://chat.example.com");
+
+        assert.isTrue(checkHandler(null, "notifications", "https://chat.example.com") as boolean);
+        assert.isFalse(checkHandler(null, "notifications", "https://ads.example.com") as boolean);
+        assert.isFalse(checkHandler(null, "notifications", "https://new.example.com") as boolean);
+      }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("should not ask again in this run when the notification prompt is dismissed", () =>
+    Effect.gen(function* () {
+      const request = yield* notificationRequester("scope-a", true);
+
+      showMessageBox.mockReset();
+      showMessageBox.mockReturnValue(2);
+      assert.isFalse(yield* request("https://chat.example.com/"));
+      assert.isFalse(yield* request("https://chat.example.com/"));
+      assert.strictEqual(showMessageBox.mock.calls.length, 1);
+      assert.isUndefined(notificationDecisions.get("https://chat.example.com"));
+      assert.isFalse(yield* request("file:///tmp/page.html"));
+      assert.strictEqual(showMessageBox.mock.calls.length, 1);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect(
+    "should deny without asking when an embedded frame or an incognito page requests notifications",
+    () =>
+      Effect.gen(function* () {
+        const request = yield* notificationRequester("scope-a", true);
+        const incognito = yield* notificationRequester("scope-b", false);
+
+        showMessageBox.mockReset();
+        showMessageBox.mockReturnValue(0);
+        assert.isFalse(yield* request("https://ads.example.com/", false));
+        assert.isFalse(yield* incognito("https://chat.example.com/"));
+        assert.strictEqual(showMessageBox.mock.calls.length, 0);
+
+        notificationDecisions.set("https://chat.example.com", "allow");
+        assert.isFalse(yield* incognito("https://chat.example.com/"));
+      }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("should deny another site's request while a notification prompt is open", () =>
+    Effect.gen(function* () {
+      const browserSessions = yield* BrowserSession.BrowserSession;
+      const partition = yield* browserSessions.getPartition("scope-a");
+      yield* browserSessions.getSession("scope-a");
+      const requestHandler =
+        sessions.get(partition)?.setPermissionRequestHandler.mock.calls[0]?.[0];
+      assert.isFunction(requestHandler);
+      let release: (response: number) => void = () => {};
+      showMessageBox.mockReset();
+      showMessageBox.mockImplementation(
+        () =>
+          new Promise<number>((resolve) => {
+            release = resolve;
+          }),
+      );
+      const answer = (requestingUrl: string) =>
+        new Promise<boolean>((resolve) => {
+          requestHandler(null, "notifications", resolve, { requestingUrl, isMainFrame: true });
+        });
+
+      const first = answer("https://a.example.com/");
+      const other = answer("https://b.example.com/");
+      const sameSite = answer("https://a.example.com/x");
+      assert.isFalse(yield* Effect.promise(() => other));
+      assert.strictEqual(showMessageBox.mock.calls.length, 1);
+
+      release(0);
+      assert.isTrue(yield* Effect.promise(() => first));
+      assert.isTrue(yield* Effect.promise(() => sameSite));
     }).pipe(Effect.provide(layer)),
   );
 
