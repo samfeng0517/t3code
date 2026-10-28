@@ -163,6 +163,17 @@ describe("resolveClaudeUsageRows", () => {
     });
   });
 
+  it("should show streamed windows when the limits probe failed", () => {
+    const rows = resolveClaudeUsageRows(
+      claude([sessionWindow(29), weeklyWindow(15)], { unavailable: { reason: "probeFailed" } }),
+      NOW,
+    );
+    expect(rows?.map((row) => [row.kind, row.reading.remainingPercent])).toEqual([
+      ["session", 71],
+      ["weekly", 85],
+    ]);
+  });
+
   it("should return null when the provider is not an enabled Claude with readable limits", () => {
     expect(resolveClaudeUsageRows(claude([sessionWindow(50)], {}, "codex"), NOW)).toBeNull();
     expect(
@@ -175,6 +186,9 @@ describe("resolveClaudeUsageRows", () => {
       ),
     ).toBeNull();
     expect(resolveClaudeUsageRows(claude([]), NOW)).toBeNull();
+    expect(
+      resolveClaudeUsageRows(claude([], { unavailable: { reason: "probeFailed" } }), NOW),
+    ).toBeNull();
     expect(resolveClaudeUsageRows(null, NOW)).toBeNull();
   });
 });

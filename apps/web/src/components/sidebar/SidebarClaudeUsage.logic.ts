@@ -1,7 +1,6 @@
 import type { ServerProvider, ServerProviderUsageWindow } from "@t3tools/contracts";
 import {
   type LimitPace,
-  limitsNotice,
   paceOf,
   paceRemainingPercent,
   remainingPercent,
@@ -82,7 +81,8 @@ export function resolveClaudeUsageRows(
 ): ReadonlyArray<ClaudeUsageRow> | null {
   if (!provider || provider.driver !== "claudeAgent" || !provider.enabled) return null;
   const limits = provider.usageLimits;
-  if (!limits || limitsNotice(limits) !== null) return null;
+  // A failed probe still shows windows streamed from turns: those come straight from Claude.
+  if (!limits || limits.unavailable?.reason === "unsupported") return null;
   const rows: ClaudeUsageRow[] = [];
   const session = limits.windows.find((window) => window.id === "five_hour");
   if (session) rows.push({ kind: "session", reading: readWindow(session, now) });
