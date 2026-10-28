@@ -222,6 +222,11 @@ vp run dist:desktop:linux
 vp run dist:desktop:win
 ```
 
+On a Mac, `scripts/install-local-desktop.sh` builds this checkout and replaces the installed app:
+it quits the app, swaps the bundle, and reopens it, keeping the previous copy under
+`release/local-install/previous/`. It refuses ad hoc builds, so set
+`T3CODE_MACOS_DEV_SIGNING_IDENTITY` first. `--build-only` stops before touching the installed app.
+
 DMGs default to the host architecture. Use `--arch` to choose another target and `--keep-stage`
 to retain packaging files for inspection. Run `vp run dist:desktop:artifact --help` for other
 options.
