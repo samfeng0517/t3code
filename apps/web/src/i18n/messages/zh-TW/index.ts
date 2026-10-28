@@ -13,6 +13,9 @@ import { modsZhTW } from "./mods";
 import { browserZhTW } from "./browser";
 import { pageCommentsZhTW } from "./pageComments";
 import { gitZhTW } from "./git";
+import { branchToolbarZhTW } from "./branchToolbar";
+import { gitActionsZhTW } from "./gitActions";
+import { threadDetailsZhTW } from "./threadDetails";
 
 export const zhTW: Readonly<Record<MessageKey, string>> = {
   ...commonZhTW,
@@ -29,4 +32,7 @@ export const zhTW: Readonly<Record<MessageKey, string>> = {
   ...browserZhTW,
   ...pageCommentsZhTW,
   ...gitZhTW,
+  ...branchToolbarZhTW,
+  ...gitActionsZhTW,
+  ...threadDetailsZhTW,
 };

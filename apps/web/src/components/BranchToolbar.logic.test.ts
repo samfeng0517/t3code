@@ -1,6 +1,8 @@
 import { type VcsRef } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import { dedupeRemoteBranchesWithLocalMatches } from "@t3tools/shared/git";
+
+import { setLanguagePreference } from "../i18n/languagePreferenceStore";
 import {
   deriveLocalBranchNameFromRemoteRef,
   resolveBranchSelectionTarget,
@@ -258,6 +260,7 @@ describe("sanitizeNewRefName", () => {
 
 describe("resolveBranchTriggerLabel", () => {
   it("resolveBranchTriggerLabel should label a worktree base without a remote suffix when the branch is local", () => {
+    setLanguagePreference("en");
     expect(
       resolveBranchTriggerLabel({
         activeWorktreePath: null,

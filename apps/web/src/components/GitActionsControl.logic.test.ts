@@ -8,7 +8,11 @@ import {
   resolveDefaultBranchActionDialogCopy,
   resolveLiveThreadBranchUpdate,
   resolveQuickAction,
+  translateGitActionText,
 } from "./GitActionsControl.logic";
+import { formatMessage } from "../i18n/locale";
+import { en } from "../i18n/messages/en";
+import { zhTW } from "../i18n/messages/zh-TW";
 
 function status(overrides: Partial<VcsStatusResult> = {}): VcsStatusResult {
   return {
@@ -215,5 +219,38 @@ describe("resolveAutoFeatureBranchName", () => {
   it("treats existing ref names as case-insensitive for collision checks", () => {
     const ref = resolveAutoFeatureBranchName(["Feature/Ticket-1"], "feature/ticket-1");
     assert.equal(ref, "feature/ticket-1-2");
+  });
+});
+
+describe("translateGitActionText", () => {
+  const SERVER_TEXT = [
+    "Committed 1a2b3c4",
+    "Pushed 1a2b3c4 to main",
+    "Pushed to feature/x",
+    "Opened PR #12",
+    "Created MR",
+    "Generating PR content...",
+    "Creating pull request...",
+    "Preparing PR...",
+    "Running pre-commit...",
+    "Committing...",
+  ];
+
+  it("should reproduce the server text when translating to English", () => {
+    for (const text of SERVER_TEXT) {
+      assert.equal(
+        translateGitActionText(text, (key, params) => formatMessage(en[key], params)),
+        text,
+      );
+    }
+  });
+
+  it("should fill the Chinese template with the captured values when the text matches a server template", () => {
+    const zh = (text: string) =>
+      translateGitActionText(text, (key, params) => formatMessage(zhTW[key], params));
+    assert.equal(zh("Pushed 1a2b3c4 to main"), "已將 1a2b3c4 push 到 main");
+    assert.equal(zh("Opened PR #12"), "已開啟 PR #12");
+    assert.equal(zh("Running pre-commit..."), "正在執行 pre-commit…");
+    assert.equal(zh("Rebased onto main"), "Rebased onto main");
   });
 });

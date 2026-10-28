@@ -17,6 +17,7 @@ import { resolveDiscoveredServerUrl } from "../../browser/browserTargetResolver"
 import { readLocalApi } from "../../localApi";
 import { cn, isMacPlatform } from "../../lib/utils";
 import { useThreadDiscoveredPorts } from "../../portDiscoveryState";
+import { useT } from "~/i18n";
 import { useEnvironment } from "../../state/environments";
 import { previewEnvironment } from "../../state/preview";
 import { useEnvironmentScope } from "../../state/session";
@@ -35,6 +36,7 @@ export function ThreadServersPanel(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }) {
+  const t = useT();
   const servers = useThreadDiscoveredPorts(props);
   const canOpen = useEnvironmentScope(props.environmentId, AuthPreviewOperateScope);
   const canStop = useAtomValue(
@@ -50,7 +52,9 @@ export function ThreadServersPanel(props: {
   const [stoppingKey, setStoppingKey] = useState<string | null>(null);
 
   if (servers.length === 0) return null;
-  const externalClickLabel = isMacPlatform(navigator.platform) ? "⌘-click" : "Ctrl-click";
+  const externalClickLabel = isMacPlatform(navigator.platform)
+    ? t("threadDetails.servers.clickMac")
+    : t("threadDetails.servers.clickOther");
   const threadRef = scopeThreadRef(props.environmentId, props.threadId);
 
   const reportFailure = (title: string, error: unknown) => {
@@ -71,12 +75,17 @@ export function ThreadServersPanel(props: {
       const url = resolveDiscoveredServerUrl(props.environmentId, server.url);
       await readLocalApi()
         ?.shell.openExternal(url)
-        .catch((error: unknown) => reportFailure("Unable to open in browser", error));
+        .catch((error: unknown) =>
+          reportFailure(t("threadDetails.servers.unableToOpenInBrowser"), error),
+        );
       return;
     }
     const result = await openDiscoveredPort({ threadRef, port: server, openPreview });
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-      reportFailure("Unable to open preview", squashAtomCommandFailure(result));
+      reportFailure(
+        t("threadDetails.servers.unableToOpenPreview"),
+        squashAtomCommandFailure(result),
+      );
     }
   };
 
@@ -89,12 +98,15 @@ export function ThreadServersPanel(props: {
     });
     setStoppingKey(null);
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-      reportFailure("Could not stop server", squashAtomCommandFailure(result));
+      reportFailure(t("threadDetails.servers.couldNotStop"), squashAtomCommandFailure(result));
     }
   };
 
   return (
-    <ThreadDetailsSection headingId="thread-details-servers-heading" title="Servers">
+    <ThreadDetailsSection
+      headingId="thread-details-servers-heading"
+      title={t("threadDetails.servers.title")}
+    >
       <ul className="m-0 list-none p-0">
         {servers.map((server) => {
           const key = serverKey(server);
@@ -123,14 +135,19 @@ export function ThreadServersPanel(props: {
                       localhost:{server.port}
                     </span>
                     <span className="truncate text-2xs font-normal leading-4 text-muted-foreground">
-                      {[server.terminal === null ? "Agent" : "Terminal", server.processName]
+                      {[
+                        server.terminal === null
+                          ? t("threadDetails.servers.agent")
+                          : t("threadDetails.servers.terminal"),
+                        server.processName,
+                      ]
                         .filter(Boolean)
                         .join(" · ")}
                     </span>
                   </span>
                 </TooltipTrigger>
                 <TooltipPopup side="left">
-                  Open in the browser panel. {externalClickLabel} for your browser.
+                  {t("threadDetails.servers.openTooltip", { click: externalClickLabel })}
                 </TooltipPopup>
               </Tooltip>
               {stoppable ? (
@@ -143,7 +160,9 @@ export function ThreadServersPanel(props: {
                           variant="ghost"
                           part="icon"
                           tone="destructive"
-                          aria-label={`Stop localhost:${server.port}`}
+                          aria-label={t("threadDetails.servers.stopLabel", {
+                            server: `localhost:${server.port}`,
+                          })}
                           disabled={stoppingKey !== null}
                           onClick={() => void stop(server)}
                         />
@@ -155,7 +174,9 @@ export function ThreadServersPanel(props: {
                         <SquareIcon aria-hidden className="size-3 fill-current" />
                       )}
                     </TooltipTrigger>
-                    <TooltipPopup side="left">Stop server</TooltipPopup>
+                    <TooltipPopup side="left">
+                      {t("threadDetails.servers.stopTooltip")}
+                    </TooltipPopup>
                   </Tooltip>
                 </div>
               ) : null}

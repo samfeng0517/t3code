@@ -2,6 +2,7 @@ import { DEFAULT_SERVER_SETTINGS, EnvironmentId, ProjectId } from "@t3tools/cont
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { describe, expect, it } from "vite-plus/test";
 
+import { setLanguagePreference } from "../../i18n/languagePreferenceStore";
 import { settingInheritanceLayers } from "./SettingInheritance";
 
 const environmentId = EnvironmentId.make("laptop");
@@ -9,6 +10,7 @@ const projectId = ProjectId.make("project");
 
 describe("settingInheritanceLayers", () => {
   it("shows the checkout's t3.json as a layer for file-backed keys", () => {
+    setLanguagePreference("en");
     const file = { defaultThreadEnvMode: "worktree" as const };
     const fromFile = settingInheritanceLayers(
       {

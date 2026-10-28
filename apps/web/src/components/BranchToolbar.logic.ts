@@ -8,6 +8,7 @@ import type {
 import * as Schema from "effect/Schema";
 import { sanitizeNewRefName } from "@t3tools/shared/git";
 import { toSortableTimestamp } from "@t3tools/client-runtime/state/thread-sort";
+import { t as globalT, type Translate } from "~/i18n";
 export { deriveLocalBranchNameFromRemoteRef, sanitizeNewRefName } from "@t3tools/shared/git";
 
 export interface EnvironmentOption {
@@ -32,12 +33,15 @@ function normalizeDisplayLabel(value: string | null | undefined): string | null 
   return trimmed && trimmed.length > 0 ? trimmed : null;
 }
 
-export function resolveEnvironmentOptionLabel(input: {
-  isPrimary: boolean;
-  environmentId: EnvironmentId;
-  runtimeLabel?: string | null;
-  savedLabel?: string | null;
-}): string {
+export function resolveEnvironmentOptionLabel(
+  input: {
+    isPrimary: boolean;
+    environmentId: EnvironmentId;
+    runtimeLabel?: string | null;
+    savedLabel?: string | null;
+  },
+  t: Translate = globalT,
+): string {
   const runtimeLabel = normalizeDisplayLabel(input.runtimeLabel);
   const savedLabel = normalizeDisplayLabel(input.savedLabel);
 
@@ -46,7 +50,7 @@ export function resolveEnvironmentOptionLabel(input: {
       if (!label) return false;
       return !GENERIC_LOCAL_ENVIRONMENT_LABELS.has(label.toLowerCase());
     });
-    return preferredLocalLabel ?? "This device";
+    return preferredLocalLabel ?? t("commandPalette.environment.thisDevice");
   }
 
   return runtimeLabel ?? savedLabel ?? input.environmentId;
@@ -88,26 +92,44 @@ export function resolveContextStripLabelsCompact(input: {
     : input.neededWidth > input.availableWidth;
 }
 
-export function resolveEnvModeLabel(mode: EnvMode): string {
-  return mode === "worktree" ? "New worktree" : "Current checkout";
+// Components pass their `useT()` so React Compiler memoization tracks the locale.
+export function resolveEnvModeLabel(mode: EnvMode, t: Translate = globalT): string {
+  return mode === "worktree"
+    ? t("branchToolbar.workspace.newWorktree")
+    : t("branchToolbar.workspace.currentCheckout");
 }
 
+// Getters keep the record shape while translating at read time.
 export const WORKTREE_SUBMODULES_LABELS: Record<WorktreeSubmodules, string> = {
-  recursive: "Recursive",
-  "top-level": "Top level only",
-  none: "Skip",
+  get recursive() {
+    return globalT("settingsProviders.projectDefaults.submodules.option.recursive");
+  },
+  get "top-level"() {
+    return globalT("settingsProviders.projectDefaults.submodules.option.top-level");
+  },
+  get none() {
+    return globalT("settingsProviders.projectDefaults.submodules.option.none");
+  },
 };
 
-export function resolveCurrentWorkspaceLabel(activeWorktreePath: string | null): string {
-  return activeWorktreePath ? "Current worktree" : resolveEnvModeLabel("local");
+export function resolveCurrentWorkspaceLabel(
+  activeWorktreePath: string | null,
+  t: Translate = globalT,
+): string {
+  return activeWorktreePath
+    ? t("branchToolbar.workspace.currentWorktree")
+    : resolveEnvModeLabel("local", t);
 }
 
 export function resolveLockedWorkspaceLabel(
   activeWorktreePath: string | null,
   effectiveEnvMode: EnvMode,
+  t: Translate = globalT,
 ): string {
-  if (activeWorktreePath) return "Worktree";
-  return effectiveEnvMode === "worktree" ? resolveEnvModeLabel("worktree") : "Local checkout";
+  if (activeWorktreePath) return t("branchToolbar.workspace.worktree");
+  return effectiveEnvMode === "worktree"
+    ? resolveEnvModeLabel("worktree", t)
+    : t("branchToolbar.workspace.localCheckout");
 }
 
 export interface PreviousWorktreeSeed {
@@ -148,8 +170,13 @@ export function resolvePreviousWorktreeSeed(input: {
   return latest === null ? null : { branch: latest.branch, worktreePath: latest.worktreePath };
 }
 
-export function resolvePreviousWorktreeLabel(seed: PreviousWorktreeSeed): string {
-  return seed.branch ? `Previous worktree (${seed.branch})` : "Previous worktree";
+export function resolvePreviousWorktreeLabel(
+  seed: PreviousWorktreeSeed,
+  t: Translate = globalT,
+): string {
+  return seed.branch
+    ? t("branchToolbar.workspace.previousWorktreeBranch", { branch: seed.branch })
+    : t("branchToolbar.workspace.previousWorktree");
 }
 
 export function resolveEffectiveEnvMode(input: {
@@ -196,17 +223,20 @@ export function resolveBranchToolbarValue(input: {
   return currentGitBranch ?? activeThreadBranch;
 }
 
-export function resolveBranchTriggerLabel(input: {
-  activeWorktreePath: string | null;
-  effectiveEnvMode: EnvMode;
-  resolvedActiveBranch: string | null;
-}): string {
+export function resolveBranchTriggerLabel(
+  input: {
+    activeWorktreePath: string | null;
+    effectiveEnvMode: EnvMode;
+    resolvedActiveBranch: string | null;
+  },
+  t: Translate = globalT,
+): string {
   const { activeWorktreePath, effectiveEnvMode, resolvedActiveBranch } = input;
   if (!resolvedActiveBranch) {
-    return "Select ref";
+    return t("branchToolbar.branch.selectRef");
   }
   if (effectiveEnvMode === "worktree" && !activeWorktreePath) {
-    return `From ${resolvedActiveBranch}`;
+    return t("branchToolbar.branch.fromBranch", { branch: resolvedActiveBranch });
   }
   return resolvedActiveBranch;
 }

@@ -2,6 +2,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { ChevronDownIcon, GitBranchIcon } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 
+import { useT } from "~/i18n";
 import { usePaginatedBranches } from "../state/queries";
 import { BranchPicker, BranchPickerRefItem } from "./BranchPicker";
 import { resolveBranchTriggerLabel, sanitizeNewRefName } from "./BranchToolbar.logic";
@@ -28,6 +29,7 @@ export function WorktreeBaseBranchPicker({
   disabled?: boolean;
   id?: string;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim());
@@ -36,22 +38,28 @@ export function WorktreeBaseBranchPicker({
     cwd,
     query: sanitizeNewRefName(deferredQuery),
   });
-  const label = resolveBranchTriggerLabel({
-    activeWorktreePath: null,
-    effectiveEnvMode: "worktree",
-    resolvedActiveBranch: value || null,
-  });
+  const label = resolveBranchTriggerLabel(
+    {
+      activeWorktreePath: null,
+      effectiveEnvMode: "worktree",
+      resolvedActiveBranch: value || null,
+    },
+    t,
+  );
   const branchByName = new Map(branches.refs.map((branch) => [branch.name, branch]));
   const items = [...branchByName.keys()];
   const hasNextPage = branches.data?.nextCursor != null;
   const statusText =
     branches.error ??
     (branches.isPending && branches.data === null
-      ? "Loading refs..."
+      ? t("branchToolbar.branch.loadingRefs")
       : branches.isFetchingNextPage
-        ? "Loading more refs..."
+        ? t("branchToolbar.branch.loadingMoreRefs")
         : hasNextPage
-          ? `Showing ${branches.refs.length} of ${branches.data?.totalCount} refs`
+          ? t("branchToolbar.branch.showingRefs", {
+              shown: branches.refs.length,
+              total: branches.data?.totalCount ?? 0,
+            })
           : null);
   const handleOpenChange = (next: boolean) => {
     setOpen(next);

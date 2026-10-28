@@ -160,7 +160,7 @@ export function BranchPicker({
       {children}
       <ComboboxPopup {...popupProps}>
         <ComboboxSearchInput
-          placeholder="Search refs..."
+          placeholder={t("branchToolbar.picker.searchRefs")}
           value={query}
           onChange={(event) => {
             onQueryChange(event.target.value);
@@ -181,7 +181,7 @@ export function BranchPicker({
           }}
         />
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <ComboboxEmpty>No refs found.</ComboboxEmpty>
+          <ComboboxEmpty>{t("branchToolbar.picker.noRefs")}</ComboboxEmpty>
           <div className="relative flex min-h-0 w-full max-h-56 flex-1 flex-col overflow-hidden">
             <ComboboxListVirtualized className="flex size-full min-h-0 min-w-0 flex-col">
               <LegendList<string>
@@ -251,13 +251,13 @@ export function BranchPicker({
                   >
                     <span className="flex min-w-0 items-center gap-1.5 font-medium text-muted-foreground">
                       <RefreshIcon aria-hidden="true" className="size-3 shrink-0" />
-                      <span className="truncate">Start from remote</span>
+                      <span className="truncate">{t("branchToolbar.picker.startFromRemote")}</span>
                     </span>
                     <Switch
                       id={startFromOriginSwitchId}
                       checked={originControl.checked}
                       size="sm"
-                      aria-label="Start worktree from remote"
+                      aria-label={t("branchToolbar.picker.startFromRemoteLabel")}
                       onCheckedChange={(checked) => originControl.onCheckedChange(Boolean(checked))}
                     />
                   </label>
@@ -319,17 +319,18 @@ export function BranchPickerRefItem({
   onClick: ComponentProps<typeof ComboboxItem>["onClick"];
   onContextMenu?: ComponentProps<typeof ComboboxItem>["onContextMenu"];
 }) {
+  const t = useT();
   const itemValue = refName.name;
   const hasSecondaryWorktree =
     refName.worktreePath && activeProjectCwd && refName.worktreePath !== activeProjectCwd;
   const badge = refName.current
-    ? "current"
+    ? t("branchToolbar.picker.badgeCurrent")
     : hasSecondaryWorktree
       ? "worktree"
       : refName.isRemote
         ? "remote"
         : refName.isDefault
-          ? "default"
+          ? t("branchToolbar.picker.badgeDefault")
           : null;
   return (
     <ComboboxItem
