@@ -85,17 +85,47 @@ describe("resolveClaudeUsageRows", () => {
       NOW,
     );
     expect(rows).toEqual([
-      { kind: "session", reading: { usedPercent: 43, resetsAt: NOW + 2 * HOUR, tone: "normal" } },
+      {
+        kind: "session",
+        reading: {
+          remainingPercent: 57,
+          paceRemainingPercent: 40,
+          pace: "under",
+          resetsAt: NOW + 2 * HOUR,
+          tone: "normal",
+        },
+      },
       {
         kind: "weekly",
-        reading: { usedPercent: 40, resetsAt: NOW + 3 * 24 * HOUR, tone: "normal" },
+        reading: {
+          remainingPercent: 60,
+          paceRemainingPercent: 43,
+          pace: "under",
+          resetsAt: NOW + 3 * 24 * HOUR,
+          tone: "normal",
+        },
       },
       {
         kind: "model",
         model: "Sonnet",
-        reading: { usedPercent: 12, resetsAt: NOW + 3 * 24 * HOUR, tone: "normal" },
+        reading: {
+          remainingPercent: 88,
+          paceRemainingPercent: 43,
+          pace: "under",
+          resetsAt: NOW + 3 * 24 * HOUR,
+          tone: "normal",
+        },
       },
     ]);
+  });
+
+  it("should mark a window ahead of pace when it spends faster than the window elapses", () => {
+    const rows = resolveClaudeUsageRows(claude([sessionWindow(50, 4 * HOUR)]), NOW);
+    expect(rows?.[0]?.reading).toMatchObject({
+      remainingPercent: 50,
+      paceRemainingPercent: 80,
+      pace: "ahead",
+    });
   });
 
   it("should give each window its own tone when only one is nearly spent", () => {
@@ -124,7 +154,13 @@ describe("resolveClaudeUsageRows", () => {
 
   it("should report a refilled window without a countdown when its reset time has passed", () => {
     const rows = resolveClaudeUsageRows(claude([sessionWindow(97, -MINUTE)]), NOW);
-    expect(rows?.[0]?.reading).toEqual({ usedPercent: 0, resetsAt: null, tone: "normal" });
+    expect(rows?.[0]?.reading).toEqual({
+      remainingPercent: 100,
+      paceRemainingPercent: null,
+      pace: null,
+      resetsAt: null,
+      tone: "normal",
+    });
   });
 
   it("should return null when the provider is not an enabled Claude with readable limits", () => {
@@ -154,7 +190,7 @@ describe("resolveSidebarClaudeUsage", () => {
       ],
       NOW,
     );
-    expect(rows?.[0]?.reading.usedPercent).toBe(20);
+    expect(rows?.[0]?.reading.remainingPercent).toBe(80);
   });
 });
 

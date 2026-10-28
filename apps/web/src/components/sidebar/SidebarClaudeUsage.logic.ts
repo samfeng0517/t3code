@@ -1,5 +1,11 @@
 import type { ServerProvider, ServerProviderUsageWindow } from "@t3tools/contracts";
-import { limitsNotice } from "@t3tools/shared/usageLimits";
+import {
+  type LimitPace,
+  limitsNotice,
+  paceOf,
+  paceRemainingPercent,
+  remainingPercent,
+} from "@t3tools/shared/usageLimits";
 
 export type ClaudeUsageTone = "normal" | "warning" | "critical";
 
@@ -12,7 +18,10 @@ const MODEL_SCOPED_ID_PREFIX = "seven_day_";
 const MODEL_LABEL_SEPARATOR = " · ";
 
 export interface ClaudeUsageWindowReading {
-  readonly usedPercent: number;
+  readonly remainingPercent: number;
+  /** Where the remaining bar would sit at an even spend rate. */
+  readonly paceRemainingPercent: number | null;
+  readonly pace: LimitPace | null;
   readonly resetsAt: number | null;
   readonly tone: ClaudeUsageTone;
 }
@@ -40,10 +49,22 @@ function readWindow(window: ServerProviderUsageWindow, now: number): ClaudeUsage
   const resetsAt = Number.isFinite(parsed) ? parsed : null;
   // A window past its reset has refilled; Claude reports the new window on the next turn.
   if (resetsAt !== null && resetsAt <= now) {
-    return { usedPercent: 0, resetsAt: null, tone: "normal" };
+    return {
+      remainingPercent: 100,
+      paceRemainingPercent: null,
+      pace: null,
+      resetsAt: null,
+      tone: "normal",
+    };
   }
-  const usedPercent = Math.round(Math.max(0, Math.min(100, window.usedPercent)));
-  return { usedPercent, resetsAt, tone: claudeUsageTone(usedPercent) };
+  const remaining = remainingPercent(window);
+  return {
+    remainingPercent: remaining,
+    paceRemainingPercent: paceRemainingPercent(window, now),
+    pace: paceOf(window, now),
+    resetsAt,
+    tone: claudeUsageTone(100 - remaining),
+  };
 }
 
 // The server labels model-scoped windows "Weekly · <display name>"; the display name is the
