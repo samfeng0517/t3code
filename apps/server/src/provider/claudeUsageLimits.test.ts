@@ -249,6 +249,41 @@ describe("claudeRateLimitEventToUpdate", () => {
     });
   });
 
+  it("should update every unified window when the event carries no top-level utilization", () => {
+    // Captured from the CLI: below the warning threshold only unifiedWindows has utilization.
+    const event = {
+      status: "allowed",
+      resetsAt: 1_792_742_400,
+      rateLimitType: "five_hour",
+      overageStatus: "rejected",
+      isUsingOverage: false,
+      unifiedWindows: {
+        five_hour: { utilization: 0.15, resetsAt: 1_792_742_400 },
+        seven_day: { utilization: 0.09, resetsAt: 1_793_095_200 },
+      },
+    } as const;
+    expect(claudeRateLimitEventToUpdate(event, noNames)).toEqual({
+      windows: [
+        {
+          id: "five_hour",
+          kind: "session",
+          label: "Session",
+          usedPercent: 15,
+          windowDurationMins: 300,
+          resetsAt: "2026-10-23T08:00:00.000Z",
+        },
+        {
+          id: "seven_day",
+          kind: "weekly",
+          label: "Weekly",
+          usedPercent: 9,
+          windowDurationMins: 10080,
+          resetsAt: "2026-10-27T10:00:00.000Z",
+        },
+      ],
+    });
+  });
+
   it("lands the streamed overage-included bucket on the row the probe named", () => {
     const event = {
       status: "allowed",
