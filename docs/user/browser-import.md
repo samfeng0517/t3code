@@ -31,8 +31,9 @@ visited pages from every thread and the browser workspace. Type an address to op
 else searches with the engine chosen under **Settings → Browser → Search engine**.
 
 Click the star in the address bar to bookmark the current page, and click it again to remove the
-bookmark. **All bookmarks** on the new tab page lists every folder, where you can delete
-bookmarks. To drop a site from most visited, hover it and click **×**; its history stays,
+bookmark. **All bookmarks** on the new tab page lists every folder. Drag a bookmark or folder to
+reorder it or drop it onto a folder, or use its **⋯** menu to edit its name and URL, move it,
+delete it, or add and ungroup folders. To drop a site from most visited, hover it and click **×**; its history stays,
 and **Restore removed** brings removed sites back.
 
 To import bookmarks, click **Import bookmarks** on the new tab page or in
@@ -42,7 +43,9 @@ can stay open. On Windows this works for Chrome, Edge, Brave, and Helium, althou
 and Brave cookies still cannot be imported there. Any client can instead import the HTML file from Chrome's
 Bookmark manager (**⋮ → Export bookmarks**). Imported bookmarks go into their own folder that
 keeps the source's folders. Importing the same browser profile again replaces that profile's
-folder, and uploading a bookmarks file again replaces the folder from the previous file.
+folder, and uploading a bookmarks file again replaces the folder from the previous file. Once you
+change an imported folder, by editing it or anything inside it or moving it into another folder,
+it becomes your own, and the next import adds a new folder instead.
 
 Bookmarks are saved only on the device that imported them.
 
