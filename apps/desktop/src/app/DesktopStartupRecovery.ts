@@ -1,4 +1,5 @@
 import type { DesktopUpdateState } from "@t3tools/contracts";
+import { APP_SELF_UPDATE_ENABLED } from "@t3tools/shared/appSelfUpdate";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -32,7 +33,8 @@ export type StartupRecoveryOffer =
   | { readonly _tag: "Update"; readonly version: string }
   | { readonly _tag: "Downloading"; readonly version: string; readonly percent: number | null }
   | { readonly _tag: "Reinstall"; readonly version: string }
-  | { readonly _tag: "Releases" };
+  | { readonly _tag: "Releases" }
+  | { readonly _tag: "None" };
 
 const STARTUP_RECOVERY_ACTIONS = ["update", "reinstall", "releases", "copy", "quit"] as const;
 type StartupRecoveryAction = (typeof STARTUP_RECOVERY_ACTIONS)[number];
@@ -41,6 +43,7 @@ type StartupRecoveryAction = (typeof STARTUP_RECOVERY_ACTIONS)[number];
 export function resolveStartupRecoveryOffer(
   update: DesktopUpdateState,
   lastStartedVersion: string | null,
+  selfUpdateEnabled = APP_SELF_UPDATE_ENABLED,
 ): StartupRecoveryOffer {
   if (update.status === "downloading" && update.availableVersion !== null) {
     return {
@@ -58,6 +61,8 @@ export function resolveStartupRecoveryOffer(
   if (update.enabled && (update.status === "idle" || update.status === "checking")) {
     return { _tag: "Checking" };
   }
+  // Both remaining offers download upstream installers, which would replace this fork.
+  if (!selfUpdateEnabled) return { _tag: "None" };
   if (lastStartedVersion !== null && lastStartedVersion !== update.currentVersion) {
     return { _tag: "Reinstall", version: lastStartedVersion };
   }
@@ -98,6 +103,8 @@ function describeOffer(offer: StartupRecoveryOffer): { text: string; action: str
         text: "Get a different version from the releases page.",
         action: actionLink("releases", "Open releases", true),
       };
+    case "None":
+      return { text: "Copy the details to report the problem.", action: "" };
   }
 }
 

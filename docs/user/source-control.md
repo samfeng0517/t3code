@@ -10,6 +10,31 @@ rebases, the files Git brought in are left out. A file stays in the list when th
 committed it, or fixed a conflict in it. Use the branch comparison to review everything that changed
 against your base branch. Restore still returns the complete saved workspace.
 
+## Browse Git history
+
+On web and desktop, open the Git page from the Git icon in the sidebar footer or **Open Git** in the
+command palette (`Cmd/Ctrl+K`). Each project opens in its own tab; use **+** to pick another project.
+Tabs are remembered on this device, and the reopen-closed-view shortcut brings back a closed one. The
+page draws every local and remote branch, tag, and worktree HEAD as a commit graph, and lists
+stashes in the sidebar. T3 Code's internal checkpoint refs are hidden. It loads 500 commits at a
+time, and jumping to a ref from the sidebar loads at most the newest 5,000. Click a commit to see its
+message, author, parents, and changed files, then a file to see its diff. A merge commit shows its
+changes against the first parent. Click a stash to see its diff.
+
+Use the toolbar to **Fetch**, **Pull** (fast-forward only), **Push** the current branch (this sets its
+upstream), or **Refresh**. Right-click a commit, branch, tag, or sidebar item, or use **⋯** on the
+selected commit, to check out, create a branch or tag at a commit, rename or delete a branch, push or
+delete a tag, or copy a commit hash. The page refreshes when the window regains focus, when a thread's
+turn in the same project ends, and after its own actions. For changes made elsewhere while the window
+stays focused, choose **Refresh**.
+
+- Git commands run at the project's repository root, so checking out here changes the branch for
+  threads working in local mode. You get a warning while an agent is running there.
+- A branch a thread is using can't be renamed or deleted from here. Deleting an unmerged branch asks
+  again before it is force-deleted.
+- Git refuses a checkout that would overwrite uncommitted changes, and nothing is stashed for you.
+- Connections without source-control write access can browse history and diffs but not change anything.
+
 ## Connect an account
 
 Install Git and configure authentication on the machine running your T3 Code server. For a remote
@@ -56,11 +81,37 @@ for that server.
 
 ### GitLab
 
-Install [GitLab CLI](https://gitlab.com/gitlab-org/cli), then sign in:
+Install [GitLab CLI](https://gitlab.com/gitlab-org/cli) on your T3 Code server, then sign in:
 
 ```bash
 glab auth login
 ```
+
+#### Self-hosted GitLab
+
+For GitLab on your own server, such as `gitlab.example.com`, `glab` is still required, but it
+doesn't need a login:
+
+1. Open **Settings → Source Control** and expand **GitLab**.
+2. Under **Server**, enter the server's address. Under **Access token**, enter a personal, group,
+   or project access token with the `api` scope. Leave **Server** empty to use the token for
+   gitlab.com.
+3. Choose **Rescan**.
+
+The token is kept in the server's secret store, is only sent to that server, and is used before
+any `glab` login for it. Signing in with `glab auth login --hostname gitlab.example.com` works too.
+
+Projects cloned from that server over HTTPS or SSH, such as
+`git@gitlab.example.com:group/project.git`, are treated as GitLab even when the hostname doesn't
+contain "gitlab", and merge request links to it open in T3 Code. Merge requests then work as they
+do on gitlab.com: listing and reviewing, creating them from Git actions, merging with a merge
+commit, squash, or rebase as the project allows, auto-merge, draft and ready, approving and
+revoking your approval, labels, reviewers, comments, replies, resolving threads, pipeline jobs
+as checks, and deleting the source branch once a merge request is merged or closed.
+
+Reverting a merge request, approving workflows, stacks, and requesting changes in a review are
+not available for GitLab. Publishing a new repository still creates it on gitlab.com. GitLab
+served under a sub-path, such as `https://example.com/gitlab/`, isn't supported yet.
 
 ### Bitbucket
 

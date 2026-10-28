@@ -41,6 +41,11 @@ const THREAD_FIND_IGNORE_PROPS = {
   "data-thread-find-ignore": "",
 } as React.HTMLAttributes<HTMLDivElement>;
 
+/** Data attributes a renderer puts on a block's root, such as its source lines. */
+export type MarkdownBlockDataAttributes = Readonly<
+  Partial<Record<`data-${string}`, string | number>>
+>;
+
 export function MarkdownCodeBlockFrame({
   as: Wrapper = "div",
   language,
@@ -50,6 +55,7 @@ export function MarkdownCodeBlockFrame({
   title,
   actions,
   headerProps,
+  rootProps,
   children,
 }: {
   as?: React.ElementType;
@@ -60,10 +66,12 @@ export function MarkdownCodeBlockFrame({
   title?: React.ReactNode;
   actions?: React.ReactNode;
   headerProps?: React.HTMLAttributes<HTMLDivElement>;
+  rootProps?: MarkdownBlockDataAttributes | undefined;
   children: React.ReactNode;
 }) {
   return (
     <Wrapper
+      {...rootProps}
       dir="ltr"
       className="chat-markdown-codeblock my-[0.65rem] overflow-hidden rounded-lg border border-border/70 bg-secondary leading-snug dark:border-transparent dark:bg-input/32"
       data-language={language}
@@ -139,6 +147,7 @@ export function MarkdownCodeBlock({
   canWrap = true,
   diagram = false,
   children,
+  rootProps,
 }: {
   code: string;
   language: string;
@@ -150,6 +159,7 @@ export function MarkdownCodeBlock({
   canWrap?: boolean;
   diagram?: boolean;
   children: ReactNode;
+  rootProps?: MarkdownBlockDataAttributes | undefined;
 }) {
   const { copyToClipboard, isCopied: copied } = useCopyToClipboard({
     timeout: 1200,
@@ -201,7 +211,11 @@ export function MarkdownCodeBlock({
 
   if (diagram) {
     return (
-      <div className="my-[0.65rem] border border-transparent" data-language={language}>
+      <div
+        {...rootProps}
+        className="my-[0.65rem] border border-transparent"
+        data-language={language}
+      >
         <div className="flex items-center justify-end gap-0.5 pt-1.5 pr-1.5 select-none">
           {viewToggle}
           {copyButton}
@@ -217,6 +231,7 @@ export function MarkdownCodeBlock({
       fenceTitle={fenceTitle}
       theme={theme}
       wrapped={wrapped}
+      rootProps={rootProps}
       headerProps={THREAD_FIND_IGNORE_PROPS}
       actions={
         <span className="flex items-center gap-0.5" role="toolbar" aria-label="Code block actions">

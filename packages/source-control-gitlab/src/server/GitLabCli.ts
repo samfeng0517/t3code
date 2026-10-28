@@ -14,7 +14,9 @@ import {
   type VcsProcessExitFailureKind,
 } from "@t3tools/contracts";
 
+import { readSourceControlHostSettings } from "@t3tools/source-control-core/shared/definition";
 import * as SourceControlHost from "@t3tools/source-control-core/server/SourceControlHost";
+import * as GitLabDefinition from "../shared/definition.ts";
 import {
   decodeGitLabMergeRequestJson,
   decodeGitLabMergeRequestListJson,
@@ -267,6 +269,11 @@ export class GitLabCli extends Context.Service<
   {
     readonly execute: (input: {
       readonly cwd: string;
+      /**
+       * The server the command is for, where the caller knows it. A token saved in Settings for
+       * that server is handed to glab; without it glab picks its server and login itself.
+       */
+      readonly host?: string | undefined;
       readonly args: ReadonlyArray<string>;
       readonly timeoutMs?: number;
       /** Keeps sensitive payloads out of argv. */
@@ -276,6 +283,7 @@ export class GitLabCli extends Context.Service<
 
     readonly listMergeRequests: (input: {
       readonly cwd: string;
+      readonly host?: string | undefined;
       readonly headSelector: string;
       readonly source?: SourceControlProvider.SourceControlRefSelector;
       readonly state: "open" | "closed" | "merged" | "all";
@@ -284,11 +292,13 @@ export class GitLabCli extends Context.Service<
 
     readonly getMergeRequest: (input: {
       readonly cwd: string;
+      readonly host?: string | undefined;
       readonly reference: string;
     }) => Effect.Effect<GitLabMergeRequestSummary, GitLabCliError>;
 
     readonly getRepositoryCloneUrls: (input: {
       readonly cwd: string;
+      readonly host?: string | undefined;
       readonly repository: string;
     }) => Effect.Effect<GitLabRepositoryCloneUrls, GitLabCliError>;
 
@@ -300,6 +310,7 @@ export class GitLabCli extends Context.Service<
 
     readonly createMergeRequest: (input: {
       readonly cwd: string;
+      readonly host?: string | undefined;
       readonly baseBranch: string;
       readonly headSelector: string;
       readonly source?: SourceControlProvider.SourceControlRefSelector;
@@ -310,10 +321,12 @@ export class GitLabCli extends Context.Service<
 
     readonly getDefaultBranch: (input: {
       readonly cwd: string;
+      readonly host?: string | undefined;
     }) => Effect.Effect<string | null, GitLabCliError>;
 
     readonly checkoutMergeRequest: (input: {
       readonly cwd: string;
+      readonly host?: string | undefined;
       readonly reference: string;
       readonly force?: boolean;
     }) => Effect.Effect<void, GitLabCliError>;
@@ -410,6 +423,46 @@ function parseRepositoryPath(repository: string): {
   return { namespacePath, projectPath };
 }
 
+export interface GitLabSavedCredential {
+  readonly authority: string;
+  readonly token: string;
+}
+
+/**
+ * The token saved in Settings, when it belongs to `host`. A repository's host has no port,
+ * so the saved server is matched by name and keeps its own port for the requests.
+ */
+export function gitLabSavedCredential(
+  saved: unknown,
+  host: string | undefined,
+): GitLabSavedCredential | null {
+  if (host === undefined || host.trim().length === 0) return null;
+  const settings = readSourceControlHostSettings(GitLabDefinition.settings, saved);
+  if (settings.token.length === 0) return null;
+  const authority = GitLabDefinition.gitLabSettingsAuthority(settings);
+  return GitLabDefinition.gitLabHostname(authority) === GitLabDefinition.gitLabHostname(host.trim())
+    ? { authority, token: settings.token }
+    : null;
+}
+
+/**
+ * A `--repo` URL is built from the repository's host, which has no port, so it is moved onto
+ * the port the server was saved with: glab would otherwise ask the right server on 443.
+ */
+function withSavedRepoAuthority(
+  args: ReadonlyArray<string>,
+  authority: string,
+): ReadonlyArray<string> {
+  return args.map((arg, index) => {
+    if (index === 0 || args[index - 1] !== "--repo") return arg;
+    const url = /^https:\/\/([^/]+)(\/.+)$/u.exec(arg);
+    return url !== null &&
+      GitLabDefinition.gitLabHostname(url[1]!) === GitLabDefinition.gitLabHostname(authority)
+      ? `https://${authority}${url[2]}`
+      : arg;
+  });
+}
+
 // glab prints a missing project or merge request as a bare 404.
 const classifyGlabFailure = (stderr: string): VcsProcessExitFailureKind | null => {
   const normalized = stderr.toLowerCase();
@@ -420,25 +473,58 @@ const classifyGlabFailure = (stderr: string): VcsProcessExitFailureKind | null =
 
 /** @public */
 export const make = Effect.gen(function* () {
-  const { process } = yield* SourceControlHost.SourceControlHost;
+  const { process, settings } = yield* SourceControlHost.SourceControlHost;
+
+  const savedCredential = (host: string | undefined) =>
+    host === undefined
+      ? Effect.succeed(null)
+      : settings.get.pipe(
+          Effect.map((current) =>
+            gitLabSavedCredential(
+              current.sourceControlHosts[GitLabDefinition.definition.kind],
+              host,
+            ),
+          ),
+          Effect.orElseSucceed(() => null),
+        );
 
   const run = (
     input: Parameters<GitLabCli["Service"]["execute"]>[0],
     mapError: (error: VcsError) => GitLabCliError,
   ) =>
-    process
-      .run({
-        operation: "GitLabCli.execute",
-        command: "glab",
-        args: input.args,
-        cwd: input.cwd,
-        classifyFailure: classifyGlabFailure,
-        notFoundDetail: "Merge request not found.",
-        timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-        ...(input.stdin === undefined ? {} : { stdin: input.stdin }),
-        ...(input.maxOutputBytes === undefined ? {} : { maxOutputBytes: input.maxOutputBytes }),
-      })
-      .pipe(Effect.mapError(mapError));
+    savedCredential(input.host).pipe(
+      Effect.flatMap((credential) =>
+        process.run({
+          operation: "GitLabCli.execute",
+          command: "glab",
+          // `glab api` asks gitlab.com unless it recognizes the checkout's remote, which it
+          // cannot for a server it holds no login for, so the saved server is named outright.
+          args:
+            credential === null
+              ? input.args
+              : input.args[0] === "api" && !input.args.includes("--hostname")
+                ? ["api", "--hostname", credential.authority, ...input.args.slice(1)]
+                : withSavedRepoAuthority(input.args, credential.authority),
+          cwd: input.cwd,
+          classifyFailure: classifyGlabFailure,
+          notFoundDetail: "Merge request not found.",
+          timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+          ...(input.stdin === undefined ? {} : { stdin: input.stdin }),
+          ...(input.maxOutputBytes === undefined ? {} : { maxOutputBytes: input.maxOutputBytes }),
+          // GITLAB_TOKEN outranks every stored login whichever server glab ends up asking, so it
+          // is only ever set beside the server it was saved for.
+          ...(credential === null
+            ? {}
+            : {
+                env: {
+                  GITLAB_TOKEN: credential.token,
+                  GITLAB_HOST: `https://${credential.authority}`,
+                },
+              }),
+        }),
+      ),
+      Effect.mapError(mapError),
+    );
 
   const execute: GitLabCli["Service"]["execute"] = (input) =>
     run(input, (error) =>
@@ -450,6 +536,7 @@ export const make = Effect.gen(function* () {
 
   const executeMergeRequest = (input: {
     readonly cwd: string;
+    readonly host?: string | undefined;
     readonly reference: string;
     readonly args: ReadonlyArray<string>;
   }) =>
@@ -470,6 +557,7 @@ export const make = Effect.gen(function* () {
     listMergeRequests: Effect.fn("GitLabCli.listMergeRequests")(function (input) {
       return execute({
         cwd: input.cwd,
+        host: input.host,
         args: [
           "mr",
           "list",
@@ -508,6 +596,7 @@ export const make = Effect.gen(function* () {
     getMergeRequest: Effect.fn("GitLabCli.getMergeRequest")(function (input) {
       return executeMergeRequest({
         cwd: input.cwd,
+        host: input.host,
         reference: input.reference,
         args: ["mr", "view", "--output", "json", "--", input.reference],
       }).pipe(
@@ -536,6 +625,7 @@ export const make = Effect.gen(function* () {
     getRepositoryCloneUrls: Effect.fn("GitLabCli.getRepositoryCloneUrls")(function (input) {
       return execute({
         cwd: input.cwd,
+        host: input.host,
         args: ["api", `projects/${encodeURIComponent(input.repository)}`],
       }).pipe(
         Effect.map((result) => result.stdout.trim()),
@@ -625,6 +715,7 @@ export const make = Effect.gen(function* () {
       const sourceProject = sourceProjectIdentifier(input.source);
       return execute({
         cwd: input.cwd,
+        host: input.host,
         args: [
           "api",
           "--method",
@@ -645,6 +736,7 @@ export const make = Effect.gen(function* () {
     getDefaultBranch: Effect.fn("GitLabCli.getDefaultBranch")(function (input) {
       return execute({
         cwd: input.cwd,
+        host: input.host,
         args: ["api", "projects/:fullpath"],
       }).pipe(
         Effect.map((result) => result.stdout.trim()),
@@ -667,6 +759,7 @@ export const make = Effect.gen(function* () {
     checkoutMergeRequest: Effect.fn("GitLabCli.checkoutMergeRequest")(function (input) {
       return executeMergeRequest({
         cwd: input.cwd,
+        host: input.host,
         reference: input.reference,
         args: ["mr", "checkout", "--", input.reference],
       }).pipe(Effect.asVoid);

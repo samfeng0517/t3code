@@ -10,6 +10,7 @@ import {
 import { useState, type ReactNode } from "react";
 import { usesChatGptSharing } from "@t3tools/shared/usageLimits";
 
+import { useT } from "~/i18n";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { randomUUID } from "../../lib/utils";
 import { serverEnvironment } from "../../state/server";
@@ -36,11 +37,12 @@ export function AddCodexAccountDialog({
     | undefined;
   readonly renderSetup: (instanceId: ProviderInstanceId, provider: ServerProvider) => ReactNode;
 }) {
+  const t = useT();
   const canManageProviders = useEnvironmentScope(environmentId, AuthProvidersManageScope);
   const settings = useEnvironmentSettings(environmentId);
   const providers = useAtomValue(serverEnvironment.providersValueAtom(environmentId));
   const update = useAtomCommand(serverEnvironment.updateSettings, "Add ChatGPT account");
-  const [name, setName] = useState("Personal");
+  const [name, setName] = useState(() => t("settingsProviders.addCodexAccount.defaultName"));
   const displayName = `ChatGPT - ${name.trim()}`;
   const [instanceId, setInstanceId] = useState<ProviderInstanceId | null>(null);
   const [pending, setPending] = useState(false);
@@ -93,15 +95,18 @@ export function AddCodexAccountDialog({
     >
       <WizardPopup size="wide">
         <WizardHeader
-          title={instanceId ? displayName : "Add ChatGPT account"}
-          description="Each account has its own Codex instance and sign-in. Choose the other account on the sign-in page."
+          title={instanceId ? displayName : t("settingsProviders.addCodexAccount.title")}
+          description={t("settingsProviders.addCodexAccount.description")}
         />
         <WizardPanel>
           {instanceId ? (
             provider?.setup ? (
               renderSetup(instanceId, provider)
             ) : (
-              <SettingsRow title="Codex runtime" description="Preparing managed setup." />
+              <SettingsRow
+                title={t("settingsProviders.addCodexAccount.runtime.title")}
+                description={t("settingsProviders.addCodexAccount.runtime.description")}
+              />
             )
           ) : (
             <form
@@ -113,15 +118,15 @@ export function AddCodexAccountDialog({
               }}
             >
               <SettingsRow
-                title="Account name"
-                description="Shown in the provider list and model picker."
+                title={t("settingsProviders.addCodexAccount.name.title")}
+                description={t("settingsProviders.addCodexAccount.name.description")}
                 control={
                   <Input
-                    aria-label="Account name"
+                    aria-label={t("settingsProviders.addCodexAccount.name.title")}
                     value={name}
                     disabled={pending}
                     onChange={(event) => setName(event.target.value)}
-                    placeholder="e.g. Personal or Work"
+                    placeholder={t("settingsProviders.addCodexAccount.name.placeholder")}
                   />
                 }
               />
@@ -132,19 +137,21 @@ export function AddCodexAccountDialog({
         <WizardFooter>
           {instanceId ? (
             <Button variant="outline" onClick={onClose}>
-              Finish later
+              {t("settingsProviders.addCodexAccount.finishLater")}
             </Button>
           ) : (
             <>
               <Button variant="outline" disabled={pending} onClick={onClose}>
-                Cancel
+                {t("settingsProviders.addCodexAccount.cancel")}
               </Button>
               <Button
                 type="submit"
                 form="add-codex-account"
                 disabled={pending || !name.trim() || !canManageProviders}
               >
-                {pending ? "Adding account…" : "Continue"}
+                {pending
+                  ? t("settingsProviders.addCodexAccount.adding")
+                  : t("settingsProviders.addCodexAccount.continue")}
               </Button>
             </>
           )}

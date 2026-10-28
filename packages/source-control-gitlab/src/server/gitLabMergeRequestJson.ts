@@ -9,11 +9,14 @@ import type {
   PullRequestComment,
   PullRequestCommit,
   PullRequestLabel,
+  PullRequestLabelCandidate,
+  PullRequestLabelCandidateList,
   PullRequestMergeability,
   PullRequestMergeCapabilities,
   PullRequestMergeMethod,
   PullRequestReaction,
   PullRequestReactionContent,
+  PullRequestReviewDecision,
   PullRequestReviewThread,
   PullRequestReviewerCandidate,
   PullRequestState,
@@ -31,6 +34,8 @@ const RawUserSchema = Schema.Struct({
 });
 
 const RawPipelineSchema = Schema.Struct({
+  id: Schema.optional(Schema.NullOr(Schema.Int)),
+  project_id: Schema.optional(Schema.NullOr(Schema.Int)),
   status: Schema.optional(Schema.NullOr(Schema.String)),
   web_url: Schema.optional(Schema.NullOr(Schema.String)),
   source: Schema.optional(Schema.NullOr(Schema.String)),
@@ -49,7 +54,10 @@ const RawMergeRequestSchema = Schema.Struct({
   draft: Schema.optional(Schema.Boolean),
   work_in_progress: Schema.optional(Schema.Boolean),
   merge_status: Schema.optional(Schema.NullOr(Schema.String)),
+  /** GitLab 15.6 and later; the one place a list row says whether approval is still owed. */
+  detailed_merge_status: Schema.optional(Schema.NullOr(Schema.String)),
   has_conflicts: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  source_project_id: Schema.optional(Schema.NullOr(Schema.Int)),
   created_at: Schema.String,
   updated_at: Schema.String,
   merged_at: Schema.optional(Schema.NullOr(Schema.String)),
@@ -181,6 +189,7 @@ export interface GitLabMergeRequestListItem {
   readonly updatedAt: string;
   readonly reviewRequestLogins: ReadonlyArray<string>;
   readonly labels: ReadonlyArray<PullRequestLabel>;
+  readonly reviewDecision?: PullRequestReviewDecision;
 }
 
 export interface GitLabMergeRequestDetail extends GitLabMergeRequestListItem {
@@ -197,6 +206,10 @@ export interface GitLabMergeRequestDetail extends GitLabMergeRequestListItem {
   /** Absent means not counted, not up to date. */
   readonly divergedCommits?: number;
   readonly headSha?: string;
+  /** A fork's merge request comes from a branch in the fork, which GitLab names by id. */
+  readonly sourceProjectId?: number;
+  /** A fork's merge request can run its pipeline in the fork, which GitLab names by id. */
+  readonly headPipeline?: { readonly id: number; readonly projectId: number | null };
 }
 
 function trimmed(value: string | null | undefined): string | null {
@@ -283,9 +296,27 @@ function toChecks(
   ];
 }
 
+/**
+ * Only what a row can say on its own: GitLab names an approval still owed and changes requested,
+ * but reports a merge request that needs no approval the same way as an approved one.
+ */
+function toReviewDecision(
+  raw: Schema.Schema.Type<typeof RawMergeRequestSchema>,
+): PullRequestReviewDecision | null {
+  switch (raw.detailed_merge_status?.trim().toLowerCase()) {
+    case "not_approved":
+      return "review-required";
+    case "requested_changes":
+      return "changes-requested";
+    default:
+      return null;
+  }
+}
+
 function toListItem(
   raw: Schema.Schema.Type<typeof RawMergeRequestSchema>,
 ): GitLabMergeRequestListItem {
+  const reviewDecision = toReviewDecision(raw);
   return {
     number: raw.iid,
     title: raw.title,
@@ -305,6 +336,7 @@ function toListItem(
       return login === null ? [] : [login];
     }),
     labels: toLabels(raw.labels),
+    ...(reviewDecision === null ? {} : { reviewDecision }),
   };
 }
 
@@ -336,6 +368,15 @@ function toDetail(raw: Schema.Schema.Type<typeof RawMergeRequestSchema>): GitLab
       : {}),
     ...(raw.diverged_commits_count == null ? {} : { divergedCommits: raw.diverged_commits_count }),
     ...(headSha === null ? {} : { headSha }),
+    ...(raw.source_project_id == null ? {} : { sourceProjectId: raw.source_project_id }),
+    ...(raw.head_pipeline?.id == null
+      ? {}
+      : {
+          headPipeline: {
+            id: raw.head_pipeline.id,
+            projectId: raw.head_pipeline.project_id ?? null,
+          },
+        }),
   };
 }
 
@@ -434,6 +475,7 @@ export function decodeProjectUsersJson(
 const RawLabelSchema = Schema.Struct({
   name: Schema.String,
   color: Schema.optional(Schema.NullOr(Schema.String)),
+  description: Schema.optional(Schema.NullOr(Schema.String)),
 });
 const decodeLabelEntry = Schema.decodeUnknownExit(RawLabelSchema);
 
@@ -949,4 +991,167 @@ export function decodeRepositoryBlobsJson(
     blobs.set(path, oid);
   }
   return Result.succeed(blobs);
+}
+
+const RawApprovalsSchema = Schema.Struct({
+  approved: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  approvals_required: Schema.optional(Schema.NullOr(Schema.Int)),
+  approvals_left: Schema.optional(Schema.NullOr(Schema.Int)),
+  approved_by: Schema.optional(
+    Schema.NullOr(
+      Schema.Array(Schema.Struct({ user: Schema.optional(Schema.NullOr(RawUserSchema)) })),
+    ),
+  ),
+  user_has_approved: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  user_can_approve: Schema.optional(Schema.NullOr(Schema.Boolean)),
+});
+const decodeApprovals = decodeJsonResult(RawApprovalsSchema);
+
+export interface GitLabApprovals {
+  readonly approvedBy: ReadonlyArray<PullRequestActor>;
+  /** Null where GitLab gave no count, which an install without approval rules can do. */
+  readonly approvalsLeft: number | null;
+  /** Absent where GitLab did not say, which is not the same as "no". */
+  readonly viewerHasApproved?: boolean;
+  readonly viewerCanApprove?: boolean;
+}
+
+export function decodeApprovalsJson(raw: string): Result.Result<GitLabApprovals, DecodeFailure> {
+  const decoded = decodeApprovals(raw);
+  if (!Result.isSuccess(decoded)) return Result.fail(decoded.failure);
+  const approvals = decoded.success;
+  return Result.succeed({
+    approvedBy: (approvals.approved_by ?? []).flatMap((entry) => {
+      const actor = toActor(entry.user);
+      return actor === null ? [] : [actor];
+    }),
+    approvalsLeft: approvals.approvals_left ?? null,
+    ...(approvals.user_has_approved == null
+      ? {}
+      : { viewerHasApproved: approvals.user_has_approved }),
+    ...(approvals.user_can_approve == null ? {} : { viewerCanApprove: approvals.user_can_approve }),
+  });
+}
+
+/**
+ * Approval GitLab still requires outranks one given, as on its own merge button; an approval
+ * nobody required still reads as approved, which is what a reviewer giving it meant.
+ */
+export function gitLabApprovalDecision(
+  approvals: GitLabApprovals,
+): PullRequestReviewDecision | null {
+  if (approvals.approvalsLeft !== null && approvals.approvalsLeft > 0) return "review-required";
+  return approvals.approvedBy.length > 0 ? "approved" : null;
+}
+
+const RawJobSchema = Schema.Struct({
+  name: Schema.String,
+  stage: Schema.optional(Schema.NullOr(Schema.String)),
+  status: Schema.optional(Schema.NullOr(Schema.String)),
+  web_url: Schema.optional(Schema.NullOr(Schema.String)),
+  allow_failure: Schema.optional(Schema.NullOr(Schema.Boolean)),
+});
+const decodeJobEntry = Schema.decodeUnknownExit(RawJobSchema);
+
+export interface GitLabPipelineJobs {
+  readonly checks: ReadonlyArray<PullRequestCheck>;
+  readonly rawCount: number;
+}
+
+/**
+ * One check per job, as GitHub lists one per check run. A failed job GitLab lets fail does not
+ * fail the pipeline, so it is not reported as a failure either.
+ */
+export function decodePipelineJobsJson(
+  raw: string,
+): Result.Result<GitLabPipelineJobs, DecodeFailure> {
+  const decoded = decodeUnknownList(raw);
+  if (!Result.isSuccess(decoded)) return Result.fail(decoded.failure);
+  const checks: PullRequestCheck[] = [];
+  for (const entry of decoded.success) {
+    const job = decodeJobEntry(entry);
+    if (!Exit.isSuccess(job)) continue;
+    const name = trimmed(job.value.name);
+    if (name === null) continue;
+    const status = toPipelineStatus(job.value.status);
+    checks.push({
+      name,
+      status: status === "failure" && job.value.allow_failure === true ? "neutral" : status,
+      description: trimmed(job.value.stage),
+      url: trimmed(job.value.web_url),
+    });
+  }
+  return Result.succeed({ checks, rawCount: decoded.success.length });
+}
+
+export function decodeLabelCandidatesJson(
+  raw: string,
+  applied: ReadonlyArray<PullRequestLabel>,
+): Result.Result<PullRequestLabelCandidateList & { readonly rawCount: number }, DecodeFailure> {
+  const decoded = decodeUnknownList(raw);
+  if (!Result.isSuccess(decoded)) return Result.fail(decoded.failure);
+  const appliedNames = new Set(applied.map((label) => label.name));
+  const candidates: PullRequestLabelCandidate[] = [];
+  for (const entry of decoded.success) {
+    const label = decodeLabelEntry(entry);
+    if (!Exit.isSuccess(label)) continue;
+    const name = trimmed(label.value.name);
+    if (name === null) continue;
+    candidates.push({
+      name,
+      // GitLab writes `#rrggbb`; GitHub, whose shape the page reads, writes it bare.
+      color: trimmed(label.value.color)?.replace(/^#/u, "") ?? null,
+      description: trimmed(label.value.description),
+      isApplied: appliedNames.has(name),
+    });
+  }
+  return Result.succeed({
+    candidates,
+    truncated: decoded.success.length >= 100,
+    rawCount: decoded.success.length,
+  });
+}
+
+const decodeBranch = decodeJsonResult(
+  Schema.Struct({
+    commit: Schema.optional(Schema.NullOr(Schema.Struct({ id: Schema.String }))),
+    can_push: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  }),
+);
+
+export interface GitLabBranch {
+  readonly headSha: string | null;
+  /** GitLab's own answer for the reader, absent where an older install leaves it out. */
+  readonly canPush: boolean | null;
+}
+
+export function decodeBranchJson(raw: string): Result.Result<GitLabBranch, DecodeFailure> {
+  const decoded = decodeBranch(raw);
+  return Result.isSuccess(decoded)
+    ? Result.succeed({
+        headSha: trimmed(decoded.success.commit?.id),
+        canPush: decoded.success.can_push ?? null,
+      })
+    : Result.fail(decoded.failure);
+}
+
+export interface GitLabMergeRequestBranch {
+  readonly state: PullRequestState;
+  readonly sourceBranch: string;
+  readonly sourceProjectId: number | null;
+  readonly headSha: string | null;
+}
+
+export function decodeMergeRequestBranchJson(
+  raw: string,
+): Result.Result<GitLabMergeRequestBranch, DecodeFailure> {
+  const decoded = decodeMergeRequest(raw);
+  return Result.isSuccess(decoded)
+    ? Result.succeed({
+        state: toState(decoded.success),
+        sourceBranch: decoded.success.source_branch,
+        sourceProjectId: decoded.success.source_project_id ?? null,
+        headSha: trimmed(decoded.success.sha),
+      })
+    : Result.fail(decoded.failure);
 }

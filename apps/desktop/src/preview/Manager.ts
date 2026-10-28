@@ -60,6 +60,7 @@ import { MENU_ACTION_CHANNEL, PREVIEW_PICTURE_IN_PICTURE_FRAME_CHANNEL } from ".
 import * as DesktopBrowserHost from "./DesktopBrowserHost.ts";
 import * as PreviewPasskeys from "./Passkeys.ts";
 import * as BrowserSession from "./BrowserSession.ts";
+import { addExtensionTab } from "./ChromeExtensions.ts";
 import {
   ANNOTATION_CAPTURED_CHANNEL,
   ANNOTATION_SEND_ENABLED_CHANNEL,
@@ -1774,6 +1775,14 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     ) {
       return yield* new PreviewWebContentsNotFoundError({ tabId, webContentsId });
     }
+    yield* attempt({ operation: "registerWebview.addExtensionTab", tabId, webContentsId }, () => {
+      const host = wc.hostWebContents && BrowserWindow.fromWebContents(wc.hostWebContents);
+      if (host) addExtensionTab(wc, host);
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.logWarning("Could not register a browser tab with extensions.", error),
+      ),
+    );
     yield* rendererHistory.register(wc, { surface: "preview", tabId });
     const attached = yield* Ref.get(attachedRef);
     const annotationTheme = yield* Ref.get(annotationThemeRef);

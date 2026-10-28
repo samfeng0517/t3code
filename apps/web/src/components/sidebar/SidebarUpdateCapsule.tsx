@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { type ReactNode, useSyncExternalStore } from "react";
 
+import { useT, type Translate } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { environmentIdsKey } from "~/state/environmentAtomList";
 import { environmentUpdateStatesAtom } from "~/state/server";
@@ -10,8 +11,8 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import {
   describeUpdateCapsule,
   formatUpdateElapsed,
-  RUN_STATUS_LABELS,
   resolveUpdateRunMachineStatus,
+  RUN_STATUS_KEYS,
   type UpdateEverythingRun,
   type UpdateRunLocalState,
   type UpdateRunMachineView,
@@ -44,15 +45,24 @@ function useUpdateRunMachineViews(run: UpdateEverythingRun): ReadonlyArray<Updat
   }));
 }
 
-function localStatusLabel(run: UpdateEverythingRun, local: UpdateRunLocalState, now: number) {
+function localStatusLabel(
+  t: Translate,
+  run: UpdateEverythingRun,
+  local: UpdateRunLocalState,
+  now: number,
+) {
   if (run.phase === "countdown" && run.restartAt !== null) {
-    return `restarts in ${Math.max(0, Math.ceil((run.restartAt - now) / 1000))}s`;
+    return t("sidebar.updateRun.restartsIn", {
+      seconds: Math.max(0, Math.ceil((run.restartAt - now) / 1000)),
+    });
   }
-  if (run.phase === "installing") return "restarting";
+  if (run.phase === "installing") return t("sidebar.updateRun.restarting");
   if (local?.status === "downloading") {
-    return `downloading${local.percent === null ? "" : ` ${Math.floor(local.percent)}%`}`;
+    return local.percent === null
+      ? t("sidebar.updateRun.downloading")
+      : t("sidebar.updateRun.downloadingPercent", { percent: Math.floor(local.percent) });
   }
-  return "restarts after the servers";
+  return t("sidebar.updateRun.restartsAfterServers");
 }
 
 export function SidebarUpdateCapsule({
@@ -66,18 +76,23 @@ export function SidebarUpdateCapsule({
   readonly icon: ReactNode;
   readonly onRestart?: () => Promise<void>;
 }) {
+  const t = useT();
   const machines = useUpdateRunMachineViews(run);
   const hasActiveMachine = machines.some(
     ({ status }) => status !== "done" && status !== "failed" && status !== "waiting",
   );
   const now = useNow(run.phase === "countdown" ? 1_000 : hasActiveMachine ? 30_000 : null);
-  const view = describeUpdateCapsule(run, machines, local, now);
+  const view = describeUpdateCapsule(run, machines, local, now, t);
   const updateServer = useServerUpdate();
   const failed = machines.some(({ status }) => status === "failed");
   const settled = !hasActiveMachine && run.localVersion === null;
 
   const actionLabel =
-    view.action === "later" ? "Later" : view.action === "retry" ? "Retry" : "Dismiss";
+    view.action === "later"
+      ? t("sidebar.updateRun.later")
+      : view.action === "retry"
+        ? t("sidebar.updateRun.retry")
+        : t("sidebar.updateRun.dismiss");
   const runAction = () => {
     if (view.action === "later") postponeUpdateRestart();
     else if (view.action === "retry") retryFailedUpdateRunServers(updateServer);
@@ -128,16 +143,16 @@ export function SidebarUpdateCapsule({
         <div className="flex flex-col gap-1 text-xs">
           {run.localVersion !== null ? (
             <div className="flex items-center justify-between gap-3">
-              <span>This app</span>
+              <span>{t("sidebar.updateRun.thisApp")}</span>
               <span className="text-muted-foreground tabular-nums">
-                {localStatusLabel(run, local, now)}
+                {localStatusLabel(t, run, local, now)}
               </span>
             </div>
           ) : onRestart ? (
             <div className="flex items-center justify-between gap-3">
-              <span>This app</span>
+              <span>{t("sidebar.updateRun.thisApp")}</span>
               <Button size="xs" variant="outline" onClick={() => void onRestart()}>
-                Restart to update
+                {t("sidebar.updateRun.restartToUpdate")}
               </Button>
             </div>
           ) : null}
@@ -151,7 +166,7 @@ export function SidebarUpdateCapsule({
                     status === "failed" ? "text-destructive" : "text-muted-foreground",
                   )}
                 >
-                  {RUN_STATUS_LABELS[status]}
+                  {t(RUN_STATUS_KEYS[status])}
                   {status !== "done" && status !== "failed" && status !== "waiting"
                     ? ` ${formatUpdateElapsed(now - machine.startedAt)}`
                     : ""}
@@ -166,11 +181,11 @@ export function SidebarUpdateCapsule({
             <div className="mt-1 flex justify-end gap-1">
               {view.action === "retry" ? (
                 <Button size="xs" variant="outline" onClick={runAction}>
-                  Retry
+                  {t("sidebar.updateRun.retry")}
                 </Button>
               ) : null}
               <Button size="xs" variant="ghost" onClick={dismissSettledUpdateRunMachines}>
-                Dismiss
+                {t("sidebar.updateRun.dismiss")}
               </Button>
             </div>
           ) : null}

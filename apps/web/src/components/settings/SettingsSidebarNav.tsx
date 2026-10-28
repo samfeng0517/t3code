@@ -45,12 +45,14 @@ import {
   SidebarMenuItem,
   SidebarInput,
 } from "../ui/sidebar";
+import { type MessageKey, useLocale, useT } from "../../i18n";
 import { scrollToSettingsTarget } from "./settingsLayout";
 import {
   searchSettings,
+  settingsSearchItemTitle,
   revealSettingsSearchTarget,
   SETTINGS_NAV_GROUPS,
-  SETTINGS_SECTION_LABELS,
+  settingsSectionMessageKey,
   type SettingsPath,
   type SettingsSearchItem,
 } from "./settingsSearch";
@@ -106,6 +108,12 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/archived": ArchiveIcon,
 };
 
+const SETTINGS_NAV_GROUP_HEADING_KEYS: Readonly<Record<string, MessageKey>> = {
+  Agents: "settings.navGroup.agents",
+  Code: "settings.navGroup.code",
+  Connections: "settings.navGroup.connections",
+};
+
 // Detail pages without a nav entry highlight the page that links to them.
 const SETTINGS_DETAIL_PAGE_PARENTS: Readonly<Record<string, SettingsPath>> = {
   "/settings/diagnostics": "/settings/maintenance",
@@ -123,6 +131,8 @@ function SettingsSectionIcon({ to }: { to: SettingsPath }) {
 }
 
 export function SettingsSidebarNav({ pathname }: { pathname: string }) {
+  const t = useT();
+  const locale = useLocale();
   const navigate = useNavigate();
   const currentHash = useLocation({ select: (location) => location.hash });
   const currentSearch = useLocation({ select: (location) => location.search });
@@ -134,7 +144,9 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   const [compactSearchOpen, setCompactSearchOpen] = useState(false);
   const [activeResultIndex, setActiveResultIndex] = useState(0);
   const searchableItems = useAvailableSettingsSearchItems(scopeSearch);
-  const results = searchSettings(query, searchableItems);
+  const results = searchSettings(query, searchableItems, {
+    translate: locale === "en" ? undefined : t,
+  });
   const isSearching = query.trim().length > 0;
   const hasResults = results.length > 0;
   const maxResultIndex = Math.max(results.length - 1, 0);
@@ -271,8 +283,8 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                 onBlur={() => {
                   if (!isSearching) setCompactSearchOpen(false);
                 }}
-                placeholder="Search"
-                aria-label="Search settings"
+                placeholder={t("common.search")}
+                aria-label={t("settings.nav.searchAriaLabel")}
                 role="combobox"
                 aria-autocomplete="list"
                 aria-expanded={isSearching && hasResults}
@@ -290,7 +302,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                   size="icon-micro"
                   variant="ghost-muted"
                   className="shrink-0"
-                  aria-label="Clear settings search"
+                  aria-label={t("settings.nav.clearSearch")}
                   onClick={() => {
                     clearSearch();
                     searchInputRef.current?.focus();
@@ -307,14 +319,14 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                 role="status"
                 className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground"
               >
-                No settings found
+                {t("settings.nav.noResults")}
               </p>
             ) : null}
             {isSearching ? (
               <SidebarMenu
                 id={hasResults ? "settings-search-results" : undefined}
                 role={hasResults ? "listbox" : undefined}
-                aria-label={hasResults ? "Settings search results" : undefined}
+                aria-label={hasResults ? t("settings.nav.searchResults") : undefined}
               >
                 {results.map((item, index) => (
                   <SidebarMenuItem
@@ -336,10 +348,10 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                       <SettingsSectionIcon to={item.to} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-sidebar-foreground">
-                          {item.title}
+                          {settingsSearchItemTitle(item, t)}
                         </span>
                         <span className="block truncate text-2xs text-sidebar-muted-foreground/75">
-                          {SETTINGS_SECTION_LABELS[item.to]}
+                          {t(settingsSectionMessageKey(item.to))}
                         </span>
                       </span>
                     </SidebarMenuButton>
@@ -352,7 +364,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                   <SidebarMenu className="md:hidden">
                     <SidebarMenuItem>
                       <SidebarMenuButton
-                        aria-label="Search settings"
+                        aria-label={t("settings.nav.searchAriaLabel")}
                         onClick={() => setCompactSearchOpen(true)}
                       >
                         <SearchIcon />
@@ -360,46 +372,52 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                     </SidebarMenuItem>
                   </SidebarMenu>
                 )}
-                {SETTINGS_NAV_GROUPS.map((group, index) => (
-                  <div
-                    key={group.heading ?? index}
-                    role="group"
-                    aria-label={group.heading ?? undefined}
-                    className="flex flex-col gap-1 max-md:border-t max-md:border-sidebar-border max-md:pt-4 max-md:first:border-t-0 max-md:first:pt-0"
-                  >
-                    {group.heading ? (
-                      <h3
-                        className={cn(
-                          "px-2 text-xs font-medium text-sidebar-muted-foreground/80",
-                          !compactSearchOpen && "max-md:hidden",
-                        )}
-                      >
-                        {group.heading}
-                      </h3>
-                    ) : null}
-                    <SidebarMenu>
-                      {group.paths.map((to) => {
-                        const Icon = SETTINGS_SECTION_ICONS[to];
-                        const isActive = activePath === to || activePath.startsWith(`${to}/`);
-                        return (
-                          <SidebarMenuItem key={to}>
-                            <SidebarMenuButton
-                              isActive={isActive}
-                              onClick={() => handleSectionClick(to)}
-                            >
-                              <Icon />
-                              <span
-                                className={cn("truncate", !compactSearchOpen && "max-md:sr-only")}
+                {SETTINGS_NAV_GROUPS.map((group, index) => {
+                  const headingKey = group.heading
+                    ? SETTINGS_NAV_GROUP_HEADING_KEYS[group.heading]
+                    : undefined;
+                  const heading = headingKey ? t(headingKey) : group.heading;
+                  return (
+                    <div
+                      key={group.heading ?? index}
+                      role="group"
+                      aria-label={heading ?? undefined}
+                      className="flex flex-col gap-1 max-md:border-t max-md:border-sidebar-border max-md:pt-4 max-md:first:border-t-0 max-md:first:pt-0"
+                    >
+                      {group.heading ? (
+                        <h3
+                          className={cn(
+                            "px-2 text-xs font-medium text-sidebar-muted-foreground/80",
+                            !compactSearchOpen && "max-md:hidden",
+                          )}
+                        >
+                          {heading}
+                        </h3>
+                      ) : null}
+                      <SidebarMenu>
+                        {group.paths.map((to) => {
+                          const Icon = SETTINGS_SECTION_ICONS[to];
+                          const isActive = activePath === to || activePath.startsWith(`${to}/`);
+                          return (
+                            <SidebarMenuItem key={to}>
+                              <SidebarMenuButton
+                                isActive={isActive}
+                                onClick={() => handleSectionClick(to)}
                               >
-                                {SETTINGS_SECTION_LABELS[to]}
-                              </span>
-                            </SidebarMenuButton>
-                          </SidebarMenuItem>
-                        );
-                      })}
-                    </SidebarMenu>
-                  </div>
-                ))}
+                                <Icon />
+                                <span
+                                  className={cn("truncate", !compactSearchOpen && "max-md:sr-only")}
+                                >
+                                  {t(settingsSectionMessageKey(to))}
+                                </span>
+                              </SidebarMenuButton>
+                            </SidebarMenuItem>
+                          );
+                        })}
+                      </SidebarMenu>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

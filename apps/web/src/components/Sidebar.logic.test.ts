@@ -8,6 +8,7 @@ import {
   archiveSelectedThreadEntries,
   deleteSelectedThreadEntries,
   getFallbackThreadIdAfterDelete,
+  resolveAdjacentThreadId,
   hasUnseenCompletion,
   resolveSidebarRowThreadId,
   isSidebarThreadWorking,
@@ -692,6 +693,54 @@ describe("getFallbackThreadIdAfterDelete", () => {
     });
 
     expect(fallbackThreadId).toBe(ThreadId.make("thread-next"));
+  });
+
+  it("should skip settled threads when choosing where to go after a delete", () => {
+    const fallbackThreadId = getFallbackThreadIdAfterDelete({
+      threads: [
+        makeThread({
+          id: ThreadId.make("thread-active"),
+          createdAt: "2026-03-09T10:05:00.000Z",
+        }),
+        makeThread({
+          id: ThreadId.make("thread-settled"),
+          createdAt: "2026-03-09T10:10:00.000Z",
+          settledOverride: "settled",
+        }),
+        makeThread({
+          id: ThreadId.make("thread-next"),
+          createdAt: "2026-03-09T10:07:00.000Z",
+        }),
+      ],
+      deletedThreadId: ThreadId.make("thread-active"),
+      sortOrder: "created_at",
+    });
+
+    expect(fallbackThreadId).toBe(ThreadId.make("thread-next"));
+  });
+
+  it("should return null when only settled threads remain in the project", () => {
+    const fallbackThreadId = getFallbackThreadIdAfterDelete({
+      threads: [
+        makeThread({ id: ThreadId.make("thread-active") }),
+        makeThread({ id: ThreadId.make("thread-settled"), settledOverride: "settled" }),
+      ],
+      deletedThreadId: ThreadId.make("thread-active"),
+      sortOrder: "created_at",
+    });
+
+    expect(fallbackThreadId).toBeNull();
+  });
+});
+describe("resolveAdjacentThreadId", () => {
+  it("should step from the list ends when the current thread is hidden from the list", () => {
+    const threadIds = ["a", "b", "c"];
+    expect(
+      resolveAdjacentThreadId({ threadIds, currentThreadId: "hidden", direction: "previous" }),
+    ).toBe("c");
+    expect(
+      resolveAdjacentThreadId({ threadIds, currentThreadId: "hidden", direction: "next" }),
+    ).toBe("a");
   });
 });
 describe("sortProjectsForSidebar", () => {

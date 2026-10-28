@@ -12,6 +12,7 @@ import {
   resolveSourceControlWriterModelSelection,
 } from "@t3tools/shared/serverSettings";
 
+import { useT } from "~/i18n";
 import {
   useScopedSettings,
   useScopedSettingsMixed,
@@ -47,24 +48,16 @@ import {
 import { AdvancedSettings } from "./AdvancedSettings";
 import { searchableSetting } from "./settingsSearch";
 
-const MODE_OPTIONS: Record<SourceControlWritingStyleMode, { label: string; description: string }> =
-  {
-    repo_conventions: {
-      label: "Repository conventions",
-      description: "In each project, matches recent change descriptions and change request titles.",
-    },
-    conventional_commits: {
-      label: "Conventional Commits",
-      description: "Use Conventional Commit prefixes and keep change request text concise.",
-    },
-    custom: {
-      label: "Custom instructions",
-      description:
-        "Use your instructions for change descriptions and change requests in every project.",
-    },
-  };
+const MODES = [
+  "repo_conventions",
+  "conventional_commits",
+  "custom",
+] as const satisfies ReadonlyArray<SourceControlWritingStyleMode>;
 
 export function SourceControlWritingSettingsSection() {
+  const t = useT();
+  const modeLabel = (mode: SourceControlWritingStyleMode) =>
+    t(`settingsPages.sourceControlWriting.mode.${mode}.label`);
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const mixedReviewGuidesEnabled = useScopedSettingsMixed(["reviewGuidesEnabled"]);
@@ -178,17 +171,21 @@ export function SourceControlWritingSettingsSection() {
   );
 
   return (
-    <SettingsSection id="source-control-text-generation" title="Writing & review">
+    <SettingsSection
+      id="source-control-text-generation"
+      title={t("settingsPages.sourceControlWriting.section")}
+    >
       <SettingsRow
         serverScoped
         settingKeys={["sourceControlWritingStyle"]}
         mixed={writingStyleMixed}
         {...searchableSetting("source-control-writing-style")}
-        description={MODE_OPTIONS[style.mode].description}
+        title={t("settingsPages.sourceControlWriting.style.title")}
+        description={t(`settingsPages.sourceControlWriting.mode.${style.mode}.description`)}
         resetAction={
           isSourceControlWritingStyleDirty ? (
             <SettingResetButton
-              label="source control writing style"
+              label={t("settingsPages.sourceControlWriting.style.resetLabel")}
               onClick={() =>
                 updateSettings({
                   sourceControlWritingStyle: {
@@ -216,18 +213,18 @@ export function SourceControlWritingSettingsSection() {
             <SelectTrigger
               size="sm"
               className="w-full sm:w-56"
-              aria-label="Source control writing style"
+              aria-label={t("settingsPages.sourceControlWriting.style.title")}
             >
               <SelectValue>
                 {(value: SourceControlWritingStyleMode | null) =>
-                  value === null ? "Mixed" : MODE_OPTIONS[value].label
+                  value === null ? t("settings.common.mixed") : modeLabel(value)
                 }
               </SelectValue>
             </SelectTrigger>
             <SelectPopup align="end" alignItemWithTrigger={false}>
-              {(Object.keys(MODE_OPTIONS) as SourceControlWritingStyleMode[]).map((mode) => (
+              {MODES.map((mode) => (
                 <SelectItem key={mode} hideIndicator value={mode}>
-                  {MODE_OPTIONS[mode].label}
+                  {modeLabel(mode)}
                 </SelectItem>
               ))}
             </SelectPopup>
@@ -242,8 +239,12 @@ export function SourceControlWritingSettingsSection() {
                   value={allInstructions ?? ""}
                   onChange={(event) => setAllInstructions(event.target.value)}
                   rows={4}
-                  aria-label="Custom source control instructions for all selected environments"
-                  placeholder="Write the instructions each selected environment should use."
+                  aria-label={t(
+                    "settingsPages.sourceControlWriting.style.allInstructionsAriaLabel",
+                  )}
+                  placeholder={t(
+                    "settingsPages.sourceControlWriting.style.allInstructionsPlaceholder",
+                  )}
                 />
                 <Button
                   size="sm"
@@ -260,7 +261,7 @@ export function SourceControlWritingSettingsSection() {
                     setEditingAllInstructions(false);
                   }}
                 >
-                  Apply instructions to all
+                  {t("settingsPages.sourceControlWriting.style.applyToAll")}
                 </Button>
               </>
             ) : (
@@ -272,7 +273,7 @@ export function SourceControlWritingSettingsSection() {
                   setEditingAllInstructions(true);
                 }}
               >
-                Write custom instructions for all
+                {t("settingsPages.sourceControlWriting.style.writeForAll")}
               </Button>
             )}
           </div>
@@ -289,8 +290,8 @@ export function SourceControlWritingSettingsSection() {
                 }
               }}
               rows={4}
-              placeholder="Keep titles concise. Use short bullet points in descriptions."
-              aria-label="Custom source control writing instructions"
+              placeholder={t("settingsPages.sourceControlWriting.style.customPlaceholder")}
+              aria-label={t("settingsPages.sourceControlWriting.style.customAriaLabel")}
             />
           </div>
         ) : null}
@@ -301,13 +302,14 @@ export function SourceControlWritingSettingsSection() {
         settingKeys={["reviewGuidesEnabled"]}
         mixed={mixedReviewGuidesEnabled}
         {...searchableSetting("review-guides")}
-        description="Adds a Guide tab to pull requests: an agent writes a tour of the change, stop by stop, with the calls a maintainer should make."
+        title={t("settingsPages.sourceControlWriting.reviewGuides.title")}
+        description={t("settingsPages.sourceControlWriting.reviewGuides.description")}
         control={
           <Switch
             mixed={mixedReviewGuidesEnabled}
             checked={mixedReviewGuidesEnabled ? false : settings.reviewGuidesEnabled}
             onCheckedChange={(checked) => updateSettings({ reviewGuidesEnabled: Boolean(checked) })}
-            aria-label="Review guides"
+            aria-label={t("settingsPages.sourceControlWriting.reviewGuides.ariaLabel")}
           />
         }
       />
@@ -318,11 +320,12 @@ export function SourceControlWritingSettingsSection() {
             serverScoped
             settingKeys={["reviewGuideModelSelection"]}
             {...searchableSetting("review-guide-model")}
-            description="Model that reads a pull request to write its review guide. It reads the change itself over many steps, so a stronger model helps. Off uses the source control writer model."
+            title={t("settingsPages.sourceControlWriting.reviewGuideModel.title")}
+            description={t("settingsPages.sourceControlWriting.reviewGuideModel.description")}
             control={
               !hasServerTargets ? (
                 <span className="text-sm text-muted-foreground">
-                  Connect an environment to choose its review guide model.
+                  {t("settingsPages.sourceControlWriting.reviewGuideModel.connectEnvironment")}
                 </span>
               ) : (
                 <div className="flex flex-wrap items-center justify-end gap-2">
@@ -335,15 +338,21 @@ export function SourceControlWritingSettingsSection() {
                       instanceEntries={instanceEntries}
                       modelOptionsByInstance={reviewGuideModelOptionsByInstance}
                       triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
-                      triggerAriaLabel="Review guide model"
-                      {...(mixedReviewGuideModel ? { triggerLabel: "Mixed" } : {})}
+                      triggerAriaLabel={t(
+                        "settingsPages.sourceControlWriting.reviewGuideModel.title",
+                      )}
+                      {...(mixedReviewGuideModel
+                        ? { triggerLabel: t("settings.common.mixed") }
+                        : {})}
                       getModelDisabledReason={writerModelDisabledReason}
                       onInstanceModelChange={(instanceId, model) => {
                         const reason = writerModelDisabledReason(instanceId, model);
                         if (reason) {
                           toastManager.add({
                             type: "error",
-                            title: "Review guide model not saved",
+                            title: t(
+                              "settingsPages.sourceControlWriting.reviewGuideModel.notSaved",
+                            ),
                             description: reason,
                           });
                           return;
@@ -395,7 +404,7 @@ export function SourceControlWritingSettingsSection() {
                       if (reason) {
                         toastManager.add({
                           type: "error",
-                          title: "Review guide model not saved",
+                          title: t("settingsPages.sourceControlWriting.reviewGuideModel.notSaved"),
                           description: reason,
                         });
                         return;
@@ -408,7 +417,9 @@ export function SourceControlWritingSettingsSection() {
                         ),
                       });
                     }}
-                    aria-label="Use a separate review guide model"
+                    aria-label={t(
+                      "settingsPages.sourceControlWriting.reviewGuideModel.toggleAriaLabel",
+                    )}
                   />
                 </div>
               )
@@ -419,11 +430,14 @@ export function SourceControlWritingSettingsSection() {
             serverScoped
             settingKeys={["reviewGuideInstructions"]}
             {...searchableSetting("review-guide-instructions")}
-            description="Your preferences for review guides: what to show first, dwell on, or skip. The guide's format and coverage stay the same."
+            title={t("settingsPages.sourceControlWriting.reviewGuideInstructions.title")}
+            description={t(
+              "settingsPages.sourceControlWriting.reviewGuideInstructions.description",
+            )}
             resetAction={
               mixedReviewGuideInstructions || settings.reviewGuideInstructions !== "" ? (
                 <SettingResetButton
-                  label="review guide instructions"
+                  label={t("settingsPages.sourceControlWriting.reviewGuideInstructions.resetLabel")}
                   onClick={() => updateSettings({ reviewGuideInstructions: "" })}
                 />
               ) : null
@@ -432,7 +446,7 @@ export function SourceControlWritingSettingsSection() {
             <div className="mt-3 max-w-2xl pb-3.5">
               <Textarea
                 key={`${scopeKey}:${mixedReviewGuideInstructions}:${settings.reviewGuideInstructions}`}
-                aria-label="Review guide instructions"
+                aria-label={t("settingsPages.sourceControlWriting.reviewGuideInstructions.title")}
                 onChange={() => {
                   reviewGuideInstructionsEdited.current = true;
                 }}
@@ -440,8 +454,8 @@ export function SourceControlWritingSettingsSection() {
                 defaultValue={mixedReviewGuideInstructions ? "" : settings.reviewGuideInstructions}
                 placeholder={
                   mixedReviewGuideInstructions
-                    ? "Mixed. Enter instructions to apply to all selected targets."
-                    : "Show service interfaces before implementations. Skip test files unless they change behavior. Keep summaries to two sentences."
+                    ? t("settingsPages.common.mixedInstructionsPlaceholder")
+                    : t("settingsPages.sourceControlWriting.reviewGuideInstructions.placeholder")
                 }
                 onBlur={(event) => {
                   const value = event.target.value.trim();
@@ -468,12 +482,13 @@ export function SourceControlWritingSettingsSection() {
           settingKeys={["sourceControlWritingStyle"]}
           mixed={templatesMixed}
           {...searchableSetting("follow-change-request-templates")}
-          description="Use the repository's template for change request descriptions when available."
+          title={t("settingsPages.sourceControlWriting.templates.title")}
+          description={t("settingsPages.sourceControlWriting.templates.description")}
           resetAction={
             templatesMixed ||
             style.followChangeRequestTemplates !== defaults.followChangeRequestTemplates ? (
               <SettingResetButton
-                label="change request templates"
+                label={t("settingsPages.sourceControlWriting.templates.resetLabel")}
                 onClick={() =>
                   updateSettings({
                     sourceControlWritingStyle: {
@@ -495,7 +510,7 @@ export function SourceControlWritingSettingsSection() {
                   },
                 })
               }
-              aria-label="Follow change request templates"
+              aria-label={t("settingsPages.sourceControlWriting.templates.title")}
             />
           }
         />
@@ -504,17 +519,18 @@ export function SourceControlWritingSettingsSection() {
           serverScoped
           settingKeys={["sourceControlWriterModelSelection"]}
           {...searchableSetting("source-control-writer-model")}
-          description="Model for source control text and branch or bookmark names. Off uses the environment's text generation model."
+          title={t("settingsPages.sourceControlWriting.writerModel.title")}
+          description={t("settingsPages.sourceControlWriting.writerModel.description")}
           control={
             !hasServerTargets ? (
               <span className="text-sm text-muted-foreground">
-                Connect an environment to choose its source control writer model.
+                {t("settingsPages.sourceControlWriting.writerModel.connectEnvironment")}
               </span>
             ) : (
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {usesDedicatedModel && !canEnableDedicatedModel ? (
                   <span className="text-sm text-muted-foreground">
-                    No text generation providers available.
+                    {t("settingsPages.sourceControlWriting.writerModel.noProviders")}
                   </span>
                 ) : null}
                 {usesDedicatedModel && canEnableDedicatedModel ? (
@@ -526,8 +542,8 @@ export function SourceControlWritingSettingsSection() {
                     instanceEntries={instanceEntries}
                     modelOptionsByInstance={modelOptionsByInstance}
                     triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
-                    triggerAriaLabel="Source control writer model"
-                    {...(mixedWriterModel ? { triggerLabel: "Mixed" } : {})}
+                    triggerAriaLabel={t("settingsPages.sourceControlWriting.writerModel.title")}
+                    {...(mixedWriterModel ? { triggerLabel: t("settings.common.mixed") } : {})}
                     {...(environmentId
                       ? {
                           onOpenProviderSetup: (instanceId: ProviderInstanceId) => {
@@ -544,7 +560,7 @@ export function SourceControlWritingSettingsSection() {
                       if (reason) {
                         toastManager.add({
                           type: "error",
-                          title: "Source control writer model not saved",
+                          title: t("settingsPages.sourceControlWriting.writerModel.notSaved"),
                           description: reason,
                         });
                         return;
@@ -594,7 +610,7 @@ export function SourceControlWritingSettingsSection() {
                         : null,
                     })
                   }
-                  aria-label="Use a separate source control writer model"
+                  aria-label={t("settingsPages.sourceControlWriting.writerModel.toggleAriaLabel")}
                 />
               </div>
             )

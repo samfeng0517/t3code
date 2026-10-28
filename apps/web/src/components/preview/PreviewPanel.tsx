@@ -10,6 +10,7 @@ import { useEnvironmentScope } from "~/state/session";
 
 import { PreviewPanelShell, type PreviewPanelMode } from "./PreviewPanelShell";
 import { PreviewView } from "./PreviewView";
+import { useT } from "~/i18n";
 
 interface Props {
   mode: PreviewPanelMode;
@@ -17,6 +18,7 @@ interface Props {
   tabId?: string | null;
   configuredUrls?: ReadonlyArray<string> | undefined;
   visible: boolean;
+  variant?: "thread" | "workspace";
   onSendAnnotation?: (
     annotation: PreviewAnnotationPayload,
     image: ComposerImageAttachment | null,
@@ -29,8 +31,10 @@ export function PreviewPanel({
   tabId,
   configuredUrls,
   visible,
+  variant,
   onSendAnnotation,
 }: Props) {
+  const t = useT();
   const available = usePreviewAvailable(threadRef.environmentId);
   const canOperatePreview = useEnvironmentScope(threadRef.environmentId, AuthPreviewOperateScope);
   if (!canOperatePreview || !available) {
@@ -38,9 +42,11 @@ export function PreviewPanel({
       <PreviewPanelShell mode={mode}>
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
           <p className="max-w-sm text-sm text-muted-foreground">
-            {canOperatePreview
-              ? "Preview is only available in the T3 Code desktop app."
-              : "Pair this client again with preview access to control browser previews."}
+            {t(
+              canOperatePreview
+                ? "workspace.preview.unavailable.desktopOnly"
+                : "workspace.preview.unavailable.noAccess",
+            )}
           </p>
         </div>
       </PreviewPanelShell>
@@ -54,6 +60,7 @@ export function PreviewPanel({
         {...(tabId !== undefined ? { tabId } : {})}
         configuredUrls={configuredUrls}
         visible={visible}
+        {...(variant ? { variant } : {})}
         {...(onSendAnnotation ? { onSendAnnotation } : {})}
       />
     </PreviewPanelShell>

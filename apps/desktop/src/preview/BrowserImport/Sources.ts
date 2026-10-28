@@ -26,6 +26,11 @@ export interface BrowserImportSourceDefinition {
   readonly engine: BrowserImportEngine;
   readonly platforms: ReadonlyArray<NodeJS.Platform>;
   readonly userDataDirectory: (context: BrowserImportPathContext) => string | undefined;
+  /**
+   * Where bookmarks are read when it differs from `userDataDirectory`: the plain-JSON
+   * `Bookmarks` file stays readable on Windows, where app-bound encryption rules out cookies.
+   */
+  readonly bookmarksUserDataDirectory?: (context: BrowserImportPathContext) => string | undefined;
   readonly alternateLinuxRoots?: (context: BrowserImportPathContext) => ReadonlyArray<string>;
   readonly keychainService?: string;
   readonly keychainAccount?: string;
@@ -46,6 +51,7 @@ const chromiumSource = (input: {
   readonly linuxSegments?: ReadonlyArray<string>;
   readonly linuxSecretApplication?: string;
   readonly windowsSegments?: ReadonlyArray<string>;
+  readonly windowsBookmarkSegments?: ReadonlyArray<string>;
 }): BrowserImportSourceDefinition => ({
   id: input.id,
   name: input.name,
@@ -71,6 +77,14 @@ const chromiumSource = (input: {
       ? context.path.join(context.home, ".config", ...input.linuxSegments)
       : undefined;
   },
+  ...(input.windowsBookmarkSegments === undefined
+    ? {}
+    : {
+        bookmarksUserDataDirectory: (context: BrowserImportPathContext) =>
+          context.platform === "win32" && context.localAppData
+            ? context.path.join(context.localAppData, ...(input.windowsBookmarkSegments ?? []))
+            : undefined,
+      }),
 });
 
 export const BROWSER_IMPORT_SOURCES: ReadonlyArray<BrowserImportSourceDefinition> = [
@@ -82,6 +96,7 @@ export const BROWSER_IMPORT_SOURCES: ReadonlyArray<BrowserImportSourceDefinition
     keychainAccount: "Chrome",
     macSegments: ["Google", "Chrome"],
     linuxSegments: ["google-chrome"],
+    windowsBookmarkSegments: ["Google", "Chrome", "User Data"],
     linuxSecretApplication: "chrome",
   }),
   chromiumSource({
@@ -91,6 +106,7 @@ export const BROWSER_IMPORT_SOURCES: ReadonlyArray<BrowserImportSourceDefinition
     keychainAccount: "Microsoft Edge",
     macSegments: ["Microsoft Edge"],
     linuxSegments: ["microsoft-edge"],
+    windowsBookmarkSegments: ["Microsoft", "Edge", "User Data"],
     linuxSecretApplication: "msedge",
   }),
   chromiumSource({
@@ -100,6 +116,7 @@ export const BROWSER_IMPORT_SOURCES: ReadonlyArray<BrowserImportSourceDefinition
     keychainAccount: "Brave",
     macSegments: ["BraveSoftware", "Brave-Browser"],
     linuxSegments: ["BraveSoftware", "Brave-Browser"],
+    windowsBookmarkSegments: ["BraveSoftware", "Brave-Browser", "User Data"],
     linuxSecretApplication: "brave",
   }),
   chromiumSource({
@@ -311,7 +328,7 @@ const LocalState = Schema.Struct({
 });
 const decodeLocalState = Schema.decodeUnknownEffect(Schema.fromJsonString(LocalState));
 
-const isSafeProfileDirectory = (directory: string): boolean =>
+export const isSafeProfileDirectory = (directory: string): boolean =>
   directory.length > 0 &&
   directory !== "." &&
   directory !== ".." &&
@@ -488,6 +505,26 @@ const listSourceProfilesInDirectory = Effect.fnUntraced(function* (
     definition,
     context,
     found.filter((profile) => profile !== undefined),
+  );
+});
+
+/**
+ * A Chromium profile folder's profiles as its `Local State` names them, without opening any
+ * cookie database: for plain-file reads such as installed extensions.
+ */
+export const listChromiumProfileNames = Effect.fnUntraced(function* (
+  context: BrowserImportPathContext,
+  root: string,
+): Effect.fn.Return<ReadonlyArray<BrowserImportSourceProfile>, never, FileSystem.FileSystem> {
+  const fileSystem = yield* FileSystem.FileSystem;
+  return yield* fileSystem.readFileString(context.path.join(root, "Local State")).pipe(
+    Effect.flatMap(decodeLocalState),
+    Effect.map((state) =>
+      Object.entries(state.profile?.info_cache ?? {})
+        .filter(([directory]) => isSafeProfileDirectory(directory))
+        .map(([directory, info]) => ({ directory, name: info.name?.trim() || directory })),
+    ),
+    Effect.orElseSucceed(() => [] as ReadonlyArray<BrowserImportSourceProfile>),
   );
 });
 

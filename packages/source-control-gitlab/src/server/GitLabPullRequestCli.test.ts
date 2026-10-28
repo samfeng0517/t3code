@@ -1,7 +1,8 @@
-import { afterEach, assert, expect, it, vi } from "@effect/vitest";
+import { afterEach, assert, describe, expect, it, vi } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { ChildProcessSpawner } from "effect/process";
+import { VcsProcessExitError } from "@t3tools/contracts";
 
 import * as GitLabCli from "./GitLabCli.ts";
 import * as GitLabPullRequestCli from "./GitLabPullRequestCli.ts";
@@ -1182,6 +1183,351 @@ layer("GitLabPullRequestCli.layer", (it) => {
       assert.strictEqual(revisions.size, 150);
       assert.strictEqual(revisions.get("src/149.ts"), "oid-src/149.ts");
       assert.strictEqual(mockedExecute.mock.calls.length, 3);
+    }),
+  );
+
+  it.effect("names the server in --repo, so glab does not read the project on gitlab.com", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValue(Effect.succeed(output("")));
+      const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+
+      yield* cli.runMergeRequestAction({
+        cwd: "/w",
+        host: "gitlab.example.com",
+        repository: "sam/platform/t3code",
+        number: 7,
+        action: "ready",
+      });
+
+      expect(callAt(0)).toMatchObject({
+        host: "gitlab.example.com",
+        args: [
+          "mr",
+          "update",
+          "7",
+          "--repo",
+          "https://gitlab.example.com/sam/platform/t3code",
+          "--ready",
+        ],
+      });
+    }),
+  );
+
+  it.effect("takes back the reader's approval through the merge request's own endpoint", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValue(Effect.succeed(output("")));
+      const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+
+      yield* cli.runMergeRequestAction({
+        cwd: "/w",
+        host: "gitlab.example.com",
+        repository: "sam/t3code",
+        number: 7,
+        action: "unapprove",
+      });
+
+      expect(mockedExecute).toHaveBeenCalledTimes(1);
+      expect(callAt(0)).toMatchObject({
+        host: "gitlab.example.com",
+        args: ["api", "projects/sam%2Ft3code/merge_requests/7/unapprove", "--method", "POST"],
+      });
+    }),
+  );
+
+  describe("deleting a source branch", () => {
+    const mergeRequest = (state: string) =>
+      mergeRequestJson({
+        state,
+        sha: "head-sha",
+        source_branch: "feat/page",
+        source_project_id: 42,
+      });
+    const branch = (commit: string) =>
+      JSON.stringify({ name: "feat/page", commit: { id: commit } });
+    const notFound = Effect.fail(
+      new GitLabCli.GitLabCliCommandError({
+        operation: "execute",
+        command: "glab",
+        cwd: "/w",
+        cause: new VcsProcessExitError({
+          operation: "GitLabCli.execute",
+          command: "glab",
+          cwd: "/w",
+          exitCode: 1,
+          detail: "404 Branch Not Found",
+          failureKind: "not-found",
+        }),
+      }),
+    );
+    const deleteBranch = Effect.gen(function* () {
+      const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+      return yield* Effect.result(
+        cli.runMergeRequestAction({
+          cwd: "/w",
+          repository: "acme/web",
+          number: 7,
+          action: "delete-branch",
+        }),
+      );
+    });
+
+    it.effect("deletes the branch in the source project once it still points at the head", () =>
+      Effect.gen(function* () {
+        mockedExecute
+          .mockReturnValueOnce(Effect.succeed(output(mergeRequest("merged"))))
+          .mockReturnValueOnce(Effect.succeed(output(branch("head-sha"))))
+          .mockReturnValueOnce(Effect.succeed(output("")));
+
+        expect((yield* deleteBranch)._tag).toBe("Success");
+        expect(mockedExecute.mock.calls.map(([input]) => input.args)).toEqual([
+          ["api", "projects/acme%2Fweb/merge_requests/7"],
+          ["api", "projects/42/repository/branches/feat%2Fpage"],
+          ["api", "projects/42/repository/branches/feat%2Fpage", "--method", "DELETE"],
+        ]);
+      }),
+    );
+
+    it.effect("keeps the branch of a merge request that is still open", () =>
+      Effect.gen(function* () {
+        mockedExecute.mockReturnValueOnce(Effect.succeed(output(mergeRequest("opened"))));
+
+        expect(yield* deleteBranch).toMatchObject({
+          _tag: "Failure",
+          failure: { _tag: "GitLabBranchDeletionRefusedError", reason: "open" },
+        });
+        expect(mockedExecute).toHaveBeenCalledTimes(1);
+      }),
+    );
+
+    it.effect("keeps a branch with commits pushed after the merge request ended", () =>
+      Effect.gen(function* () {
+        mockedExecute
+          .mockReturnValueOnce(Effect.succeed(output(mergeRequest("closed"))))
+          .mockReturnValueOnce(Effect.succeed(output(branch("later-sha"))));
+
+        expect(yield* deleteBranch).toMatchObject({
+          _tag: "Failure",
+          failure: { _tag: "GitLabBranchDeletionRefusedError", reason: "moved" },
+        });
+        expect(mockedExecute).toHaveBeenCalledTimes(2);
+      }),
+    );
+
+    it.effect("is done when GitLab already removed the branch on merge", () =>
+      Effect.gen(function* () {
+        mockedExecute
+          .mockReturnValueOnce(Effect.succeed(output(mergeRequest("merged"))))
+          .mockReturnValueOnce(notFound);
+
+        expect((yield* deleteBranch)._tag).toBe("Success");
+        expect(mockedExecute).toHaveBeenCalledTimes(2);
+      }),
+    );
+  });
+
+  it.effect("adds labels as a JSON array, so a name holding a comma stays one label", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValue(Effect.succeed(output("")));
+      const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+
+      yield* cli.setLabels({
+        cwd: "/w",
+        repository: "acme/web",
+        number: 7,
+        labels: ["needs review", "scope::a,b"],
+        applied: true,
+      });
+      yield* cli.setLabels({
+        cwd: "/w",
+        repository: "acme/web",
+        number: 7,
+        labels: ["needs review"],
+        applied: false,
+      });
+
+      expect(callAt(0).args.slice(0, 4)).toEqual([
+        "api",
+        "projects/acme%2Fweb/merge_requests/7",
+        "--method",
+        "PUT",
+      ]);
+      expect(JSON.parse(callAt(0).stdin ?? "")).toEqual({
+        add_labels: ["needs review", "scope::a,b"],
+      });
+      expect(JSON.parse(callAt(1).stdin ?? "")).toEqual({ remove_labels: ["needs review"] });
+    }),
+  );
+
+  it.effect("lists the project's labels and marks the ones already on the merge request", () =>
+    Effect.gen(function* () {
+      mockedExecute
+        .mockReturnValueOnce(Effect.succeed(output(mergeRequestJson({ labels: ["bug"] }))))
+        .mockReturnValueOnce(
+          Effect.succeed(
+            output(
+              JSON.stringify([
+                { name: "bug", color: "#d9534f", description: "Something broke" },
+                { name: "feature", color: "#428bca", description: null },
+              ]),
+            ),
+          ),
+        );
+      const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+
+      const labels = yield* cli.listLabelCandidates({
+        cwd: "/w",
+        repository: "acme/web",
+        number: 7,
+      });
+
+      expect(labels).toEqual({
+        candidates: [
+          { name: "bug", color: "d9534f", description: "Something broke", isApplied: true },
+          { name: "feature", color: "428bca", description: null, isApplied: false },
+        ],
+        truncated: false,
+      });
+      expect(argsOfCall(1)).toEqual(["api", "projects/acme%2Fweb/labels?per_page=100"]);
+    }),
+  );
+
+  it.effect("reads who approved and whether the reader has", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(
+          output(
+            JSON.stringify({
+              approved: true,
+              approvals_required: 1,
+              approvals_left: 0,
+              approved_by: [{ user: reviewer }],
+              user_has_approved: true,
+              user_can_approve: false,
+            }),
+          ),
+        ),
+      );
+      const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+
+      const approvals = yield* cli.getApprovals({
+        cwd: "/w",
+        repository: "acme/web",
+        number: 7,
+      });
+
+      expect(approvals).toEqual({
+        approvedBy: [{ login: "octocat", name: null, avatarUrl: null }],
+        approvalsLeft: 0,
+        viewerHasApproved: true,
+        viewerCanApprove: false,
+      });
+      expect(argsOfCall(0)).toEqual(["api", "projects/acme%2Fweb/merge_requests/7/approvals"]);
+    }),
+  );
+
+  it.effect("reads each pipeline job as a check, and an allowed failure as no failure", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(
+          output(
+            JSON.stringify([
+              { name: "test", stage: "test", status: "success", web_url: "https://x/1" },
+              { name: "audit", stage: "test", status: "failed", allow_failure: true },
+              { name: "deploy", stage: "deploy", status: "manual" },
+              { name: "build", stage: "build", status: "running" },
+            ]),
+          ),
+        ),
+      );
+      const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+
+      const jobs = yield* cli.listPipelineJobs({ cwd: "/w", project: 12, pipelineId: 99 });
+
+      expect(jobs).toEqual({
+        checks: [
+          { name: "test", status: "success", description: "test", url: "https://x/1" },
+          { name: "audit", status: "neutral", description: "test", url: null },
+          { name: "deploy", status: "neutral", description: "deploy", url: null },
+          { name: "build", status: "pending", description: "build", url: null },
+        ],
+        truncated: false,
+      });
+      expect(argsOfCall(0)).toEqual(["api", "projects/12/pipelines/99/jobs?per_page=100"]);
+    }),
+  );
+
+  it.effect("reads the trigger jobs GitLab leaves out of the job list as checks too", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(
+          output(
+            JSON.stringify([
+              {
+                name: "downstream",
+                stage: "deploy",
+                status: "failed",
+                web_url: "https://x/2",
+                downstream_pipeline: { id: 100, status: "failed" },
+              },
+            ]),
+          ),
+        ),
+      );
+      const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+
+      const bridges = yield* cli.listPipelineBridges({
+        cwd: "/w",
+        project: "acme/web",
+        pipelineId: 99,
+      });
+
+      expect(bridges).toEqual({
+        checks: [
+          { name: "downstream", status: "failure", description: "deploy", url: "https://x/2" },
+        ],
+        truncated: false,
+      });
+      expect(argsOfCall(0)).toEqual([
+        "api",
+        "projects/acme%2Fweb/pipelines/99/bridges?per_page=100",
+      ]);
+    }),
+  );
+
+  it.effect("reads a branch's head and the reader's push access, and a removed one as none", () =>
+    Effect.gen(function* () {
+      mockedExecute
+        .mockReturnValueOnce(
+          Effect.succeed(
+            output(JSON.stringify({ name: "feat/page", commit: { id: "abc" }, can_push: true })),
+          ),
+        )
+        .mockReturnValueOnce(
+          Effect.fail(
+            new GitLabCli.GitLabCliCommandError({
+              operation: "execute",
+              command: "glab",
+              cwd: "/w",
+              cause: new VcsProcessExitError({
+                operation: "GitLabCli.execute",
+                command: "glab",
+                cwd: "/w",
+                exitCode: 1,
+                detail: "404 Branch Not Found",
+                failureKind: "not-found",
+              }),
+            }),
+          ),
+        );
+      const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+
+      const present = yield* cli.getBranch({ cwd: "/w", project: 42, branch: "feat/page" });
+      const removed = yield* cli.getBranch({ cwd: "/w", project: "acme/web", branch: "gone" });
+
+      expect(present).toEqual({ headSha: "abc", canPush: true });
+      expect(removed).toBeNull();
+      expect(argsOfCall(0)).toEqual(["api", "projects/42/repository/branches/feat%2Fpage"]);
+      expect(argsOfCall(1)).toEqual(["api", "projects/acme%2Fweb/repository/branches/gone"]);
     }),
   );
 });

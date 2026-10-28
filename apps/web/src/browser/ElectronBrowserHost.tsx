@@ -8,7 +8,7 @@ import {
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
-import { type ComponentProps, useState } from "react";
+import { type ComponentProps, useEffect, useState } from "react";
 
 import { primaryEnvironmentIdAtom } from "~/state/primaryEnvironment";
 
@@ -27,6 +27,7 @@ import { useEnvironmentScope } from "~/state/session";
 import { readPreviewAnnotationTheme } from "./annotationTheme";
 import { useBrowserDefaults } from "./browserDefaults";
 import { useBrowserPointerStore } from "./browserPointerStore";
+import { useBrowserTabProfileStore } from "./browserTabProfileStore";
 import { HostedBrowserWebview } from "./HostedBrowserWebview";
 import { openUrlInPreview } from "./openFileInPreview";
 import { rendersServerTabNatively } from "./previewRuntime";
@@ -169,6 +170,14 @@ function AuthorizedBrowserWebview(props: ComponentProps<typeof HostedBrowserWebv
     AuthPreviewOperateScope,
   );
   const profileId = useTabProfileId(props.profileId);
+  // The address row's extension toolbar must read this exact latched profile.
+  const { runtimeTabId } = props;
+  useEffect(() => {
+    if (profileId === undefined) return;
+    const store = useBrowserTabProfileStore.getState();
+    store.publish(runtimeTabId, profileId);
+    return () => store.clear(runtimeTabId);
+  }, [profileId, runtimeTabId]);
   return canOperatePreview ? <HostedBrowserWebview {...props} profileId={profileId} /> : null;
 }
 

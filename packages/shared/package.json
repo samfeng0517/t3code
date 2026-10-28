@@ -419,6 +419,10 @@
       "types": "./src/cliRelease.ts",
       "import": "./src/cliRelease.ts"
     },
+    "./appSelfUpdate": {
+      "types": "./src/appSelfUpdate.ts",
+      "import": "./src/appSelfUpdate.ts"
+    },
     "./gitPatchPath": {
       "types": "./src/gitPatchPath.ts",
       "import": "./src/gitPatchPath.ts"

@@ -46,6 +46,7 @@ import { randomUUID } from "~/lib/utils";
 import { readPreparedConnection } from "~/state/session";
 import { resolveAssetUrl } from "~/assets/assetUrls";
 import { toKindScopedComposerContextId } from "@t3tools/shared/composerContextReferences";
+import { useT } from "~/i18n";
 import { toastManager } from "../ui/toast";
 import {
   type ComposerDraftContextRecords,
@@ -105,6 +106,7 @@ export function useComposerContextImport(input: {
     pendingThreadImportsRef,
     addComposerFilesToDraft,
   } = input;
+  const t = useT();
   const getComposerDraft = useComposerDraftStore((store) => store.getComposerDraft);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
   const addComposerDraftTerminalContexts = useComposerDraftStore(
@@ -153,15 +155,15 @@ export function useComposerContextImport(input: {
     const fail = (reason: string) => {
       toastManager.add({
         type: "error",
-        title: `Couldn't bring ${record.name} into this message`,
-        description: `${reason} Remove the chip or attach the file again.`,
+        title: t("composer.toast.importFailed.title", { name: record.name }),
+        description: t("composer.toast.importFailed.description", { reason }),
       });
     };
     let file = copiedComposerAttachmentFile(sourceEnvironmentId, record.attachmentId);
     if (!file) {
       const sourceConnection = readPreparedConnection(sourceEnvironmentId);
       if (!sourceConnection) {
-        fail("The environment it came from is not connected.");
+        fail(t("composer.toast.importFailed.notConnected"));
         return;
       }
       const result = await createAssetUrl({
@@ -176,14 +178,14 @@ export function useComposerContextImport(input: {
         const cause = result._tag === "Failure" ? Cause.squash(result.cause) : null;
         fail(
           isUnreachable(cause)
-            ? "The environment it came from is not reachable right now."
-            : "The original attachment is no longer available.",
+            ? t("composer.toast.importFailed.unreachable")
+            : t("composer.toast.importFailed.unavailable"),
         );
         return;
       }
       const blob = await downloadAttachmentBlob(url);
       if (!blob) {
-        fail("Downloading it from the source failed.");
+        fail(t("composer.toast.importFailed.downloadFailed"));
         return;
       }
       file = new File([blob], record.name, { type: record.mimeType || blob.type });
@@ -207,7 +209,7 @@ export function useComposerContextImport(input: {
       (pendingThreadImportsRef.current.get(importTargetKey) ?? 0) > 0 &&
       countReservedAttachments() >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS
     ) {
-      fail("The attachment limit has been reached.");
+      fail(t("composer.toast.importFailed.limitReached"));
       return;
     }
     if (record.kind === "image") {
@@ -231,8 +233,7 @@ export function useComposerContextImport(input: {
             ) ?? false,
         },
       );
-      if (!accepted.includes(localId))
-        fail("The draft rejected this attachment (duplicate or attachment limit reached).");
+      if (!accepted.includes(localId)) fail(t("composer.toast.importFailed.rejected"));
     } else {
       const accepted = addComposerFilesToDraft([
         {
@@ -244,8 +245,7 @@ export function useComposerContextImport(input: {
           file,
         },
       ]);
-      if (!accepted.includes(localId))
-        fail("The draft rejected this attachment (duplicate or attachment limit reached).");
+      if (!accepted.includes(localId)) fail(t("composer.toast.importFailed.rejected"));
     }
   };
   const importAttachmentRecord = async (

@@ -23,6 +23,7 @@
     "dbus-next": "0.10.2",
     "effect": "catalog:",
     "electron": "44.9.3",
+    "electron-chrome-extensions": "4.9.0",
     "electron-store": "^8.2.0",
     "electron-updater": "^6.8.9",
     "electron-webauthn": "catalog:",
@@ -40,5 +41,5 @@
     "tailwindcss": "^4.0.0",
     "vite-plus": "catalog:"
   },
-  "productName": "T3 Code (Beta)"
+  "productName": "T3 Code"
 }

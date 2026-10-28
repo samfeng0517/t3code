@@ -6,6 +6,7 @@ import {
 import { create } from "zustand";
 
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
+import { type MessageKey, type Translate, t } from "../i18n";
 import { shortcutLabelForCommand } from "../keybindings";
 import { announce, cancelAnnouncement } from "../lib/announce";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -28,14 +29,34 @@ type UndoNotice = {
 
 export const useThreadUndoNotice = create<{ notice: UndoNotice | null }>(() => ({ notice: null }));
 
-export function threadUndoNoticeSummary(notice: Pick<UndoNotice, "action" | "count">): string {
-  const noun = notice.action === "Discarded" ? "draft" : "thread";
-  return `${notice.action} ${notice.count} ${noun}${notice.count === 1 ? "" : "s"}`;
+const UNDO_ACTION_KEYS = {
+  Settled: "sidebar.undo.settled",
+  Snoozed: "sidebar.undo.snoozed",
+  Unpinned: "sidebar.undo.unpinned",
+  Archived: "sidebar.undo.archived",
+  Discarded: "sidebar.undo.discarded",
+} as const satisfies Record<UndoOptions["action"], MessageKey>;
+
+export function threadUndoNoticeSummary(
+  notice: Pick<UndoNotice, "action" | "count">,
+  translate: Translate = t,
+): string {
+  const isDraft = notice.action === "Discarded";
+  const noun =
+    notice.count === 1
+      ? translate(isDraft ? "sidebar.undo.noun.draft" : "sidebar.undo.noun.thread")
+      : translate(isDraft ? "sidebar.undo.noun.drafts" : "sidebar.undo.noun.threads");
+  return translate(UNDO_ACTION_KEYS[notice.action], { count: notice.count, noun });
 }
 
-export function threadUndoLabel(keybindings: Parameters<typeof shortcutLabelForCommand>[0]) {
+export function threadUndoLabel(
+  keybindings: Parameters<typeof shortcutLabelForCommand>[0],
+  translate: Translate = t,
+) {
   const shortcut = shortcutLabelForCommand(keybindings, "thread.undo");
-  return shortcut ? `${shortcut} to undo` : "Undo";
+  return shortcut
+    ? translate("sidebar.undo.withShortcut", { shortcut })
+    : translate("sidebar.undo.undo");
 }
 
 let announcedSummary: string | null = null;
@@ -50,7 +71,7 @@ function setNotice(notice: UndoNotice | null) {
   announcedSummary = summary;
   if (summary) {
     const label = threadUndoLabel(appAtomRegistry.get(primaryServerKeybindingsAtom));
-    announce(`${summary}, ${label}`, "thread-undo-notice");
+    announce(`${summary}${t("sidebar.undo.separator")}${label}`, "thread-undo-notice");
   } else {
     cancelAnnouncement("thread-undo-notice");
   }

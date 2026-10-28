@@ -1,5 +1,6 @@
 import { resolveEnvironmentMachineKind } from "@t3tools/contracts";
 
+import { useT, type Translate } from "~/i18n";
 import {
   useClientSettings,
   useClientSettingsHydrated,
@@ -12,14 +13,9 @@ import { EnvironmentRow, environmentTransportLabel } from "./EnvironmentRow";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { searchableSetting } from "./settingsSearch";
 
-const preferences = [
-  { value: 100, label: "Prefer" },
-  { value: 50, label: "Normal" },
-  { value: 25, label: "Less often" },
-  { value: 0, label: "Manual only" },
-] as const;
+const LOAD_PREFERENCES = [100, 50, 25, 0] as const;
 
-type LoadPreference = (typeof preferences)[number]["value"];
+type LoadPreference = (typeof LOAD_PREFERENCES)[number];
 
 function loadPreferenceForWeight(weight: number | undefined): LoadPreference {
   if (weight === undefined || weight === 50) return 50;
@@ -27,19 +23,20 @@ function loadPreferenceForWeight(weight: number | undefined): LoadPreference {
   return weight < 50 ? 25 : 100;
 }
 
-function preferenceLabel(preference: LoadPreference): string {
-  return preferences.find((entry) => entry.value === preference)!.label;
+function preferenceLabel(preference: LoadPreference, t: Translate): string {
+  return t(`settingsProviders.loadBalancing.preference.${preference}`);
 }
 
 function summarizeLoadPreferences(
   environments: ReadonlyArray<Pick<EnvironmentPresentation, "environmentId" | "label">>,
   weights: Readonly<Record<string, number>>,
+  t: Translate,
 ): string | null {
   const parts = environments.flatMap((environment) => {
     const preference = loadPreferenceForWeight(weights[environment.environmentId]);
     return preference === 50
       ? []
-      : [`${environment.label} ${preferenceLabel(preference).toLowerCase()}`];
+      : [`${environment.label} ${preferenceLabel(preference, t).toLowerCase()}`];
   });
   return parts.length === 0 ? null : parts.join(" · ");
 }
@@ -49,6 +46,7 @@ export function LoadBalancingSettings({
 }: {
   environments: ReadonlyArray<EnvironmentPresentation>;
 }) {
+  const t = useT();
   const settings = useClientSettings((current) => ({
     loadBalancingEnabled: current.loadBalancingEnabled,
     loadBalancingWeights: current.loadBalancingWeights,
@@ -57,19 +55,23 @@ export function LoadBalancingSettings({
 
   if (environments.length < 2) return null;
 
-  const { id, title } = searchableSetting("load-balancing");
+  const { id } = searchableSetting("load-balancing");
+  const preferences = LOAD_PREFERENCES.map((value) => ({
+    value,
+    label: preferenceLabel(value, t),
+  }));
   return (
     <FoldedSettingsSection
       id={id}
-      title={title}
+      title={t("settingsProviders.loadBalancing.title")}
       summary={
         settings.loadBalancingEnabled
-          ? summarizeLoadPreferences(environments, settings.loadBalancingWeights)
-          : "Off"
+          ? summarizeLoadPreferences(environments, settings.loadBalancingWeights, t)
+          : t("settingsProviders.loadBalancing.off")
       }
       control={
         <Switch
-          aria-label="Automatically balance load"
+          aria-label={t("settingsProviders.loadBalancing.toggle")}
           checked={settings.loadBalancingEnabled}
           disabled={!settingsHydrated}
           onCheckedChange={(loadBalancingEnabled) => updateClientSettings({ loadBalancingEnabled })}
@@ -77,8 +79,7 @@ export function LoadBalancingSettings({
       }
     >
       <p className="px-3 py-2.5 text-xs text-muted-foreground sm:px-4">
-        New threads in shared projects start on the machine with the most free CPU and memory,
-        weighted by each machine's preference.
+        {t("settingsProviders.loadBalancing.description")}
       </p>
       {environments.map((environment) => (
         <EnvironmentRow
@@ -106,7 +107,9 @@ export function LoadBalancingSettings({
             <SelectTrigger
               size="xs"
               className="w-32"
-              aria-label={`${environment.label} load preference`}
+              aria-label={t("settingsProviders.loadBalancing.preferenceAriaLabel", {
+                environment: environment.label,
+              })}
             >
               <SelectValue />
             </SelectTrigger>

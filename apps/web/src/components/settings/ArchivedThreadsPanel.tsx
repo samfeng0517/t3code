@@ -19,8 +19,12 @@ import { stackedThreadToast, toastManager } from "../ui/toast";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { useLocale, useT } from "../../i18n";
+import { archivedThreadAutoDeleteAt } from "./ArchivedThreadsPanel.logic";
 
 export function ArchivedThreadsPanel() {
+  const t = useT();
+  const locale = useLocale();
   const { scope, groups: projectGroups, environments } = useSettingsScope();
   const { unarchiveThread, confirmAndDeleteThread } = useThreadActions();
   const {
@@ -54,11 +58,24 @@ export function ArchivedThreadsPanel() {
         return [environment.environmentId, secondary ? `${primary} (${secondary})` : primary];
       }),
     );
+    const autoDeleteAfterDays = new Map(
+      environments.map((environment) => [
+        environment.environmentId,
+        environment.serverConfig?.settings.sidebarAutoDeleteArchivedAfterDays ?? null,
+      ]),
+    );
     const threads = archivedSnapshots.flatMap(({ environmentId, snapshot }) =>
-      snapshot.threads.map((thread) => ({
-        ...presentThreadShell(environmentId, thread),
-        environmentLabel: environmentLabels.get(environmentId) ?? environmentId,
-      })),
+      snapshot.threads.map((thread) => {
+        const presented = presentThreadShell(environmentId, thread);
+        return {
+          ...presented,
+          environmentLabel: environmentLabels.get(environmentId) ?? environmentId,
+          autoDeleteAt: archivedThreadAutoDeleteAt(
+            presented,
+            autoDeleteAfterDays.get(environmentId) ?? null,
+          ),
+        };
+      }),
     );
     const hasMultipleEnvironments =
       new Set(
@@ -130,8 +147,8 @@ export function ArchivedThreadsPanel() {
     if (!api) return;
     const clicked = await api.contextMenu.show(
       [
-        { id: "unarchive", label: "Unarchive" },
-        { id: "delete", label: "Delete", destructive: true },
+        { id: "unarchive", label: t("settingsPages.archived.menu.unarchive") },
+        { id: "delete", label: t("settingsPages.archived.menu.delete"), destructive: true },
       ],
       position,
     );
@@ -145,8 +162,9 @@ export function ArchivedThreadsPanel() {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Failed to unarchive thread",
-            description: error instanceof Error ? error.message : "An error occurred.",
+            title: t("settings.archived.toast.unarchiveFailed"),
+            description:
+              error instanceof Error ? error.message : t("settings.archived.toast.genericError"),
           }),
         );
       }
@@ -162,8 +180,9 @@ export function ArchivedThreadsPanel() {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Failed to delete thread",
-            description: error instanceof Error ? error.message : "An error occurred.",
+            title: t("settings.archived.toast.deleteFailed"),
+            description:
+              error instanceof Error ? error.message : t("settings.archived.toast.genericError"),
           }),
         );
       }
@@ -175,7 +194,7 @@ export function ArchivedThreadsPanel() {
       {archivedGroups.length === 0 ? (
         <SettingsSection
           id={isLoadingArchive ? undefined : searchableSetting("archive").id}
-          title={searchableSetting("archive").title}
+          title={t("settingsPages.archived.title")}
         >
           <SettingsRow
             title={
@@ -186,16 +205,16 @@ export function ArchivedThreadsPanel() {
                   <ArchiveIcon className="size-3.5 text-muted-foreground" />
                 )}
                 {isLoadingArchive
-                  ? "Loading archived threads"
+                  ? t("settingsPages.archived.loading")
                   : archiveError
-                    ? "Could not load archived threads"
-                    : "No archived threads"}
+                    ? t("settingsPages.archived.loadFailed")
+                    : t("settingsPages.archived.empty")}
               </span>
             }
             description={
               isLoadingArchive
-                ? "Checking connected environments."
-                : (archiveError ?? "Archived threads will appear here.")
+                ? t("settingsPages.archived.checking")
+                : (archiveError ?? t("settingsPages.archived.emptyDescription"))
             }
           />
         </SettingsSection>
@@ -227,9 +246,11 @@ export function ArchivedThreadsPanel() {
                       toastManager.add(
                         stackedThreadToast({
                           type: "error",
-                          title: "Archived thread action failed",
+                          title: t("settings.archived.toast.actionFailed"),
                           description:
-                            error instanceof Error ? error.message : "An error occurred.",
+                            error instanceof Error
+                              ? error.message
+                              : t("settings.archived.toast.genericError"),
                         }),
                       );
                     }
@@ -237,12 +258,26 @@ export function ArchivedThreadsPanel() {
                 }}
                 title={thread.title}
                 description={
-                  <span className={hasMultipleEnvironments ? "block truncate" : undefined}>
-                    {hasMultipleEnvironments ? `${thread.environmentLabel} · ` : null}
-                    Archived <RelativeTime timestamp={thread.archivedAt ?? thread.createdAt} />
-                    {" \u00b7 Created "}
-                    <RelativeTime timestamp={thread.createdAt} />
-                  </span>
+                  <>
+                    <span className={hasMultipleEnvironments ? "block truncate" : undefined}>
+                      {hasMultipleEnvironments ? `${thread.environmentLabel} · ` : null}
+                      {t("settingsPages.archived.archived")}{" "}
+                      <RelativeTime timestamp={thread.archivedAt ?? thread.createdAt} />
+                      {t("settingsPages.archived.created")}
+                      <RelativeTime timestamp={thread.createdAt} />
+                    </span>
+                    {thread.archivedBy === "auto" ? (
+                      <span className="block">
+                        {thread.autoDeleteAt === null
+                          ? t("settingsPages.archived.autoArchived")
+                          : t("settingsPages.archived.autoArchivedDeletesOn", {
+                              date: new Date(thread.autoDeleteAt).toLocaleDateString(locale, {
+                                dateStyle: "medium",
+                              }),
+                            })}
+                      </span>
+                    ) : null}
+                  </>
                 }
                 control={
                   <Button
@@ -264,9 +299,11 @@ export function ArchivedThreadsPanel() {
                           toastManager.add(
                             stackedThreadToast({
                               type: "error",
-                              title: "Failed to unarchive thread",
+                              title: t("settings.archived.toast.unarchiveFailed"),
                               description:
-                                error instanceof Error ? error.message : "An error occurred.",
+                                error instanceof Error
+                                  ? error.message
+                                  : t("settings.archived.toast.genericError"),
                             }),
                           );
                         }
@@ -274,7 +311,7 @@ export function ArchivedThreadsPanel() {
                     }}
                   >
                     <ArchiveX className="size-3.5" />
-                    <span>Unarchive</span>
+                    <span>{t("settingsPages.archived.unarchive")}</span>
                   </Button>
                 }
               />

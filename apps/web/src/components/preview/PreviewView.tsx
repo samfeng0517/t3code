@@ -23,12 +23,8 @@ import {
 } from "@t3tools/shared/preview";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
-import {
-  BROWSER_HISTORY_MAX_ENTRIES_PER_PROJECT,
-  recordVisitForThread,
-  removeUrlForThread,
-  useThreadRecentHistory,
-} from "~/browserHistoryStore";
+import { recordVisitForThread } from "~/browserHistoryStore";
+import { normalizeBookmarkUrl } from "~/browserBookmarks.logic";
 import { type ComposerImageAttachment, useComposerDraftStore } from "~/composerDraftStore";
 import { capturePreviewAnnotationScreenshot } from "~/lib/previewAnnotation";
 import { ensureLocalApi } from "~/localApi";
@@ -63,6 +59,7 @@ import { openPreviewSession } from "./openPreviewSession";
 import { showPreviewPopup } from "./showPreviewPopup";
 import { PreviewChromeRow } from "./PreviewChromeRow";
 import { PreviewEmptyState } from "./PreviewEmptyState";
+import { PreviewExtensionActions } from "./PreviewExtensionActions";
 import { PreviewMoreMenu, type PreviewMoreMenuActions } from "./PreviewMoreMenu";
 import { commitBrowserViewportChange } from "~/browser/browserViewportActions";
 import { browserResponsiveViewportForToggle, useBrowserDefaults } from "~/browser/browserDefaults";
@@ -73,6 +70,7 @@ import { previewRuntimeTabId } from "~/browser/previewRuntimeTabId";
 import { BrowserSettingsReadError } from "~/browser/openFileInPreview";
 import { PreviewFileNotShown, PreviewUnreachable } from "./PreviewUnreachable";
 import { revealInFileExplorerLabel } from "./fileExplorerLabel";
+import { t as getMessage, useT, type Translate } from "~/i18n";
 import { shouldShowPreviewEmptyState } from "./previewEmptyStateLogic";
 import { Badge } from "~/components/ui/badge";
 import { BrowserSurfaceSlot } from "~/browser/BrowserSurfaceSlot";
@@ -80,6 +78,8 @@ import { alternatePreviewRuntime, useRendersServerTabNatively } from "~/browser/
 import { ServerBrowserSurface, type ServerBrowserHandle } from "~/browser/ServerBrowserSurface";
 import { cn } from "~/lib/utils";
 import { useBrowserSurfaceStore } from "~/browser/browserSurfaceStore";
+import { useBrowserTabProfileStore } from "~/browser/browserTabProfileStore";
+import { useBrowserTabTransfer } from "~/browser/useBrowserWorkspace";
 import { usePreviewSession } from "./usePreviewSession";
 import { ZoomIndicator } from "./ZoomIndicator";
 import { AgentBrowserCursor } from "./AgentBrowserCursor";
@@ -99,6 +99,11 @@ interface Props {
   tabId?: string | null;
   configuredUrls?: ReadonlyArray<string> | undefined;
   visible: boolean;
+  /**
+   * A workspace tab has no thread: nothing to annotate for, no panel for a mini player, and
+   * it moves to a thread rather than into the workspace.
+   */
+  variant?: "thread" | "workspace";
   onSendAnnotation?: (
     annotation: PreviewAnnotationPayload,
     image: ComposerImageAttachment | null,
@@ -106,10 +111,14 @@ interface Props {
 }
 
 function previewProfileName(
+  t: Translate,
   profiles: ReadonlyArray<{ readonly id: string; readonly name: string }>,
   profileId: string,
 ): string {
-  return profiles.find((profile) => profile.id === profileId)?.name ?? "Removed profile";
+  return (
+    profiles.find((profile) => profile.id === profileId)?.name ??
+    t("workspace.preview.removedProfile")
+  );
 }
 
 const localApi = typeof window === "undefined" ? null : ensureLocalApi();
@@ -143,8 +152,11 @@ export function PreviewView({
   tabId: requestedTabId,
   configuredUrls,
   visible,
+  variant = "thread",
   onSendAnnotation,
 }: Props) {
+  const t = useT();
+  const threadBound = variant === "thread";
   const urlInputRef = useRef<HTMLInputElement | null>(null);
   const [pickActive, setPickActive] = useState(false);
   const canSendAnnotation =
@@ -153,10 +165,6 @@ export function PreviewView({
   const activeRecordingTabIds = useActiveBrowserRecordingTabIds();
   const pickActiveRef = useRef<{ cancelled: boolean } | null>(null);
   const previewState = useThreadPreviewState(threadRef);
-  const recentHistoryEntries = useThreadRecentHistory(
-    threadRef,
-    BROWSER_HISTORY_MAX_ENTRIES_PER_PROJECT,
-  );
   const miniPlayerTabId = usePreviewMiniPlayerStore((state) =>
     selectThreadPreviewMiniPlayerTabId(state.byThreadKey, threadRef),
   );
@@ -165,7 +173,8 @@ export function PreviewView({
   const environmentHttpBaseUrl = useEnvironmentHttpBaseUrl(threadRef.environmentId);
   const open = useAtomCommand(previewEnvironment.open);
   const closePreview = useAtomCommand(previewEnvironment.close, "preview close");
-  const environmentLabel = useEnvironment(threadRef.environmentId)?.label ?? "the environment";
+  const environmentLabel =
+    useEnvironment(threadRef.environmentId)?.label ?? t("workspace.preview.theEnvironment");
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const serverBrowser = useEnvironmentSupportsServerBrowser(threadRef.environmentId);
   const adjust = useAtomCommand(previewEnvironment.adjust, "preview appearance or zoom");
@@ -203,6 +212,9 @@ export function PreviewView({
   const serverInputDisabled = isServerTab && serverControlledTabId !== runtimeTabId;
   const [serverFrameTabId, setServerFrameTabId] = useState<string | null>(null);
   const desktopOverlay = tabId ? (previewState.desktopByTabId[tabId] ?? null) : null;
+  const guestProfileId = useBrowserTabProfileStore((state) =>
+    runtimeTabId ? state.byTabId[runtimeTabId] : undefined,
+  );
   const layoutZoomFactor = useBrowserLayoutZoomFactor(desktopOverlay?.zoomFactor ?? 1);
   const navStatus = snapshot?.navStatus ?? { _tag: "Idle" as const };
   const url = navStatus._tag === "Idle" ? "" : navStatus.url;
@@ -219,10 +231,13 @@ export function PreviewView({
   const browserDefaults = useBrowserDefaults();
   // IPC interprets undefined profile ids as all profiles.
   const activeProfileId = snapshot?.profileId ?? DEFAULT_BROWSER_PROFILE_ID;
-  const activeProfileName = previewProfileName(browserDefaults.profiles, activeProfileId);
+  const activeProfileName = previewProfileName(t, browserDefaults.profiles, activeProfileId);
   const panelRect = useBrowserSurfaceStore((state) =>
     runtimeTabId ? (state.byTabId[runtimeTabId]?.rect ?? null) : null,
   );
+
+  const navUrl = navStatus._tag === "Success" ? navStatus.url : null;
+  const navTitle = navStatus._tag === "Success" ? navStatus.title : null;
 
   const navigateToResolvedUrl = async (resolvedUrl: string) => {
     if (isServerTab && serverSurfaceRef.current) {
@@ -242,7 +257,7 @@ export function PreviewView({
       if (error instanceof BrowserSettingsReadError) {
         toastManager.add({
           type: "error",
-          title: "Unable to open browser",
+          title: getMessage("workspace.preview.toast.openBrowserFailed"),
           description: error.message,
         });
       }
@@ -286,8 +301,8 @@ export function PreviewView({
       const error = squashAtomCommandFailure(result);
       toastManager.add({
         type: "error",
-        title: "Unable to change the browser tab",
-        description: error instanceof Error ? error.message : "An error occurred.",
+        title: getMessage("workspace.preview.toast.changeTabFailed"),
+        description: error instanceof Error ? error.message : getMessage("common.errorOccurred"),
       });
       return;
     }
@@ -357,14 +372,19 @@ export function PreviewView({
     void localApi.shell.openExternal(url).catch(() => undefined);
   };
 
-  const moveTarget = alternatePreviewRuntime(
-    threadRef.environmentId,
-    primaryEnvironmentId,
-    serverBrowser,
-    snapshot,
-  );
+  const moveTarget = threadBound
+    ? alternatePreviewRuntime(
+        threadRef.environmentId,
+        primaryEnvironmentId,
+        serverBrowser,
+        snapshot,
+      )
+    : null;
+  const transfer = useBrowserTabTransfer({ variant, threadRef, snapshot });
   const moveLabel =
-    moveTarget === "server" ? `Open in ${environmentLabel}'s browser` : "Open on this computer";
+    moveTarget === "server"
+      ? t("workspace.preview.openInEnvironmentBrowser", { environment: environmentLabel })
+      : t("workspace.preview.openOnThisComputer");
   const handleMoveTab = async () => {
     if (!moveTarget || !tabId || !snapshot) return;
     const result = await openPreviewSession({
@@ -387,8 +407,8 @@ export function PreviewView({
       const error = squashAtomCommandFailure(result);
       toastManager.add({
         type: "error",
-        title: "Unable to move the browser tab",
-        description: error instanceof Error ? error.message : "An error occurred.",
+        title: getMessage("workspace.preview.toast.moveTabFailed"),
+        description: error instanceof Error ? error.message : getMessage("common.errorOccurred"),
       });
       return;
     }
@@ -456,8 +476,8 @@ export function PreviewView({
     void operation(runtimeTabId).catch((error) => {
       toastManager.add({
         type: "error",
-        title: "Unable to update popped-out preview",
-        description: error instanceof Error ? error.message : "An error occurred.",
+        title: getMessage("workspace.preview.toast.popOutUpdateFailed"),
+        description: error instanceof Error ? error.message : getMessage("common.errorOccurred"),
       });
     });
   };
@@ -478,8 +498,8 @@ export function PreviewView({
                 toastId,
                 stackedThreadToast({
                   type: "error",
-                  title: "Unable to copy recording path",
-                  description: "Clipboard API unavailable.",
+                  title: getMessage("workspace.preview.toast.copyRecordingPathFailed"),
+                  description: getMessage("workspace.preview.toast.clipboardUnavailable"),
                   actionProps: revealAction,
                 }),
               );
@@ -500,8 +520,9 @@ export function PreviewView({
                   toastId,
                   stackedThreadToast({
                     type: "error",
-                    title: "Unable to copy recording path",
-                    description: error instanceof Error ? error.message : "An error occurred.",
+                    title: getMessage("workspace.preview.toast.copyRecordingPathFailed"),
+                    description:
+                      error instanceof Error ? error.message : getMessage("common.errorOccurred"),
                     actionProps: revealAction,
                   }),
                 );
@@ -518,11 +539,13 @@ export function PreviewView({
               toastId,
               stackedThreadToast({
                 type: "success",
-                title: "Recording saved",
+                title: getMessage("workspace.preview.toast.recordingSaved"),
                 actionProps: revealAction,
                 data: {
                   secondaryActionProps: {
-                    children: pathCopied ? "Copied!" : "Copy path",
+                    children: pathCopied
+                      ? getMessage("workspace.preview.toast.copied")
+                      : getMessage("workspace.preview.toast.copyPath"),
                     disabled: pathCopied,
                     onClick: copyPath,
                   },
@@ -535,11 +558,11 @@ export function PreviewView({
           toastId = toastManager.add(
             stackedThreadToast({
               type: "success",
-              title: "Recording saved",
+              title: getMessage("workspace.preview.toast.recordingSaved"),
               actionProps: revealAction,
               data: {
                 secondaryActionProps: {
-                  children: "Copy path",
+                  children: getMessage("workspace.preview.toast.copyPath"),
                   onClick: copyPath,
                 },
                 secondaryActionVariant: "outline",
@@ -550,8 +573,9 @@ export function PreviewView({
         (error) => {
           toastManager.add({
             type: "error",
-            title: "Unable to stop recording",
-            description: error instanceof Error ? error.message : "An error occurred.",
+            title: getMessage("workspace.preview.toast.stopRecordingFailed"),
+            description:
+              error instanceof Error ? error.message : getMessage("common.errorOccurred"),
           });
         },
       );
@@ -559,11 +583,12 @@ export function PreviewView({
     }
     if (record) {
       void startBrowserRecording(runtimeTabId, threadRef, tabId).catch((error) => {
-        const description = error instanceof Error ? error.message : "An error occurred.";
+        const description =
+          error instanceof Error ? error.message : getMessage("common.errorOccurred");
         if (isBrowserRecordingStartCancelledError(error)) return;
         toastManager.add({
           type: "error",
-          title: "Unable to start recording",
+          title: getMessage("workspace.preview.toast.startRecordingFailed"),
           description,
         });
       });
@@ -581,7 +606,7 @@ export function PreviewView({
 
         const updateScreenshotToast = (
           type: "success" | "error" = "success",
-          title = "Screenshot saved",
+          title = getMessage("workspace.preview.toast.screenshotSaved"),
           description?: string,
         ) => {
           toastManager.update(
@@ -591,7 +616,9 @@ export function PreviewView({
               title,
               description,
               actionProps: {
-                children: imageCopied ? "Copied!" : "Copy image",
+                children: imageCopied
+                  ? getMessage("workspace.preview.toast.copied")
+                  : getMessage("workspace.preview.toast.copyImage"),
                 disabled: imageCopied,
                 onClick: copyImage,
               },
@@ -600,7 +627,9 @@ export function PreviewView({
                   {
                     id: "copy-path",
                     props: {
-                      children: pathCopied ? "Copied!" : "Copy path",
+                      children: pathCopied
+                        ? getMessage("workspace.preview.toast.copied")
+                        : getMessage("workspace.preview.toast.copyPath"),
                       disabled: pathCopied,
                       onClick: copyPath,
                     },
@@ -619,8 +648,8 @@ export function PreviewView({
           if (!navigator.clipboard?.writeText) {
             updateScreenshotToast(
               "error",
-              "Unable to copy screenshot path",
-              "Clipboard API unavailable.",
+              getMessage("workspace.preview.toast.copyScreenshotPathFailed"),
+              getMessage("workspace.preview.toast.clipboardUnavailable"),
             );
             return;
           }
@@ -637,8 +666,8 @@ export function PreviewView({
             (error) => {
               updateScreenshotToast(
                 "error",
-                "Unable to copy screenshot path",
-                error instanceof Error ? error.message : "An error occurred.",
+                getMessage("workspace.preview.toast.copyScreenshotPathFailed"),
+                error instanceof Error ? error.message : getMessage("common.errorOccurred"),
               );
             },
           );
@@ -657,8 +686,8 @@ export function PreviewView({
             (error) => {
               updateScreenshotToast(
                 "error",
-                "Unable to copy screenshot",
-                error instanceof Error ? error.message : "An error occurred.",
+                getMessage("workspace.preview.toast.copyScreenshotFailed"),
+                error instanceof Error ? error.message : getMessage("common.errorOccurred"),
               );
             },
           );
@@ -667,9 +696,9 @@ export function PreviewView({
         toastId = toastManager.add(
           stackedThreadToast({
             type: "success",
-            title: "Screenshot saved",
+            title: getMessage("workspace.preview.toast.screenshotSaved"),
             actionProps: {
-              children: "Copy image",
+              children: getMessage("workspace.preview.toast.copyImage"),
               onClick: copyImage,
             },
             data: {
@@ -677,7 +706,7 @@ export function PreviewView({
                 {
                   id: "copy-path",
                   props: {
-                    children: "Copy path",
+                    children: getMessage("workspace.preview.toast.copyPath"),
                     onClick: copyPath,
                   },
                 },
@@ -693,8 +722,8 @@ export function PreviewView({
       (error) => {
         toastManager.add({
           type: "error",
-          title: "Unable to capture screenshot",
-          description: error instanceof Error ? error.message : "An error occurred.",
+          title: getMessage("workspace.preview.toast.captureFailed"),
+          description: error instanceof Error ? error.message : getMessage("common.errorOccurred"),
         });
       },
     );
@@ -758,8 +787,8 @@ export function PreviewView({
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Could not capture the picked element",
-            description: "The annotation was kept without the screenshot.",
+            title: getMessage("workspace.preview.toast.pickCaptureFailed"),
+            description: getMessage("workspace.preview.toast.pickCaptureFailedDetail"),
           }),
         );
       }
@@ -853,22 +882,43 @@ export function PreviewView({
         onForward={handleForward}
         onRefresh={handleRefresh}
         onSubmit={(next) => void handleSubmitUrl(next)}
+        bookmark={
+          navUrl && normalizeBookmarkUrl(navUrl) !== null
+            ? { url: navUrl, title: navTitle ?? "" }
+            : undefined
+        }
         onOpenInBrowser={tabId ? handleOpenInBrowser : undefined}
         onCapture={previewBridge && tabId && !isServerTab ? handleCapture : undefined}
         captureDisabled={!desktopOverlay || isUnreachable}
         recording={recordingRuntimeTabId !== null}
         onPictureInPicture={
-          tabId && (isServerTab || previewBridge) ? handlePictureInPicture : undefined
+          threadBound && tabId && (isServerTab || previewBridge)
+            ? handlePictureInPicture
+            : undefined
         }
         pictureInPicture={miniPlayerTabId === tabId}
         pictureInPictureDisabled={
           isUnreachable || (!isServerTab && !desktopOverlay?.hasWebContents)
         }
-        onPickElement={previewBridge && tabId && !isServerTab ? handlePickElement : undefined}
+        onPickElement={
+          threadBound && previewBridge && tabId && !isServerTab ? handlePickElement : undefined
+        }
         pickActive={pickActive}
         pickDisabled={!tabId || isUnreachable}
-        pickDisabledReason={
-          isUnreachable ? "Page didn't load. Pick is unavailable until the page renders" : undefined
+        pickDisabledReason={isUnreachable ? t("workspace.preview.pickUnavailable") : undefined}
+        extensionActions={
+          visible &&
+          previewBridge &&
+          tabId &&
+          !isServerTab &&
+          guestProfileId !== undefined &&
+          desktopOverlay?.webContentsId != null ? (
+            <PreviewExtensionActions
+              environmentId={threadRef.environmentId}
+              profileId={guestProfileId}
+              webContentsId={desktopOverlay.webContentsId}
+            />
+          ) : null
         }
         leadingActions={
           activeProfileId !== browserDefaults.profileId ? (
@@ -891,6 +941,7 @@ export function PreviewView({
               {...(moveTarget
                 ? { move: { label: moveLabel, onMove: () => void handleMoveTab() } }
                 : {})}
+              {...(transfer ? { transfer } : {})}
               profileName={activeProfileName}
               zoomFactor={
                 serverOwnsRendering ? serverZoomFactor : (desktopOverlay?.zoomFactor ?? 1)
@@ -967,7 +1018,7 @@ export function PreviewView({
           ) : (
             <div className="flex h-full items-center justify-center p-8 text-center">
               <p className="max-w-sm text-sm text-muted-foreground">
-                This tab is open in the T3 Code desktop app.
+                {t("workspace.preview.openInDesktopApp")}
               </p>
             </div>
           )
@@ -977,8 +1028,8 @@ export function PreviewView({
             threadRef={threadRef}
             environmentId={threadRef.environmentId}
             configuredUrls={configuredUrls}
-            recentEntries={recentHistoryEntries}
-            onRemoveRecent={(url) => removeUrlForThread(threadRef, url)}
+            showLocalServers={threadBound}
+            onSubmitQuery={(query) => void handleSubmitUrl(query)}
             onOpenUrl={(next) => void handleOpenServerUrl(next)}
           />
         ) : null}

@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { EnvironmentId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
+import { useT } from "~/i18n";
 import { environmentThreadShells } from "~/state/threads";
 import {
   AlertDialog,
@@ -37,7 +38,7 @@ const runningThreadCountAtom = Atom.family((environmentIds: string) =>
 interface UpdateEverythingDialogProps {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
-  readonly summary: string;
+  readonly items: string;
   readonly lines: ReadonlyArray<string>;
   readonly restarts: ReadonlyArray<RestartingMachine>;
   readonly skipped: ReadonlyArray<SkippedMachine>;
@@ -60,12 +61,13 @@ export function UpdateEverythingDialog({
 }
 
 function UpdateEverythingDialogContent({
-  summary,
+  items,
   lines,
   restarts,
   skipped,
   onConfirm,
 }: Omit<UpdateEverythingDialogProps, "open" | "onOpenChange">) {
+  const t = useT();
   const stopped = useAtomValue(
     runningThreadCountAtom(
       restarts
@@ -83,33 +85,44 @@ function UpdateEverythingDialogContent({
     ),
   );
   const running = stopped + continuing;
-  const threads = `${running} running ${running === 1 ? "thread" : "threads"}`;
+  const threads = t(
+    running === 1
+      ? "sidebar.updateDialog.runningThreads.one"
+      : "sidebar.updateDialog.runningThreads.other",
+    { count: running },
+  );
 
   return (
     <>
       <AlertDialogHeader>
-        <AlertDialogTitle>{summary}?</AlertDialogTitle>
+        <AlertDialogTitle>{t("sidebar.updateDialog.titleWithItems", { items })}</AlertDialogTitle>
         <AlertDialogDescription className="whitespace-pre-line">
           {lines.join("\n")}
         </AlertDialogDescription>
         {running > 0 ? (
           <p className="pt-2 text-sm">
             {stopped === 0
-              ? `${threads} will be interrupted and can resume after the restart.`
+              ? t("sidebar.updateDialog.interruptedAllResume", { threads })
               : continuing === 0
-                ? `${threads} will be interrupted.`
-                : `${threads} will be interrupted. ${continuing} can resume after the restart.`}
+                ? t("sidebar.updateDialog.interrupted", { threads })
+                : t("sidebar.updateDialog.interruptedSomeResume", { threads, continuing })}
           </p>
         ) : null}
         {skipped.length > 0 ? (
           <p className="whitespace-pre-line pt-2 text-sm">
-            {skipped.map((machine) => `Skips ${machine.label}: ${machine.reason}`).join("\n")}
+            {skipped
+              .map((machine) =>
+                t("sidebar.updateDialog.skips", { machine: machine.label, reason: machine.reason }),
+              )
+              .join("\n")}
           </p>
         ) : null}
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
-        <Button onClick={onConfirm}>Update</Button>
+        <AlertDialogClose render={<Button variant="outline" />}>
+          {t("common.cancel")}
+        </AlertDialogClose>
+        <Button onClick={onConfirm}>{t("sidebar.updateDialog.confirm")}</Button>
       </AlertDialogFooter>
     </>
   );

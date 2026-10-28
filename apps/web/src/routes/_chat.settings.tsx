@@ -12,6 +12,7 @@ import {
   useSettingsScope,
 } from "../components/settings/SettingsScopeContext";
 import { useEnvironments } from "../state/environments";
+import { useT } from "~/i18n";
 import { SettingsScopeNotice } from "../components/settings/SettingsScopeNotice";
 import { SETTINGS_DEVICE_ONLY_PATHS } from "../components/settings/SettingsScopeSentence";
 import { SettingsPageContainer } from "../components/settings/settingsLayout";
@@ -21,12 +22,16 @@ import {
 } from "../components/settings/settingsScopeNavigation";
 import {
   getSettingsSearchTargetScope,
-  getThreadAutoSettlementSearchAvailability,
+  getThreadAutomationSearchAvailability,
   isSettingsSearchScopeAvailable,
   movedSettingsPath,
+  SETTINGS_SEARCH_ITEMS,
+  settingsSearchItemTitle,
+  type SettingsSearchItem,
 } from "../components/settings/settingsSearch";
 
 function RestoreDeviceDefaultsButton({ onRestored }: { onRestored: () => void }) {
+  const t = useT();
   const { changedSettingLabels, restoreDefaults } = useSettingsRestore(onRestored);
   return (
     <Button
@@ -36,34 +41,45 @@ function RestoreDeviceDefaultsButton({ onRestored }: { onRestored: () => void })
       onClick={() => void restoreDefaults()}
     >
       <RotateCcwIcon className="mx-1 size-3.5" />
-      <span className="max-sm:sr-only">Restore device defaults</span>
+      <span className="max-sm:sr-only">{t("settings.route.restoreDeviceDefaults")}</span>
     </Button>
   );
 }
 
 function SettingsScopeBoundary({ pathname, children }: { pathname: string; children: ReactNode }) {
+  const t = useT();
   const { scope, connectedEnvironments } = useSettingsScope();
   const { environments } = useEnvironments();
   const hash = useLocation({ select: (location) => location.hash });
   const searchTarget = getSettingsSearchTargetScope(hash);
-  const autoSettlementAvailability = searchTarget?.requiresThreadAutoSettlement
-    ? getThreadAutoSettlementSearchAvailability(environments, scope)
+  const searchItems: readonly SettingsSearchItem[] = SETTINGS_SEARCH_ITEMS;
+  const searchItem =
+    searchItems.find((candidate) => candidate.id === hash) ??
+    searchItems.find((candidate) => candidate.targetId === hash);
+  const searchTargetTitle = searchItem ? settingsSearchItemTitle(searchItem, t) : "";
+  const requiredAutomation = searchTarget?.requiresThreadAutoSettlement
+    ? "threadAutoSettlement"
+    : searchTarget?.requiresThreadAutoCleanup
+      ? "threadAutoCleanup"
+      : null;
+  const automationAvailability = requiredAutomation
+    ? getThreadAutomationSearchAvailability(requiredAutomation, environments, scope)
     : null;
   if (
     scope.kind !== "unavailable" &&
     searchTarget &&
-    autoSettlementAvailability &&
-    !autoSettlementAvailability.isTargetAvailable
+    automationAvailability &&
+    !automationAvailability.isTargetAvailable
   ) {
     return (
       <SettingsScopeNotice
         target="environment"
         targetId={hash}
-        eligibleEnvironmentIds={autoSettlementAvailability.eligibleEnvironmentIds}
+        eligibleEnvironmentIds={automationAvailability.eligibleEnvironmentIds}
       >
-        {autoSettlementAvailability.eligibleEnvironmentIds.length > 0
-          ? `${searchTarget.title} requires a supporting environment. Choose one to continue.`
-          : `${searchTarget.title} requires a supporting environment. Connect or update an environment to continue.`}
+        {automationAvailability.eligibleEnvironmentIds.length > 0
+          ? t("settings.route.scopeNotice.needsEnvironmentChoose", { title: searchTargetTitle })
+          : t("settings.route.scopeNotice.needsEnvironmentConnect", { title: searchTargetTitle })}
       </SettingsScopeNotice>
     );
   }
@@ -80,7 +96,7 @@ function SettingsScopeBoundary({ pathname, children }: { pathname: string; child
         : "all";
     return (
       <SettingsScopeNotice target={target} targetId={hash}>
-        {`${searchTarget.title} is not available for the selected target. Choose its owning scope to continue.`}
+        {t("settings.route.scopeNotice.unavailableForTarget", { title: searchTargetTitle })}
       </SettingsScopeNotice>
     );
   }
@@ -97,7 +113,7 @@ function SettingsScopeBoundary({ pathname, children }: { pathname: string; child
     return (
       <SettingsPageContainer>
         <p className="text-sm text-muted-foreground">
-          Reconnect {scope.label} to change its settings.
+          {t("settings.route.reconnectEnvironment", { label: scope.label })}
         </p>
       </SettingsPageContainer>
     );

@@ -2,6 +2,7 @@ import type { DesktopSnapShotState } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
+import { t } from "~/i18n";
 import { getDesktopSnapShotBridge } from "../lib/desktopSnapShot";
 
 export interface SnapShotSetupError {
@@ -10,7 +11,7 @@ export interface SnapShotSetupError {
 }
 
 export function snapShotSetupError(title: string, error: unknown): SnapShotSetupError {
-  return { title, message: error instanceof Error ? error.message : "Try again." };
+  return { title, message: error instanceof Error ? error.message : t("common.tryAgain") };
 }
 
 export interface DesktopSnapShotLoad {

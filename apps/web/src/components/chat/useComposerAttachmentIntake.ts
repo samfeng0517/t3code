@@ -44,6 +44,7 @@ import {
   prepareImageForAttachment,
 } from "../../lib/imageCompression";
 import { requestConfirmDialog } from "~/confirmDialog";
+import { useT } from "~/i18n";
 import { toastManager } from "../ui/toast";
 import { type RefObject, useRef } from "react";
 import {
@@ -109,6 +110,7 @@ export function useComposerAttachmentIntake(input: {
     removeComposerImageFromDraft,
     insertAttachmentReferences,
   } = input;
+  const t = useT();
   const pastedTextFileNamesRef = useRef<{ targetKey: string; names: Set<string> }>({
     targetKey: "",
     names: new Set(),
@@ -131,7 +133,7 @@ export function useComposerAttachmentIntake(input: {
     ) {
       toastManager.add({
         type: "error",
-        title: "This question cannot accept attachments.",
+        title: t("composer.toast.questionNoAttachments"),
       });
       return false;
     }
@@ -234,10 +236,11 @@ export function useComposerAttachmentIntake(input: {
         const attached = storedFiles[0]!;
         toastManager.add({
           type: "info",
-          title: `Large paste attached as ${attached.name}`,
-          description: `${formatAttachmentSize(attached.sizeBytes)} · Use ${
-            isMacPlatform(navigator.platform) ? "⌘⇧V" : "Ctrl+Shift+V"
-          } to keep a large paste inline.`,
+          title: t("composer.toast.largePaste.title", { name: attached.name }),
+          description: t("composer.toast.largePaste.description", {
+            size: formatAttachmentSize(attached.sizeBytes),
+            shortcut: isMacPlatform(navigator.platform) ? "⌘⇧V" : "Ctrl+Shift+V",
+          }),
           data: { hideCopyButton: true },
         });
       }
@@ -347,7 +350,9 @@ export function useComposerAttachmentIntake(input: {
       return;
     }
     const confirmation = requestConfirmDialog(
-      `Remove ${image?.name ?? "this image"} from the message?\nIt is referenced in your text; removing it also removes every reference.`,
+      t("composer.attach.removeReferencedImageConfirm", {
+        name: image?.name ?? t("composer.attach.thisImage"),
+      }),
       { variant: "destructive" },
     );
     if (!confirmation) {
@@ -400,8 +405,8 @@ export function useComposerAttachmentIntake(input: {
       }
       toastManager.add({
         type: "error",
-        title: "Pasted text is too large for this message",
-        description: "Remove some text or an attachment, then paste again.",
+        title: t("composer.toast.pasteTooLargeForMessage.title"),
+        description: t("composer.toast.pasteTooLargeForMessage.description"),
         data: { hideCopyButton: true },
       });
       return true;
@@ -422,8 +427,8 @@ export function useComposerAttachmentIntake(input: {
       if (!wouldExceedInputLimit) return false;
       toastManager.add({
         type: "error",
-        title: "Pasted text is too large to attach",
-        description: "Reduce the clipboard contents or save a smaller excerpt as a file.",
+        title: t("composer.toast.pasteTooLargeToAttach.title"),
+        description: t("composer.toast.pasteTooLargeToAttach.description"),
         data: { hideCopyButton: true },
       });
       return true;

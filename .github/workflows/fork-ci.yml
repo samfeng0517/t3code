@@ -1,0 +1,77 @@
+# CI for this fork: checks and tests only. Upstream's workflows stay in the tree
+# unchanged so upstream merges stay clean, but they are disabled on this
+# repository: they target Blacksmith runners and upstream's release secrets.
+# Desktop artifacts are built locally (docs/operations/development.md).
+#
+#   check        upstream Lint + the typecheck half of Build and Typecheck
+#   test         upstream Test + Test Web: every workspace test suite except t3
+#   test-server  upstream Test Server: the t3 (apps/server) suite
+#
+# Left out of upstream's CI: the `changes` gating (every job always runs), the
+# desktop build, Rust crates, the macOS mobile lint, the release smoke test,
+# the PR-assets check and the thread transfer report upload.
+name: Fork CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-ci-deps
+
+      - run: vp check
+      - run: vp run --filter @t3tools/source-control-github generate --check
+      - run: vp run --filter t3 generate --check
+      # tsc-rs reads Electron's types from the npm package, so no Electron runtime.
+      - run: vp run typecheck
+      - run: vp run knip:check
+
+  test:
+    name: Test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      # The desktop tests compile the browser secret helper.
+      - run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config
+
+      - uses: ./.github/actions/setup-ci-deps
+
+      - run: node apps/web/node_modules/playwright/cli.js install --with-deps --only-shell chromium
+      - run: vp run --filter @t3tools/desktop ensure:electron
+      - run: python3 -B .github/scripts/stage-preview-bundle.test.py
+      - run: node --test .github/scripts/check-nightly-release.test.cjs .github/scripts/vercel-deployment-output.test.cjs
+      - run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/monorepo' --filter '!@t3tools/web' test
+      - run: vp run --filter @t3tools/web test
+
+  # apps/server runs its test files one at a time (fileParallelism: false), so
+  # it gets a job of its own instead of sharing a runner with the other suites.
+  test-server:
+    name: Test Server
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-ci-deps
+
+      - run: node apps/server/node_modules/playwright-core/cli.js install --with-deps --only-shell chromium
+      - run: vp run --filter t3 test

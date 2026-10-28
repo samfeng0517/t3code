@@ -115,6 +115,30 @@ describe("command permissions", () => {
     ),
   );
 
+  it.effect("requires the destination operate grant to press a mod's button", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = yield* setup;
+        const act = createCommandPermissions(runtime, WS_METHODS.modsAct);
+        registry.set(
+          sessions(env),
+          AsyncResult.success({
+            ...grant(false),
+            scopes: [AuthOrchestrationReadScope],
+            permissions: [AuthOrchestrationReadScope],
+          }),
+        );
+        expect(registry.get(act.permissionAtom(env))).toBe(false);
+        expect((yield* act.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+          "EnvironmentAuthorizationError",
+        );
+        registry.set(sessions(env), AsyncResult.success(grant(true)));
+        expect(registry.get(act.permissionAtom(env))).toBe(true);
+        yield* act.authorize(registry, env);
+      }),
+    ),
+  );
+
   it.effect("uses the target grant for both availability and execution", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -249,6 +273,32 @@ it.effect(
         yield* prepare.authorize(registry, env, input);
       }),
     ),
+);
+
+it.effect("requires the destination source-control grant to fetch branches", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const registry = yield* setup;
+      const fetch = createCommandPermissions(runtime, WS_METHODS.vcsFetch);
+      registry.set(sessions(env), AsyncResult.success(grant(true)));
+      expect(registry.get(fetch.permissionAtom(env))).toBe(false);
+      expect((yield* fetch.authorize(registry, env).pipe(Effect.flip)).requiredPermission).toBe(
+        AuthSourceControlWriteScope,
+      );
+      registry.set(
+        sessions(env),
+        AsyncResult.success({
+          ...grant(false),
+          scopes: [AuthSourceControlWriteScope],
+          permissions: [AuthSourceControlWriteScope],
+        }),
+      );
+      expect(registry.get(fetch.permissionAtom(env))).toBe(true);
+      yield* fetch.authorize(registry, env);
+      registry.set(sessions(other), AsyncResult.success(grant(true)));
+      expect(registry.get(fetch.permissionAtom(other))).toBe(false);
+    }),
+  ),
 );
 
 it.effect.each(["commit", "push", "commit_push", "create_pr", "commit_push_pr"] as const)(

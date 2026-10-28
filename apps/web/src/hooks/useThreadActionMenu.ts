@@ -36,6 +36,7 @@ import {
 } from "../state/entities";
 import { usePrimaryEnvironmentId } from "../state/environments";
 import { readLocalApi } from "../localApi";
+import { t } from "~/i18n";
 import {
   deriveLogicalProjectKeyFromSettings,
   derivePhysicalProjectKey,
@@ -201,7 +202,6 @@ export function useThreadActionMenu(input: {
               branch: thread.branch,
               worktreePath: thread.worktreePath,
               envMode: thread.worktreePath ? "worktree" : "local",
-              startFromOrigin: false,
             }),
           );
           if (result._tag === "Failure") {
@@ -275,7 +275,7 @@ export function useThreadActionMenu(input: {
         case "archive": {
           if (confirmThreadArchive) {
             const confirmed = await settlePromise(() =>
-              api.dialogs.confirm(`Archive thread "${thread.title}"?`),
+              api.dialogs.confirm(t("common.threadConfirm.archive", { title: thread.title })),
             );
             if (confirmed._tag === "Failure" || !confirmed.value) return;
           }
@@ -298,8 +298,8 @@ export function useThreadActionMenu(input: {
             const confirmed = await settlePromise(() =>
               api.dialogs.confirm(
                 [
-                  `Delete thread "${thread.title}"?`,
-                  "This permanently clears conversation history for this thread.",
+                  t("common.threadConfirm.delete", { title: thread.title }),
+                  t("common.threadConfirm.deleteDescription"),
                 ].join("\n"),
                 { variant: "destructive" },
               ),

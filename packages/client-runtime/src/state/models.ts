@@ -9,6 +9,7 @@ import type {
   OrchestrationV2RunStatus,
   OrchestrationV2ProviderFailureClass,
   OrchestrationV2ThreadProjection,
+  OrchestrationV2ThreadArchivedBy,
   OrchestrationV2ThreadShell,
   PlanId,
   ProjectId,
@@ -169,6 +170,7 @@ export interface EnvironmentThreadShell {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly archivedAt: string | null;
+  readonly archivedBy?: OrchestrationV2ThreadArchivedBy | null;
   readonly settledOverride: "settled" | "active" | null;
   readonly settledAt: string | null;
   readonly unsettledAt: string | null;
@@ -324,6 +326,7 @@ export function presentThreadShell(
     createdAt: iso(thread.createdAt),
     updatedAt,
     archivedAt: nullableIso(thread.archivedAt),
+    archivedBy: thread.archivedBy ?? null,
     settledOverride: thread.settledOverride,
     settledAt: nullableIso(thread.settledAt),
     unsettledAt: nullableIso(thread.unsettledAt ?? null),

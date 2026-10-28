@@ -67,6 +67,7 @@ describe("projectScripts helpers", () => {
       command: "true",
       icon: "play",
       waitForSetup: false,
+      runOnWorktreeRemove: false,
       previewUrl: null,
       autoOpenPreview: false,
     } as const;
@@ -88,5 +89,23 @@ describe("projectScripts helpers", () => {
     expect(
       releaseClaimedRoles(holder, { ...input, runOnWorktreeCreate: false, runOnSettle: false }),
     ).toBe(holder);
+    expect(
+      releaseClaimedRoles(
+        { ...holder, runOnWorktreeRemove: true },
+        { ...input, runOnWorktreeCreate: false, runOnSettle: false, runOnWorktreeRemove: true },
+      ),
+    ).toMatchObject({ runOnWorktreeCreate: true, runOnSettle: true, runOnWorktreeRemove: false });
+  });
+
+  it("never picks the removal action as the primary script", () => {
+    const remove = {
+      id: "down",
+      name: "Down",
+      command: "docker compose down",
+      icon: "configure" as const,
+      runOnWorktreeCreate: false,
+      runOnWorktreeRemove: true,
+    };
+    expect(primaryProjectScript([remove])).toBeNull();
   });
 });

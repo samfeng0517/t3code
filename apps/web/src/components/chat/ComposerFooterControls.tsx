@@ -12,6 +12,7 @@ import type { ContextWindowSnapshot } from "../../lib/contextWindow";
 import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ComposerControl, ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
+import { useT } from "../../i18n";
 import { useComposerMenuProps } from "./composerEventScope";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
@@ -35,6 +36,7 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
   onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
+  const t = useT();
   const size = props.size ?? "sm";
   const composerFloatingLayerProps = useComposerMenuProps();
   const [open, setOpen] = useComposerMenuState(props.hidden);
@@ -44,8 +46,8 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
   const RuntimeModeIcon = runtimeModeOption.icon;
   const interactionModeTooltip =
     props.interactionMode === "plan"
-      ? "Plan mode. Click to return to normal build mode"
-      : "Default mode. Click to enter plan mode";
+      ? t("composer.modeToggle.planTooltip")
+      : t("composer.modeToggle.defaultTooltip");
 
   const interactionModeToggle = props.showInteractionModeToggle ? (
     <Tooltip>
@@ -75,7 +77,9 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
           />
         )}
         <span data-composer-control-label className="sr-only sm:not-sr-only">
-          {props.interactionMode === "plan" ? "Plan" : "Build"}
+          {props.interactionMode === "plan"
+            ? t("composer.modeToggle.plan")
+            : t("composer.modeToggle.build")}
         </span>
       </TooltipTrigger>
       <TooltipPopup side="top">{interactionModeTooltip}</TooltipPopup>
@@ -96,12 +100,14 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
               <ComposerSelectControl
                 data-composer-shortcut="composer.mode"
                 size={size}
-                aria-label="Runtime mode"
+                aria-label={t("composer.runtimeMode.ariaLabel")}
               />
             }
           >
             <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
-            <SelectValue data-composer-control-label>{runtimeModeOption.label}</SelectValue>
+            <SelectValue data-composer-control-label>
+              {t(`composer.runtimeMode.${runtimeModeOption.mode}.label`)}
+            </SelectValue>
           </TooltipTrigger>
           <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
             {props.runtimeModeOptions.map((option) => {
@@ -117,10 +123,10 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
                     <div className="grid min-w-0 flex-1 gap-0.5">
                       <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
                         <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                        {option.label}
+                        {t(`composer.runtimeMode.${option.mode}.label`)}
                       </span>
                       <span className="text-muted-foreground text-xs leading-4">
-                        {option.description}
+                        {t(`composer.runtimeMode.${option.mode}.description`)}
                       </span>
                     </div>
                   </div>
@@ -129,7 +135,9 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
             })}
           </SelectPopup>
         </Select>
-        <TooltipPopup side="top">{runtimeModeOption.description}</TooltipPopup>
+        <TooltipPopup side="top">
+          {t(`composer.runtimeMode.${runtimeModeOption.mode}.description`)}
+        </TooltipPopup>
       </Tooltip>
 
       {interactionModeToggle}

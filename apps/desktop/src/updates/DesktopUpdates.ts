@@ -7,6 +7,10 @@ import {
   type DesktopUpdateCheckResult,
   type DesktopUpdateState,
 } from "@t3tools/contracts";
+import {
+  APP_SELF_UPDATE_DISABLED_MESSAGE,
+  AppSelfUpdateEnabled,
+} from "@t3tools/shared/appSelfUpdate";
 import { errorTag } from "@t3tools/shared/observability";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -306,6 +310,7 @@ function shouldBroadcastDownloadProgress(
 }
 
 function getAutoUpdateDisabledReason(args: {
+  appSelfUpdateEnabled: boolean;
   isDevelopment: boolean;
   isPackaged: boolean;
   platform: NodeJS.Platform;
@@ -314,6 +319,9 @@ function getAutoUpdateDisabledReason(args: {
   disabledByEnv: boolean;
   hasUpdateFeedConfig: boolean;
 }): string | null {
+  if (!args.appSelfUpdateEnabled) {
+    return APP_SELF_UPDATE_DISABLED_MESSAGE;
+  }
   if (!args.hasUpdateFeedConfig) {
     return "Automatic updates are not available because no update feed is configured.";
   }
@@ -343,6 +351,7 @@ export const make = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const fileSystem = yield* FileSystem.FileSystem;
   const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
+  const appSelfUpdateEnabled = yield* AppSelfUpdateEnabled;
 
   const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(Option.none());
   const activeUpdateActionRef = yield* Ref.make<Option.Option<UpdateAction>>(Option.none());
@@ -415,6 +424,7 @@ export const make = Effect.gen(function* () {
     const hasFeedConfig = yield* hasUpdateFeedConfig;
     return Option.fromNullishOr(
       getAutoUpdateDisabledReason({
+        appSelfUpdateEnabled,
         isDevelopment: environment.isDevelopment,
         isPackaged: environment.isPackaged,
         platform: environment.platform,

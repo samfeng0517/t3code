@@ -309,6 +309,7 @@ const ACTION_ACCESS_REFUSALS: Record<PullRequestAction, string> = {
   "delete-branch": "You need write access on the source repository to delete its branch.",
   "approve-workflows":
     "You need write access on this repository to approve workflows from a fork pull request.",
+  unapprove: "Only an approval you gave can be taken back.",
 };
 
 const REVIEWER_REQUEST_REFUSAL = "You need write access on this repository to ask for a review.";

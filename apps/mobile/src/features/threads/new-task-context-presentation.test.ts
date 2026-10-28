@@ -4,6 +4,7 @@ import {
   fillNewTaskWorkspaceBranch,
   resolveNewTaskBranchLabel,
   resolveNewTaskBranchWorktreePath,
+  resolveNewTaskCreationStartFromOrigin,
   resolveNewTaskLocalWorkspaceSelection,
   resolveNewTaskWorkspaceSelection,
 } from "./new-task-context-presentation";
@@ -26,7 +27,6 @@ describe("resolveNewTaskWorkspaceSelection", () => {
             mode,
             branch: "main",
             worktreePath: "/old-worktree",
-            startFromOrigin: true,
             pullRequestReference: "https://github.com/acme/repo/pull/123",
           },
           fallback,
@@ -56,11 +56,16 @@ describe("resolveNewTaskBranchLabel", () => {
     expect(
       resolveNewTaskBranchLabel({
         branchName: null,
-        startFromOrigin: false,
         workspaceMode: "worktree",
         pullRequestReference,
       }),
     ).toBe(label);
+  });
+
+  it("should label a worktree branch without a remote suffix when worktree mode is selected", () => {
+    expect(resolveNewTaskBranchLabel({ branchName: "main", workspaceMode: "worktree" })).toBe(
+      "From main",
+    );
   });
 });
 
@@ -104,6 +109,18 @@ describe("resolveNewTaskBranchWorktreePath", () => {
         branchWorktreePath: "/repo/.t3/worktrees/feature",
       }),
     ).toBeNull();
+  });
+});
+
+describe("resolveNewTaskCreationStartFromOrigin", () => {
+  it("should request a synced base when worktree mode is selected", () => {
+    expect(resolveNewTaskCreationStartFromOrigin("worktree")).toStrictEqual({
+      startFromOrigin: true,
+    });
+  });
+
+  it("should omit startFromOrigin when local mode is selected", () => {
+    expect(resolveNewTaskCreationStartFromOrigin("local")).toStrictEqual({});
   });
 });
 

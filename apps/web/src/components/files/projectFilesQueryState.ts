@@ -11,6 +11,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { AsyncResult, Atom } from "effect/reactivity";
 
+import { t } from "~/i18n";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useFilesystemReadAccess } from "~/state/filesystem";
 import { projectEnvironment } from "~/state/projects";
@@ -186,7 +187,7 @@ function failureCause<A>(result: AsyncResult.AsyncResult<A, unknown>): unknown {
 
 function errorMessage(cause: unknown): string | null {
   if (cause === null) return null;
-  return cause instanceof Error ? cause.message : "Workspace query failed.";
+  return cause instanceof Error ? cause.message : t("workspace.files.queryFailed");
 }
 
 const isProjectReadFileError = Schema.is(ProjectReadFileError);
@@ -212,7 +213,7 @@ export function useProjectEntriesQuery(
       ? null
       : canReadFiles
         ? errorMessage(failureCause(result))
-        : (fileAccess.error ?? "This connection cannot read host files."),
+        : (fileAccess.error ?? t("workspace.file.cannotReadFiles")),
     isPending: fileAccess.isPending || result.waiting,
     refresh,
   };
@@ -281,9 +282,9 @@ export function useProjectFileQuery(
         ? null
         : canReadFiles
           ? isMissing && !optimisticFile
-            ? `'${relativePath}' does not exist.`
+            ? t("workspace.file.notFound", { path: String(relativePath) })
             : errorMessage(cause)
-          : (fileAccess.error ?? "This connection cannot read host files."),
+          : (fileAccess.error ?? t("workspace.file.cannotReadFiles")),
     isPending: isQueryEnabled && (fileAccess.isPending || result.waiting),
     readError,
     isNotFile,

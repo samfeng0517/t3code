@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { BranchNamingMode, DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
 
+import { useT } from "~/i18n";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
@@ -13,13 +14,9 @@ import {
   useUpdateScopedSettings,
 } from "./useScopedSettings";
 
-const MODES = {
-  static: "Static prefix",
-  semantic: "Semantic prefix",
-  custom: "Custom instructions",
-} satisfies Record<BranchNamingMode, string>;
-
 export function BranchNamingSettings() {
+  const t = useT();
+  const modeLabel = (mode: BranchNamingMode) => t(`settingsPages.branchNaming.mode.${mode}`);
   const settings = useScopedSettings();
   const { targets } = useSettingsScope();
   const scopeKey = targets.map((target) => `${target.environmentId}:${target.projectId}`).join(",");
@@ -36,16 +33,17 @@ export function BranchNamingSettings() {
         serverScoped
         settingKeys={["branchNamingMode"]}
         {...searchableSetting("worktree-branch-naming")}
-        description="Choose how new worktree branches are named from your first message."
+        title={t("settingsPages.branchNaming.title")}
+        description={t("settingsPages.branchNaming.description")}
         status={
           !modeMixed && settings.branchNamingMode === "semantic"
-            ? "The model chooses a prefix that describes the work, such as feat/add-search, fix/login-timeout, or refactor/auth."
+            ? t("settingsPages.branchNaming.semanticStatus")
             : undefined
         }
         resetAction={
           settings.branchNamingMode !== DEFAULT_SERVER_SETTINGS.branchNamingMode || modeMixed ? (
             <SettingResetButton
-              label="branch naming"
+              label={t("settingsPages.branchNaming.resetLabel")}
               onClick={() =>
                 updateSettings({ branchNamingMode: DEFAULT_SERVER_SETTINGS.branchNamingMode })
               }
@@ -61,15 +59,17 @@ export function BranchNamingSettings() {
               }
             }}
           >
-            <SelectTrigger size="sm" aria-label="Worktree branch naming">
+            <SelectTrigger size="sm" aria-label={t("settingsPages.branchNaming.title")}>
               <SelectValue>
-                {(value: BranchNamingMode | null) => (value === null ? "Mixed" : MODES[value])}
+                {(value: BranchNamingMode | null) =>
+                  value === null ? t("settings.common.mixed") : modeLabel(value)
+                }
               </SelectValue>
             </SelectTrigger>
             <SelectPopup align="end" alignItemWithTrigger={false}>
               {BranchNamingMode.literals.map((mode) => (
                 <SelectItem key={mode} value={mode}>
-                  {MODES[mode]}
+                  {modeLabel(mode)}
                 </SelectItem>
               ))}
             </SelectPopup>
@@ -80,13 +80,13 @@ export function BranchNamingSettings() {
         <SettingsRow
           serverScoped
           settingKeys={["branchNamePrefix"]}
-          title="Branch prefix"
-          description="For example, t3 or t3/ produces t3/add-search. Leave empty for no prefix."
+          title={t("settingsPages.branchNaming.prefix.title")}
+          description={t("settingsPages.branchNaming.prefix.description")}
           resetAction={
             prefixMixed ||
             settings.branchNamePrefix !== DEFAULT_SERVER_SETTINGS.branchNamePrefix ? (
               <SettingResetButton
-                label="branch prefix"
+                label={t("settingsPages.branchNaming.prefix.resetLabel")}
                 onClick={() =>
                   updateSettings({ branchNamePrefix: DEFAULT_SERVER_SETTINGS.branchNamePrefix })
                 }
@@ -96,13 +96,17 @@ export function BranchNamingSettings() {
           control={
             <Input
               key={`${scopeKey}:${prefixMixed}:${settings.branchNamePrefix}`}
-              aria-label="Branch prefix"
+              aria-label={t("settingsPages.branchNaming.prefix.title")}
               autoCapitalize="none"
               spellCheck={false}
               onChange={() => {
                 prefixEdited.current = true;
               }}
-              placeholder={prefixMixed ? "Mixed" : "No prefix"}
+              placeholder={
+                prefixMixed
+                  ? t("settings.common.mixed")
+                  : t("settingsPages.branchNaming.prefix.placeholder")
+              }
               defaultValue={prefixMixed ? "" : settings.branchNamePrefix}
               onBlur={(event) => {
                 const value = event.target.value.trim();
@@ -118,12 +122,12 @@ export function BranchNamingSettings() {
         <SettingsRow
           serverScoped
           settingKeys={["branchNameInstructions"]}
-          title="Branch naming instructions"
-          description="Appended to the naming prompt. The model returns the complete branch name; no prefix or suffix is added."
+          title={t("settingsPages.branchNaming.instructions.title")}
+          description={t("settingsPages.branchNaming.instructions.description")}
           resetAction={
             instructionsMixed || settings.branchNameInstructions !== "" ? (
               <SettingResetButton
-                label="branch naming instructions"
+                label={t("settingsPages.branchNaming.instructions.resetLabel")}
                 onClick={() => updateSettings({ branchNameInstructions: "" })}
               />
             ) : null
@@ -132,7 +136,7 @@ export function BranchNamingSettings() {
           <div className="mt-3 max-w-2xl pb-3.5">
             <Textarea
               key={`${scopeKey}:${instructionsMixed}:${settings.branchNameInstructions}`}
-              aria-label="Branch naming instructions"
+              aria-label={t("settingsPages.branchNaming.instructions.title")}
               onChange={() => {
                 instructionsEdited.current = true;
               }}
@@ -140,8 +144,8 @@ export function BranchNamingSettings() {
               defaultValue={instructionsMixed ? "" : settings.branchNameInstructions}
               placeholder={
                 instructionsMixed
-                  ? "Mixed. Enter instructions to apply to all selected targets."
-                  : "Use julius/ followed by the issue ID and a short description."
+                  ? t("settingsPages.common.mixedInstructionsPlaceholder")
+                  : t("settingsPages.branchNaming.instructions.placeholder")
               }
               onBlur={(event) => {
                 const value = event.target.value.trim();

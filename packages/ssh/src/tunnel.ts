@@ -3,7 +3,8 @@ import type {
   DesktopSshEnvironmentTarget,
 } from "@t3tools/contracts";
 import { waitForHttpReady as waitForHttpReadyShared } from "@t3tools/shared/httpReadiness";
-import { cliReleaseDownloadBaseUrl } from "@t3tools/shared/cliRelease";
+import { APP_SELF_UPDATE_ENABLED, AppSelfUpdateEnabled } from "@t3tools/shared/appSelfUpdate";
+import { CLI_RELEASE_BASE_URL_ENV, cliReleaseDownloadBaseUrl } from "@t3tools/shared/cliRelease";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import * as NetService from "@t3tools/shared/Net";
 import { extractJsonObject, fromLenientJson } from "@t3tools/shared/schemaJson";
@@ -425,6 +426,8 @@ ensure_remote_node_path() {
 }
 `;
 
+const FORK_RELEASE_URL_REQUIRED_MESSAGE = `This is a fork build of T3 Code; set ${CLI_RELEASE_BASE_URL_ENV} for the T3 Code app on your computer to your own release archive before installing the SSH runtime.`;
+
 const REMOTE_RUNNER_SCRIPT = `#!/bin/sh
 set -eu
 @@T3_NODE_ENV_SCRIPT@@
@@ -452,6 +455,10 @@ t3_runtime_ready() {
   [ -x "$T3_RUNTIME_DIR/t3" ] && [ "$(cat "$T3_RUNTIME_DIR/.install-complete" 2>/dev/null)" = "$T3_ARCHIVE_VERSION" ]
 }
 if ! t3_runtime_ready; then
+  if [ -z "$T3_RELEASE_BASE_URL" ]; then
+    printf '%s\\n' '${FORK_RELEASE_URL_REQUIRED_MESSAGE}' >&2
+    exit 1
+  fi
   mkdir -p "$HOME/.t3/runtime/versions"
   T3_LOCK="$HOME/.t3/runtime/versions/.$T3_ARCHIVE_VERSION.install.lock"
   # uutils mkdir can report success on EEXIST, so use shell noclobber.
@@ -798,7 +805,19 @@ export class SshMissingRunnerError extends Schema.TaggedError<SshMissingRunnerEr
   }
 }
 
-export function buildRemoteT3RunnerScript(input?: RemoteT3RunnerOptions): string {
+// The default archive is upstream's, whose runtime has no self-update gate. Only the download
+// step refuses, so a runtime already installed on the remote still launches.
+function forkBuildWithoutReleaseUrl(
+  input: RemoteT3RunnerOptions | undefined,
+  appSelfUpdateEnabled: boolean,
+): boolean {
+  return !appSelfUpdateEnabled && !input?.releaseBaseUrl?.trim();
+}
+
+export function buildRemoteT3RunnerScript(
+  input?: RemoteT3RunnerOptions,
+  appSelfUpdateEnabled: boolean = APP_SELF_UPDATE_ENABLED,
+): string {
   const nodeScriptPath = input?.nodeScriptPath?.trim() || "";
   const archiveVersion = input?.archiveVersion?.trim() || "";
   if (nodeScriptPath === "" && archiveVersion === "") {
@@ -807,10 +826,9 @@ export function buildRemoteT3RunnerScript(input?: RemoteT3RunnerOptions): string
   if (archiveVersion !== "" && !EXACT_ARCHIVE_VERSION.test(archiveVersion)) {
     throw new SshInvalidArchiveVersionError({ archiveVersion });
   }
-  const releaseBaseUrl = cliReleaseDownloadBaseUrl("", input?.releaseBaseUrl ?? undefined).replace(
-    /\/v$/u,
-    "",
-  );
+  const releaseBaseUrl = forkBuildWithoutReleaseUrl(input, appSelfUpdateEnabled)
+    ? ""
+    : cliReleaseDownloadBaseUrl("", input?.releaseBaseUrl ?? undefined).replace(/\/v$/u, "");
   return stripTrailingNewlines(
     applyScriptPlaceholders(REMOTE_RUNNER_SCRIPT, {
       T3_NODE_SCRIPT_PATH: shellSingleQuote(nodeScriptPath),
@@ -833,11 +851,14 @@ export function buildRemoteNodeEnvScript(input?: RemoteT3RunnerOptions): string 
   );
 }
 
-function buildRemoteLaunchScript(input?: RemoteT3RunnerOptions): string {
+function buildRemoteLaunchScript(
+  input?: RemoteT3RunnerOptions,
+  appSelfUpdateEnabled?: boolean,
+): string {
   return applyScriptPlaceholders(REMOTE_LAUNCH_SCRIPT, {
     T3_ARCHIVE_MODE: isNodeScriptRunner(input) ? "0" : "1",
     T3_NODE_ENV_SCRIPT: buildRemoteNodeEnvScript(input),
-    T3_RUNNER_SCRIPT: stripTrailingNewlines(buildRemoteT3RunnerScript(input)),
+    T3_RUNNER_SCRIPT: stripTrailingNewlines(buildRemoteT3RunnerScript(input, appSelfUpdateEnabled)),
     T3_PICK_PORT_SCRIPT: stripTrailingNewlines(REMOTE_PICK_PORT_SCRIPT),
     T3_WAIT_READY_SCRIPT: stripTrailingNewlines(REMOTE_WAIT_READY_SCRIPT),
     T3_DEFAULT_REMOTE_PORT: String(DEFAULT_REMOTE_PORT),
@@ -848,10 +869,14 @@ function buildRemoteLaunchScript(input?: RemoteT3RunnerOptions): string {
   });
 }
 
-function buildRemotePairingScript(stateKey: string, input?: RemoteT3RunnerOptions): string {
+function buildRemotePairingScript(
+  stateKey: string,
+  input?: RemoteT3RunnerOptions,
+  appSelfUpdateEnabled?: boolean,
+): string {
   return applyScriptPlaceholders(REMOTE_PAIRING_SCRIPT, {
     T3_STATE_KEY: stateKey,
-    T3_RUNNER_SCRIPT: stripTrailingNewlines(buildRemoteT3RunnerScript(input)),
+    T3_RUNNER_SCRIPT: stripTrailingNewlines(buildRemoteT3RunnerScript(input, appSelfUpdateEnabled)),
   });
 }
 
@@ -877,6 +902,7 @@ export const launchOrReuseRemoteServer = Effect.fn("ssh/tunnel.launchOrReuseRemo
     SshCommandError | SshInvalidTargetError | SshLaunchError,
     ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | FileSystem.FileSystem | Path.Path
   > {
+    const appSelfUpdateEnabled = yield* AppSelfUpdateEnabled;
     const stateKey = yield* remoteStateKey(target);
     yield* Effect.logInfo("ssh.remoteServer.launch.start", {
       ...sshTargetLogFields(target),
@@ -885,7 +911,7 @@ export const launchOrReuseRemoteServer = Effect.fn("ssh/tunnel.launchOrReuseRemo
     });
     const result = yield* runSshCommand(target, {
       remoteCommandArgs: ["sh", "-l", "-s", "--", stateKey],
-      stdin: buildRemoteLaunchScript(runner),
+      stdin: buildRemoteLaunchScript(runner, appSelfUpdateEnabled),
       timeoutMs: isNodeScriptRunner(runner)
         ? REMOTE_LAUNCH_TIMEOUT_MS
         : REMOTE_ARCHIVE_LAUNCH_TIMEOUT_MS,
@@ -939,6 +965,7 @@ export const issueRemotePairingToken = Effect.fn("ssh/tunnel.issueRemotePairingT
   SshCommandError | SshInvalidTargetError | SshPairingError,
   ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | FileSystem.FileSystem | Path.Path
 > {
+  const appSelfUpdateEnabled = yield* AppSelfUpdateEnabled;
   const stateKey = yield* remoteStateKey(target);
   yield* Effect.logDebug("ssh.remoteServer.pairingToken.start", {
     ...sshTargetLogFields(target),
@@ -946,7 +973,7 @@ export const issueRemotePairingToken = Effect.fn("ssh/tunnel.issueRemotePairingT
   });
   const result = yield* runSshCommand(target, {
     remoteCommandArgs: ["sh", "-s"],
-    stdin: buildRemotePairingScript(stateKey, runner),
+    stdin: buildRemotePairingScript(stateKey, runner, appSelfUpdateEnabled),
     ...(isNodeScriptRunner(runner) ? {} : { timeoutMs: REMOTE_ARCHIVE_LAUNCH_TIMEOUT_MS }),
     ...(input?.authSecret === undefined ? {} : { authSecret: input.authSecret }),
     ...(input?.batchMode === undefined ? {} : { batchMode: input.batchMode }),

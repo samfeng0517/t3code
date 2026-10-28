@@ -94,8 +94,12 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   settledWorktreeCleanup: Schema.optionalKey(Schema.Boolean),
   worktreesDirectory: Schema.optionalKey(Schema.Boolean),
   threadAutoSettlementScope: Schema.optionalKey(Schema.Boolean),
+  /** Server auto-archives settled threads and deletes threads it auto-archived. */
+  threadAutoCleanup: Schema.optionalKey(Schema.Boolean),
   threadRestartContinuation: Schema.optionalKey(Schema.Boolean),
   projectSettingsOverrides: Schema.optionalKey(Schema.Boolean),
+  /** Server answers `projects.readCompatScripts` for orca.yaml and .superset/config.json. */
+  compatProjectFiles: Schema.optionalKey(Schema.Boolean),
   /** Hide the switch when absent; older servers silently drop per-project provider patches. */
   projectProviderInstanceOverrides: Schema.optionalKey(Schema.Boolean),
   threadSnooze: Schema.optionalKey(Schema.Boolean),
@@ -132,6 +136,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   desktopAppUpdate: Schema.optionalKey(Schema.Boolean),
   /** Subscribe to command output only when advertised; older servers never send it. */
   commandOutputStreaming: Schema.optionalKey(Schema.Boolean),
+  /** Server answers mods.subscribeThread and mods.act. Absent on older servers. */
+  modSurfaces: Schema.optionalKey(Schema.Boolean),
   /** Hosts headless Chromium tabs streamed over /api/preview-stream for clients without a local runtime. */
   serverBrowser: Schema.optionalKey(Schema.Boolean),
 });

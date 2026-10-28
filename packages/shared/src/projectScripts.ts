@@ -49,11 +49,35 @@ export function projectScriptCwd(input: {
   return input.worktreePath ?? input.project.cwd;
 }
 
+function pathBasename(value: string): string {
+  return (
+    value
+      .replace(/[\\/]+$/, "")
+      .split(/[\\/]/)
+      .at(-1) ?? value
+  );
+}
+
+/**
+ * Besides T3 Code's own variables, scripts get the ones Superset and Orca set, so a setup script
+ * written for either tool works unchanged after it is imported.
+ */
 export function projectScriptRuntimeEnv(
   input: ProjectScriptRuntimeEnvInput,
 ): Record<string, string> {
+  const rootPath = input.project.cwd;
+  const workspacePath = input.worktreePath || rootPath;
+  const workspaceName = pathBasename(workspacePath);
   const env: Record<string, string> = {
-    T3CODE_PROJECT_ROOT: input.project.cwd,
+    SUPERSET_ROOT_PATH: rootPath,
+    SUPERSET_WORKSPACE_PATH: workspacePath,
+    SUPERSET_WORKSPACE_NAME: workspaceName,
+    ORCA_ROOT_PATH: rootPath,
+    ORCA_WORKTREE_PATH: workspacePath,
+    ORCA_WORKSPACE_NAME: workspaceName,
+    CONDUCTOR_ROOT_PATH: rootPath,
+    GHOSTX_ROOT_PATH: rootPath,
+    T3CODE_PROJECT_ROOT: rootPath,
   };
   if (input.worktreePath) {
     env.T3CODE_WORKTREE_PATH = input.worktreePath;
@@ -72,12 +96,19 @@ export function projectScriptMenuLabel(script: ProjectScript): string {
   const roles = [
     ...(script.runOnWorktreeCreate ? ["setup"] : []),
     ...(script.runOnSettle ? ["on settle"] : []),
+    ...(script.runOnWorktreeRemove ? ["on remove"] : []),
   ];
   return roles.length === 0 ? script.name : `${script.name} (${roles.join(", ")})`;
 }
 
 export function settleProjectScript(scripts: readonly ProjectScript[]): ProjectScript | null {
   return scripts.find((script) => script.runOnSettle === true) ?? null;
+}
+
+export function worktreeRemoveProjectScript(
+  scripts: readonly ProjectScript[],
+): ProjectScript | null {
+  return scripts.find((script) => script.runOnWorktreeRemove === true) ?? null;
 }
 
 /**

@@ -8,6 +8,10 @@ export const DESKTOP_RUNTIME_EXTERNAL_PREFIXES = [
   "@yuuang/",
   // Playwright reads its runtime bundle/driver from disk; inlining cannot replace those files.
   "playwright-core",
+  // Resolves its own `preload` file at runtime through
+  // `createRequire(__dirname).resolve(...)`, which only works from a real
+  // package directory, not from inside the main bundle.
+  "electron-chrome-extensions",
 ] as const;
 
 export function isDesktopRuntimeExternalDependency(id: string): boolean {

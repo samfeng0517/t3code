@@ -3,6 +3,7 @@ import {
   type KeybindingCommand,
   type KeybindingShortcut,
   MODEL_PICKER_JUMP_KEYBINDING_COMMANDS,
+  type PageCommentTarget,
   type ScopedThreadRef,
   THREAD_JUMP_KEYBINDING_COMMANDS,
 } from "@t3tools/contracts";
@@ -11,6 +12,7 @@ import {
   htmlRenderShortcutsMessage,
   htmlRenderThemeFragment,
   htmlRenderThemeMessage,
+  HTML_FILE_COMMENT_ANCHORS_QUERY,
   htmlRenderResult,
   readHtmlRenderContentHeight,
   readHtmlRenderImageRequest,
@@ -30,6 +32,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { isElectron } from "~/env";
 import { FileSurfaceLoading } from "./fileSurfaceChrome";
@@ -43,6 +46,13 @@ import { useOpenChangeRequestLink } from "~/lib/openPullRequestLink";
 import { readLocalApi } from "~/localApi";
 import { cn } from "~/lib/utils";
 import { primaryServerKeybindingsAtom, serverEnvironment } from "~/state/server";
+
+import {
+  HtmlRenderCommentOverlay,
+  useFrameCommentPlacements,
+} from "../pageComments/HtmlRenderCommentOverlay";
+import { PageCommentPanel, PageCommentToggle } from "../pageComments/PageCommentControls";
+import { usePageCommentSession } from "../pageComments/usePageCommentSession";
 
 /**
  * The page reports the keys, and a page script can report any key it likes,
@@ -108,30 +118,98 @@ export function BrowserDocumentFrame(props: {
   readonly threadRef?: ScopedThreadRef | undefined;
   /** Stable resource identity and revision; defaults to src for callers that reload on URL changes. */
   readonly documentKey?: string | undefined;
+  /** Lets the reader comment on the page; needs `threadRef`, where comments are sent. */
+  readonly commentTarget?: PageCommentTarget | undefined;
 }) {
   const key = props.documentKey ?? props.src;
-  return props.pdf ? (
-    <PdfDocument key={key} src={props.src} title={props.title} />
-  ) : props.htmlRender ? (
-    <HtmlRenderDocument
-      key={key}
-      src={props.src}
-      title={props.title}
-      threadRef={props.threadRef}
-      className="min-h-0 flex-1"
-    />
+  if (props.pdf) return <PdfDocument key={key} src={props.src} title={props.title} />;
+  const commentable = props.commentTarget !== undefined && props.threadRef !== undefined;
+  const renderDocument = (onFrameChange?: (frame: HTMLIFrameElement | null) => void) =>
+    props.htmlRender ? (
+      <HtmlRenderDocument
+        key={key}
+        src={props.src}
+        title={props.title}
+        threadRef={props.threadRef}
+        className="min-h-0 flex-1"
+        onFrameChange={onFrameChange}
+      />
+    ) : (
+      <FileDocument
+        key={key}
+        src={props.src}
+        title={props.title}
+        commentable={commentable}
+        onFrameChange={onFrameChange}
+      />
+    );
+  return props.commentTarget !== undefined && props.threadRef !== undefined ? (
+    <CommentableDocument threadRef={props.threadRef} target={props.commentTarget}>
+      {renderDocument}
+    </CommentableDocument>
   ) : (
-    <FileDocument key={key} src={props.src} title={props.title} />
+    renderDocument()
   );
 }
 
-// URL renewals must not discard form input or scroll; a new key mounts a fresh document.
-function FileDocument(props: { readonly src: string; readonly title: string }) {
-  const [src] = useState(props.src);
+/** A frame that fills its panel and scrolls inside, with the comment controls around it. */
+function CommentableDocument(props: {
+  readonly threadRef: ScopedThreadRef;
+  readonly target: PageCommentTarget;
+  readonly children: (onFrameChange: (frame: HTMLIFrameElement | null) => void) => ReactNode;
+}) {
+  const session = usePageCommentSession(props.threadRef, props.target);
+  const [frame, setFrame] = useState<HTMLIFrameElement | null>(null);
+  const { view, placements } = useFrameCommentPlacements(session, frame);
+  if (!session) return props.children(setFrame);
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {props.children(setFrame)}
+        <HtmlRenderCommentOverlay
+          session={session}
+          frame={frame}
+          view={view}
+          placements={placements}
+          showsWholePage={false}
+        />
+        <div className="absolute end-2 top-2 z-20">
+          <PageCommentToggle session={session} />
+        </div>
+      </div>
+      <div className="max-h-[50%] shrink-0 overflow-y-auto border-t p-2 empty:hidden">
+        <PageCommentPanel session={session} placements={placements} hint="frame" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * URL renewals must not discard form input or scroll; a new key mounts a fresh
+ * document. A commentable page asks the server to add the comment-anchor
+ * script, so the page can name what the reader picked; a page too large for
+ * that arrives as written, and the overlay falls back to regions.
+ */
+function FileDocument({
+  onFrameChange,
+  title,
+  ...props
+}: {
+  readonly src: string;
+  readonly title: string;
+  readonly commentable: boolean;
+  readonly onFrameChange?: ((frame: HTMLIFrameElement | null) => void) | undefined;
+}) {
+  const [src] = useState(() =>
+    props.commentable
+      ? `${props.src}${props.src.includes("?") ? "&" : "?"}${HTML_FILE_COMMENT_ANCHORS_QUERY}=1`
+      : props.src,
+  );
   return (
     <iframe
+      ref={onFrameChange}
       src={src}
-      title={props.title}
+      title={title}
       className="min-h-0 flex-1 border-0 bg-white"
       sandbox="allow-scripts allow-forms allow-popups allow-downloads"
     />
@@ -147,9 +225,17 @@ export function HtmlRenderDocument(props: {
   readonly onContentHeight?: (height: number) => void;
   /** Reports fullscreen changes so virtualized rows can stay mounted. */
   readonly onFullscreenChange?: ((fullscreen: boolean) => void) | undefined;
+  /** Hands the frame element to a comment overlay. */
+  readonly onFrameChange?: ((frame: HTMLIFrameElement | null) => void) | undefined;
 }) {
   const theme = useHtmlRenderTheme();
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const { onFrameChange } = props;
+  useLayoutEffect(() => {
+    if (!onFrameChange) return;
+    onFrameChange(frameRef.current);
+    return () => onFrameChange(null);
+  }, [onFrameChange]);
   const [src] = useState(() => `${props.src.split("#", 1)[0]}${htmlRenderThemeFragment(theme)}`);
   const [loaded, setLoaded] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);

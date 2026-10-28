@@ -264,6 +264,68 @@ describe("V2 environment commands", () => {
     }).pipe(Effect.provide(layerTestCrypto)),
   );
 
+  it.effect("forwards existingBranch only for the worktree strategy", () =>
+    Effect.gen(function* () {
+      const launches: OrchestrationV2ThreadLaunchInput[] = [];
+      const supervisor = yield* makeSupervisor({ commands: [], projects: [], launches });
+      const createThread = {
+        projectId: ProjectId.make("project-1"),
+        title: "Thread",
+        modelSelection: v2Projection.thread.modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: "feature",
+        createdAt: "2026-06-20T00:00:00.000Z",
+      } as const;
+      const launch = (
+        name: string,
+        bootstrap: NonNullable<Parameters<typeof startThreadTurn>[0]["bootstrap"]>,
+      ) =>
+        startThreadTurn({
+          commandId: CommandId.make(`launch-${name}`),
+          threadId: v2ThreadId,
+          message: {
+            messageId: MessageId.make(`message-${name}`),
+            role: "user",
+            text: "Go",
+            attachments: [],
+          },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          bootstrap,
+        }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
+      const prepareWorktree = {
+        projectCwd: "/workspace/project",
+        baseBranch: "feature",
+        startFromOrigin: true,
+      };
+
+      yield* launch("existing", {
+        createThread: { ...createThread, worktreePath: null },
+        prepareWorktree: { ...prepareWorktree, existingBranch: true },
+      });
+      yield* launch("new", {
+        createThread: { ...createThread, worktreePath: null },
+        prepareWorktree: { ...prepareWorktree, existingBranch: false },
+      });
+      yield* launch("reused", {
+        createThread: { ...createThread, worktreePath: "/workspace/project-worktrees/feature" },
+      });
+      yield* launch("root", { createThread: { ...createThread, worktreePath: null } });
+
+      expect(launches.map((launched) => launched.workspaceStrategy)).toEqual([
+        { type: "worktree", baseRef: "feature", startFromOrigin: true, existingBranch: true },
+        { type: "worktree", baseRef: "feature", startFromOrigin: true },
+        {
+          type: "existing_worktree",
+          worktreePath: "/workspace/project-worktrees/feature",
+          branch: "feature",
+        },
+        { type: "root", branch: "feature" },
+      ]);
+    }).pipe(Effect.provide(layerTestCrypto)),
+  );
+
   it.effect("uses server-resolved delivery intent without fetching the full projection", () =>
     Effect.gen(function* () {
       const commands: OrchestrationV2Command[] = [];

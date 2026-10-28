@@ -250,7 +250,6 @@ async function openProjectDraft(project: EnvironmentProject, request: LinkedDraf
           mode: "worktree",
           branch: detail.value.headBranch,
           worktreePath: null,
-          startFromOrigin: false,
           pullRequestReference: detail.value.url,
         },
       });

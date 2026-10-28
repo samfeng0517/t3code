@@ -19,6 +19,7 @@ import {
   type RuntimeMode,
   type ServerProvider,
 } from "@t3tools/contracts";
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 import {
   renderProviderTraitsMenuContent,
@@ -128,6 +129,7 @@ export function ComposerControlsBar(props: {
     modelPickerIconClassName,
     getModelDisabledReason,
   } = props;
+  const t = useT();
   const providerTraitsMenuContent = renderProviderTraitsMenuContent({
     provider: selectedProvider,
     instanceId: selectedInstanceId,
@@ -260,7 +262,9 @@ export function ComposerControlsBar(props: {
       className="shrink-0"
     >
       <CircleAlertIcon className="size-4" />
-      {providerSetupInstanceId ? "Open provider settings" : "No provider available"}
+      {providerSetupInstanceId
+        ? t("composer.provider.openSettings")
+        : t("composer.provider.noneAvailable")}
     </ComposerControl>
   ) : (
     <>

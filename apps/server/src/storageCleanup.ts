@@ -36,6 +36,7 @@ import { parse as parseYaml } from "yaml";
 
 import * as ServerConfig from "./config.ts";
 import * as GitManager from "./git/GitManager.ts";
+import * as WorktreeRemoveScripts from "./project/WorktreeRemoveScripts.ts";
 import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
 import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "./orchestration-v2/ProjectionStore.ts";
@@ -214,6 +215,7 @@ const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const git = yield* GitVcsDriver.GitVcsDriver;
   const gitManager = yield* GitManager.GitManager;
+  const worktreeRemoveScripts = yield* WorktreeRemoveScripts.WorktreeRemoveScripts;
   const terminals = yield* TerminalManager.TerminalManager;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -1014,6 +1016,10 @@ const make = Effect.gen(function* () {
           const changes = yield* localChangesReason(worktreePath, settings);
           if (changes !== null) return keep(changes);
         }
+        yield* worktreeRemoveScripts.runBeforeRemove({
+          projectRoot: project.workspaceRoot,
+          worktreePath,
+        });
         yield* removeLinkedWorktree({
           operation: "StorageCleanup.cleanupGit",
           cwd: project.workspaceRoot,

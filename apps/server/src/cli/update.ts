@@ -1,3 +1,7 @@
+import {
+  APP_SELF_UPDATE_DISABLED_MESSAGE,
+  AppSelfUpdateEnabled,
+} from "@t3tools/shared/appSelfUpdate";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   CLI_RELEASE_BASE_URL_ENV,
@@ -222,6 +226,9 @@ export const updateCommand = Command.make("update", {
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
+      if (!(yield* AppSelfUpdateEnabled)) {
+        return yield* new CliUpdateError({ reason: APP_SELF_UPDATE_DISABLED_MESSAGE });
+      }
       const logLevel = yield* GlobalFlag.LogLevel;
       const config = yield* resolveCliAuthConfig(flags, logLevel);
       return yield* runUpdate({

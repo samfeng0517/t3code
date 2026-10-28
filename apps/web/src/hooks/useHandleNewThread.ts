@@ -31,7 +31,6 @@ import {
 } from "../state/entities";
 import {
   hasExplicitComposerModelSelection,
-  resolveNewDraftStartFromOrigin,
   resolveNewThreadModelSelectionOverride,
 } from "../lib/chatThreadActions";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
@@ -49,7 +48,6 @@ interface NewThreadWorkspaceOptions {
   branch?: string | null;
   worktreePath?: string | null;
   envMode?: DraftThreadEnvMode;
-  startFromOrigin?: boolean;
 }
 
 function pickExplicitWorkspaceOptions(options: NewThreadWorkspaceOptions | undefined) {
@@ -57,7 +55,6 @@ function pickExplicitWorkspaceOptions(options: NewThreadWorkspaceOptions | undef
     ...(options?.branch !== undefined ? { branch: options.branch } : {}),
     ...(options?.worktreePath !== undefined ? { worktreePath: options.worktreePath } : {}),
     ...(options?.envMode !== undefined ? { envMode: options.envMode } : {}),
-    ...(options?.startFromOrigin !== undefined ? { startFromOrigin: options.startFromOrigin } : {}),
   };
 }
 
@@ -79,7 +76,6 @@ export function createNewThreadHandler(router: AnyRouter) {
       branch?: string | null;
       worktreePath?: string | null;
       envMode?: DraftThreadEnvMode;
-      startFromOrigin?: boolean;
       replace?: boolean;
     },
   ): Promise<{ draftId: DraftId; threadId: ThreadId } | null> => {
@@ -184,7 +180,6 @@ export function createNewThreadHandler(router: AnyRouter) {
     const hasBranchOption = options?.branch !== undefined;
     const hasWorktreePathOption = options?.worktreePath !== undefined;
     const hasEnvModeOption = options?.envMode !== undefined;
-    const hasStartFromOriginOption = options?.startFromOrigin !== undefined;
     const storedDraftThread = getDraftSessionByLogicalProjectKey(logicalProjectKey);
     const storedDraftThreadRef = storedDraftThread
       ? scopeThreadRef(storedDraftThread.environmentId, storedDraftThread.threadId)
@@ -215,7 +210,7 @@ export function createNewThreadHandler(router: AnyRouter) {
           currentRouteTarget?.kind === "draft" &&
           currentRouteTarget.draftId === emptyStoredDraftThread.draftId;
         const hasExplicitWorkspaceOption =
-          hasBranchOption || hasWorktreePathOption || hasEnvModeOption || hasStartFromOriginOption;
+          hasBranchOption || hasWorktreePathOption || hasEnvModeOption;
         let workspaceContext: NewThreadWorkspaceOptions | null = null;
         if (hasExplicitWorkspaceOption) {
           workspaceContext = pickExplicitWorkspaceOptions(options);
@@ -244,10 +239,6 @@ export function createNewThreadHandler(router: AnyRouter) {
             branch: null,
             worktreePath: null,
             envMode: defaultEnvMode,
-            startFromOrigin: resolveNewDraftStartFromOrigin({
-              envMode: defaultEnvMode,
-              newWorktreesStartFromOrigin: projectSettings.settings.newWorktreesStartFromOrigin,
-            }),
           };
         }
         if (workspaceContext) {
@@ -309,12 +300,7 @@ export function createNewThreadHandler(router: AnyRouter) {
       latestActiveDraftThread.promotedTo == null &&
       !composerDraftHasUserContent(getComposerDraft(currentRouteTarget.draftId))
     ) {
-      if (
-        hasBranchOption ||
-        hasWorktreePathOption ||
-        hasEnvModeOption ||
-        hasStartFromOriginOption
-      ) {
+      if (hasBranchOption || hasWorktreePathOption || hasEnvModeOption) {
         setDraftThreadContext(currentRouteTarget.draftId, pickExplicitWorkspaceOptions(options));
       }
       setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, currentRouteTarget.draftId, {
@@ -365,12 +351,6 @@ export function createNewThreadHandler(router: AnyRouter) {
         branch: options?.branch ?? null,
         worktreePath: options?.worktreePath ?? null,
         envMode: initialEnvMode,
-        startFromOrigin:
-          options?.startFromOrigin ??
-          resolveNewDraftStartFromOrigin({
-            envMode: initialEnvMode,
-            newWorktreesStartFromOrigin: projectSettings.settings.newWorktreesStartFromOrigin,
-          }),
         runtimeMode: defaultRuntimeMode,
         ...(carryInteractionMode ? { interactionMode: carryInteractionMode } : {}),
       });

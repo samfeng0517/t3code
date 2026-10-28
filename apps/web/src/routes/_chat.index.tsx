@@ -19,6 +19,7 @@ import {
   useThreadShells,
 } from "../state/entities";
 import { useEnvironments } from "../state/environments";
+import { useT } from "../i18n";
 
 function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
@@ -85,19 +86,18 @@ function IndexDraftLanding() {
 }
 
 function DraftStartError({ onRetry }: { readonly onRetry: () => void }) {
+  const t = useT();
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
       {isElectron ? <WorkspacePageHeader electron /> : null}
       <Empty className="flex-1">
         <EmptyHeader className="max-w-md">
-          <EmptyTitle>Couldn’t start a new thread</EmptyTitle>
-          <EmptyDescription>
-            The project is still available. Try opening the draft again.
-          </EmptyDescription>
+          <EmptyTitle>{t("onboarding.route.draftStartFailed.title")}</EmptyTitle>
+          <EmptyDescription>{t("onboarding.route.draftStartFailed.description")}</EmptyDescription>
           <div className="mt-5 flex justify-center">
             <Button size="sm" onClick={onRetry}>
               <RefreshIcon size="md" />
-              Try again
+              {t("onboarding.tryAgain")}
             </Button>
           </div>
         </EmptyHeader>

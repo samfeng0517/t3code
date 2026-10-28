@@ -4,7 +4,7 @@ import { Suspense, use, useState, type ReactNode } from "react";
 import { RenderErrorBoundary } from "../RenderErrorBoundary";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { MarkdownCodeBlock } from "./MarkdownCodeBlock";
+import { MarkdownCodeBlock, type MarkdownBlockDataAttributes } from "./MarkdownCodeBlock";
 import { findRevealRef, MarkdownFindContext } from "./markdownFindContext";
 import { MermaidDiagram } from "./MermaidDiagram";
 
@@ -15,6 +15,7 @@ export function MarkdownMermaidCodeBlock({
   isStreaming,
   onExpand,
   children,
+  rootProps,
 }: {
   code: string;
   fenceTitle: string | null;
@@ -22,6 +23,7 @@ export function MarkdownMermaidCodeBlock({
   isStreaming: boolean;
   onExpand: (imageUrl: string) => void;
   children: ReactNode;
+  rootProps?: MarkdownBlockDataAttributes | undefined;
 }) {
   const [showCode, setShowCode] = useState(false);
   const searching = use(MarkdownFindContext);
@@ -38,6 +40,7 @@ export function MarkdownMermaidCodeBlock({
       isStreaming={isStreaming}
       canWrap={!showDiagram}
       diagram={showDiagram}
+      rootProps={rootProps}
       viewToggle={
         isStreaming ? null : (
           <Tooltip>

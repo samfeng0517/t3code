@@ -98,6 +98,7 @@ import * as ProviderUsageLimitsIngestion from "./provider/ProviderUsageLimitsIng
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "./project/T3ProjectFileLoader.ts";
+import * as CompatProjectConfig from "./project/CompatProjectConfig.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as KnownWorkspaces from "./workspace/KnownWorkspaces.ts";
@@ -112,6 +113,7 @@ import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
+import * as GitHistoryService from "./git/GitHistoryService.ts";
 import * as SourceControlProviderRegistry from "./sourceControl/SourceControlProviderRegistry.ts";
 import * as PullRequestReadCache from "./pullRequest/PullRequestReadCache.ts";
 import * as SourceControlRateLimit from "@t3tools/source-control-core/server/SourceControlRateLimit";
@@ -183,6 +185,7 @@ import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
 import * as ThreadSearch from "./orchestration-v2/ThreadSearch.ts";
 import * as ThreadSettlementService from "./orchestration-v2/ThreadSettlementService.ts";
 import * as IdleCompactionService from "./orchestration-v2/IdleCompactionService.ts";
+import * as ThreadAutoCleanupService from "./orchestration-v2/ThreadAutoCleanupService.ts";
 import * as ThreadPullRequestService from "./orchestration-v2/ThreadPullRequestService.ts";
 import * as RunFinalizationService from "./orchestration-v2/RunFinalizationService.ts";
 import * as EventStoreV2 from "./orchestration-v2/EventStore.ts";
@@ -383,7 +386,9 @@ const layerGit = Layer.empty.pipe(
 
 const layerGitWorkflow = GitWorkflowService.layer.pipe(
   Layer.provideMerge(layerVcsDriverRegistry),
+  Layer.provideMerge(RuntimeLayer.layerWorktreeRemoveScripts),
   Layer.provideMerge(layerGit),
+  Layer.provideMerge(CompatProjectConfig.layer),
 );
 
 const layerSourceControlRepositoryService = SourceControlRepositoryService.layer.pipe(
@@ -406,12 +411,19 @@ const layerReview = ReviewService.layer.pipe(
   Layer.provideMerge(layerVcsDriverRegistry),
 );
 
+const layerGitHistory = GitHistoryService.layer.pipe(
+  Layer.provideMerge(layerKnownWorkspaces),
+  Layer.provideMerge(GitVcsDriver.layer),
+  Layer.provideMerge(layerVcsDriverRegistry),
+);
+
 const layerVcs = Layer.empty.pipe(
   Layer.provideMerge(VcsProjectConfig.layer),
   Layer.provideMerge(layerVcsDriverRegistry),
   Layer.provideMerge(VcsProvisioningService.layer.pipe(Layer.provide(layerVcsDriverRegistry))),
   Layer.provideMerge(layerGitWorkflow),
   Layer.provideMerge(layerReview),
+  Layer.provideMerge(layerGitHistory),
   Layer.provideMerge(layerSourceControlRepositoryService),
   Layer.provideMerge(layerProjectCloneTracker),
   Layer.provideMerge(
@@ -534,6 +546,10 @@ const layerIdleCompactionWorker = Layer.effectDiscard(
   IdleCompactionService.make.pipe(Effect.flatMap((service) => service.start())),
 ).pipe(Layer.provide(ProjectionStoreV2.layer));
 
+const layerThreadAutoCleanupWorker = Layer.effectDiscard(
+  ThreadAutoCleanupService.make.pipe(Effect.flatMap((service) => service.start())),
+).pipe(Layer.provide(ProjectionStoreV2.layer));
+
 const layerThreadPullRequestWorker = Layer.effectDiscard(
   ThreadPullRequestService.make.pipe(Effect.flatMap((service) => service.start())),
 ).pipe(Layer.provide(layerPullRequestService));
@@ -575,6 +591,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   HeldHooksWaker.layer,
   layerThreadSettlementWorker,
   layerIdleCompactionWorker,
+  layerThreadAutoCleanupWorker,
   StorageCleanup.layer.pipe(Layer.provide(ProjectionStoreV2.layer)),
   DatabaseStorage.layer.pipe(
     Layer.provide(ProjectionMaintenance.layer),

@@ -339,3 +339,25 @@ describe("ChatMarkdown Windows file links", () => {
     }
   });
 });
+
+describe("ChatMarkdown source lines", () => {
+  it("marks blocks with their source lines only when asked", async () => {
+    setup();
+    const text = "# Plan\n\n- one\n- two\n\n---\n\n```ts\nconst a = 1;\n```\n\nLast line.\n";
+    await using screen = await renderText(text, { sourceLines: true });
+    const lines = (selector: string) => {
+      const element = screen.container.querySelector(`${selector}[data-source-line]`);
+      return element
+        ? [element.getAttribute("data-source-line"), element.getAttribute("data-source-line-end")]
+        : null;
+    };
+    expect(lines("h1")).toEqual(["1", "1"]);
+    expect(lines("ul")).toEqual(["3", "4"]);
+    expect(lines("hr")).toEqual(["6", "6"]);
+    expect(lines("div[data-language]")).toEqual(["8", "10"]);
+    expect(lines("p")).toEqual(["12", "12"]);
+
+    await screen.rerender(<ChatMarkdown cwd="/tmp/project" text={text} />);
+    expect(screen.container.querySelector("[data-source-line]")).toBeNull();
+  });
+});

@@ -456,9 +456,6 @@ export async function restoreRejectedQueuedMessage(
               branch: queuedMessage.creation.branch,
               worktreePath: queuedMessage.creation.worktreePath,
               pullRequestReference: queuedMessage.creation.pullRequestReference,
-              ...(queuedMessage.creation.startFromOrigin !== undefined
-                ? { startFromOrigin: queuedMessage.creation.startFromOrigin }
-                : {}),
             },
           }
         : {}),

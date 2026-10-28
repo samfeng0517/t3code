@@ -242,6 +242,8 @@ interface ChatMarkdownProps {
       `cwd`'s; without it a private repository's uploads load unauthenticated and 404. */
   sourceControlMedia?: boolean | undefined;
   headingLevelOffset?: number | undefined;
+  /** Marks blocks with `data-source-line` so page comments can name the lines they cover. */
+  sourceLines?: boolean | undefined;
 }
 
 export interface ChatMarkdownContextReference {
@@ -923,17 +925,25 @@ const ChatMarkdownRendererContext = React.createContext<
 
 // Isolate streamed source text from the renderer context; only offset-based renderers need it.
 const ChatMarkdownTextContext = React.createContext("");
+const ChatMarkdownSourceLinesContext = React.createContext(false);
+
+function useSourceLineProps(node: ReactMarkdownExtraProps["node"]) {
+  const start = node?.position?.start.line;
+  if (!use(ChatMarkdownSourceLinesContext) || start === undefined) return undefined;
+  return { "data-source-line": start, "data-source-line-end": node?.position?.end.line ?? start };
+}
 
 function markdownHeadingRenderer(level: 1 | 2 | 3 | 4 | 5 | 6) {
   const Tag = `h${level}` as const;
   return function MarkdownHeading({
-    node: _node,
+    node,
     ...props
   }: ComponentProps<typeof Tag> & ReactMarkdownExtraProps) {
     const { headingLevelOffset } = use(ChatMarkdownRendererContext);
     return (
       <Tag
         {...props}
+        {...useSourceLineProps(node)}
         aria-level={headingLevelOffset > 0 ? Math.min(level + headingLevelOffset, 6) : undefined}
       />
     );
@@ -957,21 +967,31 @@ const CHAT_MARKDOWN_COMPONENTS = {
     }
     return <div {...props}>{children}</div>;
   },
-  p: function MarkdownParagraph({ node: _node, children, ...props }) {
+  p: function MarkdownParagraph({ node, children, ...props }) {
     const { skills, threadRef } = use(ChatMarkdownRendererContext);
-    return <p {...props}>{renderSkillInlineMarkdownChildren(children, skills, threadRef)}</p>;
+    return (
+      <p {...props} {...useSourceLineProps(node)}>
+        {renderSkillInlineMarkdownChildren(children, skills, threadRef)}
+      </p>
+    );
   },
-  blockquote: function MarkdownBlockquote({ node: _node, children, ...props }) {
+  blockquote: function MarkdownBlockquote({ node, children, ...props }) {
+    const sourceLineProps = useSourceLineProps(node);
     const alert =
       GITHUB_ALERT_PRESENTATIONS[String((props as Record<string, unknown>)["data-alert"] ?? "")];
     if (!alert) {
-      return <blockquote {...props}>{children}</blockquote>;
+      return (
+        <blockquote {...props} {...sourceLineProps}>
+          {children}
+        </blockquote>
+      );
     }
     return (
       <div
         role="note"
         dir={props.dir}
         className={cn("my-1 border-s-2 ps-3", alert.borderClassName)}
+        {...sourceLineProps}
       >
         <p
           data-thread-find-ignore="true"
@@ -990,7 +1010,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
         .length ?? 0;
     const gutterStyle = orderedListGutterStyle(itemCount, start);
     return (
-      <ol {...props} start={start} style={gutterStyle ? { ...style, ...gutterStyle } : style} />
+      <ol
+        {...props}
+        {...useSourceLineProps(node)}
+        start={start}
+        style={gutterStyle ? { ...style, ...gutterStyle } : style}
+      />
     );
   },
   li: function MarkdownListItem({ node, children, ...props }) {
@@ -998,7 +1023,11 @@ const CHAT_MARKDOWN_COMPONENTS = {
     // Resolve checkbox markers by offset to avoid rerendering list items on every streamed token.
     const isTaskItem = String(props.className ?? "").includes("task-list-item");
     return (
-      <li {...props} data-list-item-offset={isTaskItem ? node?.position?.start.offset : undefined}>
+      <li
+        {...props}
+        {...useSourceLineProps(node)}
+        data-list-item-offset={isTaskItem ? node?.position?.start.offset : undefined}
+      >
         {renderSkillInlineMarkdownChildren(children, skills, threadRef)}
       </li>
     );
@@ -1503,13 +1532,23 @@ const CHAT_MARKDOWN_COMPONENTS = {
     }
     return <ChatMarkdownImageFallback alt={altText} copyMarkdown={copyMarkdown} kind={kind} />;
   },
-  table: function MarkdownTableRenderer({ node: _node, ...props }) {
-    return <MarkdownTable {...props} />;
+  table: function MarkdownTableRenderer({ node, ...props }) {
+    return <MarkdownTable {...props} {...useSourceLineProps(node)} />;
+  },
+  tr: function MarkdownTableRow({ node, ...props }) {
+    return <tr {...props} {...useSourceLineProps(node)} />;
+  },
+  ul: function MarkdownUnorderedList({ node, ...props }) {
+    return <ul {...props} {...useSourceLineProps(node)} />;
+  },
+  hr: function MarkdownRule({ node, ...props }) {
+    return <hr {...props} {...useSourceLineProps(node)} />;
   },
   details: function MarkdownDetailsRenderer({ node: _node, children, open: detailsOpen }) {
     return <MarkdownDetails open={detailsOpen}>{children}</MarkdownDetails>;
   },
   pre: function MarkdownPre({ node, children, ...props }) {
+    const sourceLineProps = useSourceLineProps(node);
     const {
       resolvedTheme,
       diffThemeName,
@@ -1522,7 +1561,11 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const text = use(ChatMarkdownTextContext);
     const codeBlock = extractCodeBlock(children);
     if (!codeBlock) {
-      return <pre {...props}>{children}</pre>;
+      return (
+        <pre {...props} {...sourceLineProps}>
+          {children}
+        </pre>
+      );
     }
 
     const language = extractFenceLanguage(codeBlock.className);
@@ -1565,6 +1608,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           theme={resolvedTheme}
           isStreaming={isStreaming && !isClosedCodeFence(node, text, codeBlock.code)}
           onExpand={(src) => expandMedia({ images: [{ src, name: "Mermaid diagram" }], index: 0 })}
+          rootProps={sourceLineProps}
         >
           {highlightedCode}
         </MarkdownMermaidCodeBlock>
@@ -1582,6 +1626,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
             : undefined
         }
         isStreaming={isStreaming}
+        rootProps={sourceLineProps}
       >
         {highlightedCode}
       </MarkdownCodeBlock>
@@ -1596,6 +1641,7 @@ function ChatMarkdown({
   lineBreaks = false,
   parseRawHtml = true,
   extraRemarkPlugins = EMPTY_REMARK_PLUGINS,
+  sourceLines = false,
   ...props
 }: ChatMarkdownProps) {
   const {
@@ -1635,21 +1681,23 @@ function ChatMarkdown({
       onCopy={handleCopy}
     >
       <ChatMarkdownRendererContext value={componentState}>
-        <ChatMarkdownTextContext value={text}>
-          <ReactMarkdown
-            remarkPlugins={remarkPlugins}
-            rehypePlugins={
-              parseRawHtml
-                ? CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS
-                : CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS
-            }
-            skipHtml={false}
-            components={CHAT_MARKDOWN_COMPONENTS}
-            urlTransform={markdownUrlTransform}
-          >
-            {text}
-          </ReactMarkdown>
-        </ChatMarkdownTextContext>
+        <ChatMarkdownSourceLinesContext value={sourceLines}>
+          <ChatMarkdownTextContext value={text}>
+            <ReactMarkdown
+              remarkPlugins={remarkPlugins}
+              rehypePlugins={
+                parseRawHtml
+                  ? CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS
+                  : CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS
+              }
+              skipHtml={false}
+              components={CHAT_MARKDOWN_COMPONENTS}
+              urlTransform={markdownUrlTransform}
+            >
+              {text}
+            </ReactMarkdown>
+          </ChatMarkdownTextContext>
+        </ChatMarkdownSourceLinesContext>
       </ChatMarkdownRendererContext>
       {localMediaPreview ? (
         <ExpandedImageDialog preview={localMediaPreview} onClose={closeLocalMediaPreview} />

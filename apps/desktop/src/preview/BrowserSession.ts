@@ -2,6 +2,7 @@ import type { Session, WebContents } from "electron";
 import { BrowserWindow, session } from "electron";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
 import * as Layer from "effect/Layer";
@@ -10,6 +11,7 @@ import * as Schema from "effect/Schema";
 import * as SynchronizedRef from "effect/SynchronizedRef";
 
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
+import { attachChromeExtensions } from "./ChromeExtensions.ts";
 
 const PREVIEW_PARTITION_PREFIX = "persist:t3code-preview-";
 /** Ephemeral partitions omit persist: but retain a product prefix so the webview gate recognizes them. */
@@ -139,6 +141,16 @@ export class BrowserSession extends Context.Service<
     readonly clearCache: (
       partitions?: ReadonlyArray<string>,
     ) => Effect.Effect<void, BrowserSessionCacheClearError>;
+    /**
+     * Runs for every persistent session created after registration, before
+     * `getSession` hands it out, so a guest never attaches to a half-set-up
+     * session. Already-created sessions are reached through `persistentSessions`,
+     * which also lists a session whose initializers are still running.
+     */
+    readonly addPersistentSessionInitializer: (
+      initialize: (browserSession: Session) => Effect.Effect<void>,
+    ) => Effect.Effect<void>;
+    readonly persistentSessions: Effect.Effect<ReadonlyArray<Session>>;
   }
 >()("@t3tools/desktop/preview/BrowserSession") {}
 
@@ -217,6 +229,13 @@ export const make = Effect.gen(function* BrowserSessionMake() {
     );
   };
   const sessionsRef = yield* SynchronizedRef.make<ReadonlyMap<string, Session>>(new Map());
+  const persistentSessionInitializers: Array<(browserSession: Session) => Effect.Effect<void>> = [];
+  const pendingInitialization = new Map<string, Deferred.Deferred<void>>();
+  interface SessionLookup {
+    readonly browserSession: Session;
+    readonly ready: Deferred.Deferred<void> | undefined;
+    readonly created: boolean;
+  }
 
   const getPartition = Effect.fn("BrowserSession.getPartition")(function* (
     scope = "shared",
@@ -242,41 +261,124 @@ export const make = Effect.gen(function* BrowserSessionMake() {
     namespace?: BrowserSessionPartitionNamespace,
   ) {
     const partition = yield* getPartition(scope, persistent, namespace);
-    return yield* SynchronizedRef.modifyEffect(sessionsRef, (sessions) => {
-      const existing = sessions.get(partition);
-      if (existing) return Effect.succeed([existing, sessions] as const);
-      return Effect.try({
-        try: () => {
-          const browserSession = session.fromPartition(partition);
-          // Rewriting Electron's native User-Agent makes Turnstile fail integrity checks with error 600010.
-          browserSession.setPermissionRequestHandler(
-            (webContents, permission, callback, details) => {
-              if (permission === "openExternal") {
-                confirmOpenExternal(
-                  webContents,
-                  "externalURL" in details ? details.externalURL : undefined,
-                  callback,
-                );
-                return;
-              }
-              callback(ALLOWED_PREVIEW_PERMISSIONS.has(permission));
+    const { browserSession, ready, created } = yield* SynchronizedRef.modifyEffect(
+      sessionsRef,
+      (
+        sessions,
+      ): Effect.Effect<
+        readonly [SessionLookup, ReadonlyMap<string, Session>],
+        BrowserSessionCreationError
+      > => {
+        const existing = sessions.get(partition);
+        if (existing) {
+          return Effect.succeed([
+            {
+              browserSession: existing,
+              ready: pendingInitialization.get(partition),
+              created: false,
             },
-          );
-          browserSession.setPermissionCheckHandler((_webContents, permission) =>
-            ALLOWED_PREVIEW_PERMISSIONS.has(permission),
-          );
+            sessions,
+          ]);
+        }
+        return Effect.try({
+          try: () => {
+            const browserSession = session.fromPartition(partition);
+            // Rewriting Electron's native User-Agent makes Turnstile fail integrity checks with error 600010.
+            browserSession.setPermissionRequestHandler(
+              (webContents, permission, callback, details) => {
+                if (permission === "openExternal") {
+                  confirmOpenExternal(
+                    webContents,
+                    "externalURL" in details ? details.externalURL : undefined,
+                    callback,
+                  );
+                  return;
+                }
+                callback(ALLOWED_PREVIEW_PERMISSIONS.has(permission));
+              },
+            );
+            browserSession.setPermissionCheckHandler((_webContents, permission) =>
+              ALLOWED_PREVIEW_PERMISSIONS.has(permission),
+            );
+            // Attached before the session is published or initialized: the toolbar
+            // only learns of extensions loaded after it exists, and a missing toolbar
+            // must not cost the user the browser.
+            let extensionToolbarFailure: unknown;
+            if (persistent) {
+              try {
+                attachChromeExtensions(browserSession);
+              } catch (cause) {
+                extensionToolbarFailure = cause;
+              }
+            }
+            const next = new Map(sessions);
+            next.set(partition, browserSession);
+            return [browserSession, next, extensionToolbarFailure] as const;
+          },
+          catch: (cause) =>
+            new BrowserSessionCreationError({
+              scope,
+              partition,
+              cause,
+            }),
+        }).pipe(
+          Effect.flatMap(
+            ([browserSession, next, extensionToolbarFailure]): Effect.Effect<
+              readonly [SessionLookup, ReadonlyMap<string, Session>]
+            > => {
+              if (!persistent) {
+                return Effect.succeed([{ browserSession, ready: undefined, created: false }, next]);
+              }
+              const warnToolbarFailure =
+                extensionToolbarFailure === undefined
+                  ? Effect.void
+                  : Effect.logWarning(
+                      "Could not enable the browser extension toolbar.",
+                      extensionToolbarFailure,
+                    );
+              return warnToolbarFailure.pipe(
+                Effect.andThen(Deferred.make<void>()),
+                Effect.map((ready) => {
+                  pendingInitialization.set(partition, ready);
+                  return [{ browserSession, ready, created: true }, next];
+                }),
+              );
+            },
+          ),
+        );
+      },
+    );
+    if (ready === undefined) return browserSession;
+    if (!created) {
+      yield* Deferred.await(ready);
+      return browserSession;
+    }
+    // The session is registered before its initializers run, so an extension added
+    // meanwhile still reaches it through `persistentSessions`, and the initializers
+    // (slow extension loads) run outside the global session lock so they cannot stall
+    // other partitions. Other callers for this partition wait on `ready` instead.
+    yield* Effect.forEach(
+      persistentSessionInitializers,
+      (initialize) => initialize(browserSession),
+      {
+        discard: true,
+      },
+    ).pipe(
+      // An abandoned creation must not leave a half-initialized session in the map.
+      Effect.onInterrupt(() =>
+        SynchronizedRef.update(sessionsRef, (sessions) => {
           const next = new Map(sessions);
-          next.set(partition, browserSession);
-          return [browserSession, next] as const;
-        },
-        catch: (cause) =>
-          new BrowserSessionCreationError({
-            scope,
-            partition,
-            cause,
-          }),
-      });
-    });
+          next.delete(partition);
+          return next;
+        }),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => pendingInitialization.delete(partition)).pipe(
+          Effect.andThen(Deferred.succeed(ready, undefined)),
+        ),
+      ),
+    );
+    return browserSession;
   });
 
   return BrowserSession.of({
@@ -320,6 +422,20 @@ export const make = Effect.gen(function* BrowserSessionMake() {
         { concurrency: "unbounded", discard: true },
       );
     }),
+    addPersistentSessionInitializer: Effect.fn("BrowserSession.addPersistentSessionInitializer")(
+      function (initialize) {
+        return Effect.sync(() => {
+          persistentSessionInitializers.push(initialize);
+        });
+      },
+    ),
+    persistentSessions: SynchronizedRef.get(sessionsRef).pipe(
+      Effect.map((sessions) =>
+        [...sessions.entries()]
+          .filter(([partition]) => partition.startsWith(PREVIEW_PARTITION_PREFIX))
+          .map(([, browserSession]) => browserSession),
+      ),
+    ),
   });
 }).pipe(Effect.withSpan("BrowserSession.make"));
 

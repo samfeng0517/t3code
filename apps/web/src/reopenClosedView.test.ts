@@ -7,7 +7,15 @@ import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { browserWorkspaceThreadRef } from "./browserWorkspace.logic";
+import { useBrowserWorkspaceStore } from "./browserWorkspaceStore";
 import { type ClosedViewEntry, useClosedViewStore } from "./closedViewStore";
+import {
+  GIT_PAGE_REF,
+  type GitTab,
+  gitTabKey,
+  useGitTabsStore,
+} from "./components/git/gitTabsStore";
 import { __setClientSettingsForTests } from "./hooks/useSettings";
 import { readThreadPreviewState, resetPreviewStateForTests } from "./previewStateStore";
 import { planNextReopen, type ReopenOwnerState, reopenClosedView } from "./reopenClosedView";
@@ -125,6 +133,46 @@ describe("reopenClosedView", () => {
   });
 });
 
+describe("reopenClosedView for the browser workspace", () => {
+  const workspaceRef = browserWorkspaceThreadRef(threadRef.environmentId, "client-1");
+
+  it("should reopen a closed workspace tab as a workspace tab when its entry belongs to the workspace", async () => {
+    useBrowserWorkspaceStore.setState({
+      environmentId: threadRef.environmentId,
+      available: true,
+      tabs: [],
+      activeTabId: null,
+    });
+    const openPreview = vi.fn();
+
+    const result = await reopenClosedView(
+      { kind: "browser", threadRef: workspaceRef, snapshot },
+      { openPreview, workspaceAvailable: false },
+    );
+
+    expect(result).toBe(true);
+    expect(openPreview).not.toHaveBeenCalled();
+    const { tabs, activeTabId } = useBrowserWorkspaceStore.getState();
+    expect(tabs).toMatchObject([
+      { url: "https://example.com", title: "Example", profileId: "work", sessionTabId: null },
+    ]);
+    expect(activeTabId).toBe(tabs[0]?.id);
+    expect(useRightPanelStore.getState().byThreadKey).toEqual({});
+  });
+
+  it("should keep the entry when the workspace has no environment that can run tabs", async () => {
+    useBrowserWorkspaceStore.setState({ available: false, tabs: [], activeTabId: null });
+
+    const result = await reopenClosedView(
+      { kind: "browser", threadRef: workspaceRef, snapshot },
+      { openPreview: vi.fn(), workspaceAvailable: false },
+    );
+
+    expect(result).toBe(false);
+    expect(useBrowserWorkspaceStore.getState().tabs).toEqual([]);
+  });
+});
+
 describe("planNextReopen", () => {
   const entries: ClosedViewEntry[] = [
     { id: "a", kind: "panel-tab", threadRef, surface: { kind: "diff", id: "diff" } },
@@ -183,5 +231,49 @@ describe("planNextReopen", () => {
     );
     expect(plan.drop.map((e) => e.id)).toEqual(dropped);
     expect(plan.restore?.id ?? null).toBe(restored);
+  });
+});
+
+describe("planNextReopen for git tabs", () => {
+  const gitTab = (id: string, projectId: string): ClosedViewEntry => ({
+    id,
+    kind: "git-tab",
+    threadRef,
+    environmentId: "local",
+    projectId,
+  });
+  const owner: ReopenOwnerState = {
+    environmentKnown: true,
+    catalogReady: true,
+    ownerExists: true,
+    shellLive: true,
+    panel: { isOpen: false, activeSurfaceId: null, surfaces: [] },
+  };
+
+  it("planNextReopen should drop a git-tab entry when that tab is already open", () => {
+    const plan = planNextReopen([gitTab("a", "open"), gitTab("b", "closed")], (entry) => ({
+      ...owner,
+      gitTabOpen: entry.kind === "git-tab" && entry.projectId === "open",
+    }));
+    expect(plan.drop.map((e) => e.id)).toEqual(["a"]);
+    expect(plan.restore?.id ?? null).toBe("b");
+  });
+});
+
+describe("reopenClosedView for git tabs", () => {
+  it("should open and activate the git tab when a git-tab entry is restored", async () => {
+    useGitTabsStore.setState({ tabs: [], activeKey: null });
+    const reopened = await reopenClosedView(
+      {
+        kind: "git-tab",
+        threadRef: GIT_PAGE_REF,
+        environmentId: "local",
+        projectId: "project-1",
+      },
+      { openPreview: vi.fn(), workspaceAvailable: false },
+    );
+    expect(reopened).toBe(true);
+    const tab = { environmentId: "local", projectId: "project-1" } as GitTab;
+    expect(useGitTabsStore.getState()).toMatchObject({ tabs: [tab], activeKey: gitTabKey(tab) });
   });
 });

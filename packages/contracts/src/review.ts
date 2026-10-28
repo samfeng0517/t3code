@@ -41,9 +41,16 @@ export const ReviewDiffPreviewSource = Schema.Struct({
 });
 export type ReviewDiffPreviewSource = typeof ReviewDiffPreviewSource.Type;
 
+export const ReviewDiffFileContentsSourceKind = Schema.Literals([
+  "working-tree",
+  "branch-range",
+  "commit",
+]);
+export type ReviewDiffFileContentsSourceKind = typeof ReviewDiffFileContentsSourceKind.Type;
+
 export const ReviewDiffFileContentsInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
-  sourceKind: ReviewDiffPreviewSourceKind,
+  sourceKind: ReviewDiffFileContentsSourceKind,
   changeType: Schema.Literals(["change", "rename-pure", "rename-changed", "new", "deleted"]),
   baseRef: Schema.NullOr(TrimmedNonEmptyString),
   headRef: Schema.NullOr(TrimmedNonEmptyString),

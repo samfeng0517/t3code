@@ -410,7 +410,7 @@ function ConfigureStep({
   );
 }
 
-function SelectableTile({
+export function SelectableTile({
   selected,
   title,
   subtitle,

@@ -71,6 +71,7 @@ import {
   defaultInstanceIdForDriver,
   isCompactionCommandMessage,
   type ModelSelection,
+  ModSurfaceActionError,
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2ProviderCapabilities,
@@ -197,6 +198,14 @@ import {
   makeSubagentConversationArtifacts,
   subagentThreadTitle,
 } from "@t3tools/provider-core/server/subagentProjection";
+import {
+  ClaudeModRequestError,
+  claudeQueryUiRequester,
+  isClaudeUiPush,
+  makeClaudeModSurface,
+  type ClaudeModSurface,
+  type ClaudeUiRequest,
+} from "./ClaudeModSurface.ts";
 
 export const CLAUDE_PROVIDER = ProviderDriverKind.make("claudeAgent");
 const CLAUDE_AGENT_SDK_QUERY_PROTOCOL = "claude-agent-sdk.query" as const;
@@ -221,9 +230,14 @@ function claudePromptCacheTtlMs(
   return undefined;
 }
 
+// The setting is in thousands of tokens.
+function claudeAutoCompactWindowTokens(autoCompactWindow: string): number {
+  return Number(autoCompactWindow) * 1000;
+}
+
 // Claude caps the window at the model's context, so a setting at or above it never applies.
 function claudeAutoCompactThreshold(autoCompactWindow: string, maxTokens: number | null) {
-  const threshold = Number(autoCompactWindow);
+  const threshold = claudeAutoCompactWindowTokens(autoCompactWindow);
   return threshold > 0 && (maxTokens === null || threshold < maxTokens)
     ? { autoCompactThreshold: threshold }
     : {};
@@ -518,6 +532,8 @@ export interface ClaudeAgentSdkQuerySession {
   ) => Effect.Effect<boolean, ClaudeAgentSdkQueryRunnerError>;
   readonly interrupt: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   readonly close: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
+  /** Absent when the SDK cannot send the mods protocol's control requests. */
+  readonly uiRequest?: ClaudeUiRequest;
 }
 
 type ClaudeQueryStreamExit = Exit.Exit<void, ClaudeAgentSdkQueryRunnerError>;
@@ -1079,7 +1095,19 @@ export const layerQueryRunner: Layer.Layer<
             ),
           );
 
+          const sendUiRequest = claudeQueryUiRequester(queryRuntime);
           return {
+            ...(sendUiRequest === undefined
+              ? {}
+              : {
+                  uiRequest: (request) =>
+                    Effect.tryPromise({
+                      // Interrupting the request cancels it in Claude Code as well.
+                      try: (signal) => sendUiRequest(request, signal),
+                      catch: (cause) =>
+                        new ClaudeModRequestError({ subtype: request.subtype, cause }),
+                    }),
+                }),
             messages: Stream.fromAsyncIterable(claudeQueryMessages(queryRuntime), (cause) =>
               queryRunnerError(cause, "fromAsyncIterable"),
             ).pipe(
@@ -1465,7 +1493,7 @@ export function makeClaudeQueryOptions(input: {
       ? querySettings
       : ({
           ...(typeof querySettings === "object" && querySettings !== null ? querySettings : {}),
-          autoCompactWindow: Number(input.settings.autoCompactWindow),
+          autoCompactWindow: claudeAutoCompactWindowTokens(input.settings.autoCompactWindow),
         } as ClaudeSdkSettings);
   // A settings file path cannot take extra keys, so it goes through unchanged.
   const effectiveQuerySettings =
@@ -4465,6 +4493,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         const interruptedTurns = yield* Ref.make(new Set<OrchestrationV2ProviderTurn["id"]>());
         const steeredTurns = yield* Ref.make(new Set<OrchestrationV2ProviderTurn["id"]>());
         const queryContext = yield* Ref.make<ClaudeLiveQueryContext | null>(null);
+        // What the live process's mods draw, and the thread its drawings belong to.
+        let liveModSurface: {
+          readonly query: ClaudeAgentSdkQuerySession;
+          readonly threadId: ThreadId;
+          readonly surface: ClaudeModSurface;
+        } | null = null;
         // A worktree handoff changes the project settings even within one session.
         let bypassCache: { cwd: string | null; availability: ClaudeBypassAvailability } | null =
           null;
@@ -9712,6 +9746,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           });
           const closedExistingNativeThreadId = existing !== null ? existing.nativeThreadId : null;
           if (existing !== null) {
+            // The replaced process says its mods are gone now, before the new
+            // one attaches; its pump may end much later, and must stay quiet.
+            const replacedModSurface = liveModSurface;
+            if (replacedModSurface?.query === existing.query) {
+              liveModSurface = null;
+              yield* replacedModSurface.surface.detach;
+            }
             yield* existing.query.close.pipe(Effect.ignore);
             if (existing.nativeThreadId !== nativeThreadId) {
               yield* clearWakeStateForNativeThread(existing.nativeThreadId);
@@ -9813,10 +9854,30 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             ),
           };
           yield* Ref.set(queryContext, context);
+          const modSurface = makeClaudeModSurface({
+            request: querySession.uiRequest,
+            scope: sessionScope,
+            emit: (event) =>
+              emitProviderEvent({
+                type: "mod_surface.updated",
+                driver: CLAUDE_PROVIDER,
+                threadId: turnInput.threadId,
+                event,
+              }),
+          });
+          liveModSurface = {
+            query: querySession,
+            threadId: turnInput.threadId,
+            surface: modSurface,
+          };
+          yield* modSurface.attach;
           yield* querySession.messages.pipe(
             Stream.runForEach((message) =>
               sdkMessageLock.withPermits(1)(
                 Effect.suspend(() => {
+                  if (isClaudeUiPush(message)) {
+                    return modSurface.handleMessage(message).pipe(Effect.asVoid);
+                  }
                   if (
                     message.type === "system" &&
                     message.subtype === "init" &&
@@ -9840,6 +9901,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             Effect.exit,
             Effect.flatMap(
               Effect.fnUntraced(function* (exit: ClaudeQueryStreamExit) {
+                if (liveModSurface?.surface === modSurface) {
+                  liveModSurface = null;
+                  yield* modSurface.detach;
+                } else {
+                  // A newer process owns the thread's mods; a reset would wipe them.
+                  yield* modSurface.release;
+                }
                 const heldContext = yield* Ref.get(activeTurn);
                 if (
                   (yield* Ref.get(queryContext))?.query === querySession &&
@@ -10783,6 +10851,31 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               ? confirmedOutcome
               : undefined;
           }),
+          mods: {
+            act: Effect.fn("ClaudeAdapterV2.actOnMod")(function* (modInput) {
+              const live = liveModSurface;
+              if (live === null || live.threadId !== modInput.threadId) {
+                return yield* new ProviderAdapter.ProviderAdapterProtocolError({
+                  driver: CLAUDE_PROVIDER,
+                  detail: "No live Claude Code process drew this mod.",
+                  cause: new ModSurfaceActionError({
+                    threadId: modInput.threadId,
+                    reason: "session-stopped",
+                  }),
+                });
+              }
+              return yield* live.surface.act(modInput.action).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ProviderAdapter.ProviderAdapterProtocolError({
+                      driver: CLAUDE_PROVIDER,
+                      detail: "Claude Code did not answer the mod action.",
+                      cause,
+                    }),
+                ),
+              );
+            }),
+          },
           respondToRuntimeRequest: Effect.fn("ClaudeAdapterV2.respondToRuntimeRequest")(
             function* (requestInput) {
               const pending = (yield* Ref.get(pendingRuntimeRequests)).get(

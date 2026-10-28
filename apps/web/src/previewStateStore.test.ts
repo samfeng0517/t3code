@@ -172,6 +172,7 @@ describe("previewStateStore (single-tab)", () => {
     applyPreviewServerSnapshot(ref, snapshot);
     const overlay = {
       hasWebContents: true,
+      webContentsId: 1,
       canGoBack: true,
       canGoForward: false,
       loading: false,
@@ -199,6 +200,30 @@ describe("previewStateStore (single-tab)", () => {
     expect(updateCount).toBe(1);
   });
 
+  it("applyPreviewDesktopState should publish a new overlay when only the webContentsId changes", () => {
+    const snapshot = makeSnapshot();
+    applyPreviewServerSnapshot(ref, snapshot);
+    const overlay = {
+      hasWebContents: true,
+      webContentsId: 7,
+      canGoBack: false,
+      canGoForward: false,
+      loading: false,
+      zoomFactor: 1,
+      pictureInPicture: false,
+      colorScheme: "system" as const,
+      audioMuted: false,
+      audible: false,
+      controller: "none" as const,
+      favicon: null,
+    };
+
+    applyPreviewDesktopState(ref, snapshot.tabId, overlay);
+    applyPreviewDesktopState(ref, snapshot.tabId, { ...overlay, webContentsId: 8 });
+
+    expect(readThreadPreviewState(ref).desktopByTabId[snapshot.tabId]?.webContentsId).toBe(8);
+  });
+
   it("retains multiple tabs and switches active desktop state", () => {
     const first = makeSnapshot();
     const second = { ...makeSnapshot(), tabId: "tab_2", updatedAt: "2026-01-02T00:00:00.000Z" };
@@ -206,6 +231,7 @@ describe("previewStateStore (single-tab)", () => {
     applyPreviewServerSnapshot(ref, second);
     applyPreviewDesktopState(ref, first.tabId, {
       hasWebContents: true,
+      webContentsId: 1,
       canGoBack: true,
       canGoForward: false,
       loading: false,
@@ -235,6 +261,7 @@ describe("previewStateStore (single-tab)", () => {
     applyPreviewServerSnapshot(ref, active);
     applyPreviewDesktopState(ref, stale.tabId, {
       hasWebContents: true,
+      webContentsId: 1,
       canGoBack: false,
       canGoForward: false,
       loading: false,
@@ -366,6 +393,7 @@ describe("previewStateStore (single-tab)", () => {
     beginPreviewSessionClose(ref, previous.tabId);
     applyPreviewDesktopState(ref, previous.tabId, {
       hasWebContents: true,
+      webContentsId: 1,
       canGoBack: false,
       canGoForward: false,
       loading: false,

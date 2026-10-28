@@ -1,8 +1,11 @@
 import type {
+  BrowserBookmarkReadResult,
+  BrowserBookmarkSource,
   BrowserImportInput,
   BrowserImportResult,
   BrowserImportSource,
   BrowserImportUnavailableReason,
+  DesktopPreviewReadBookmarksInput,
 } from "@t3tools/contracts";
 import { BrowserImportFailureReason } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -18,6 +21,11 @@ import { ChildProcessSpawner } from "effect/process";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
 import * as BrowserSession from "../BrowserSession.ts";
+import {
+  type BrowserBookmarkReadError,
+  listBookmarkSources,
+  readBookmarks,
+} from "./ChromiumBookmarks.ts";
 import { ChromiumCookieReadError, readChromiumCookies } from "./ChromiumCookies.ts";
 import type { CookieReadResult } from "./CookieDatabase.ts";
 import { FirefoxCookieReadError, readFirefoxCookies } from "./FirefoxCookies.ts";
@@ -70,6 +78,10 @@ export class BrowserImport extends Context.Service<
       readonly persistent: boolean;
       readonly namespace?: BrowserSession.BrowserSessionPartitionNamespace;
     }) => Effect.Effect<BrowserImportResult, BrowserImportFailedError>;
+    readonly listBookmarkSources: Effect.Effect<ReadonlyArray<BrowserBookmarkSource>>;
+    readonly readBookmarks: (
+      input: DesktopPreviewReadBookmarksInput,
+    ) => Effect.Effect<BrowserBookmarkReadResult, BrowserBookmarkReadError>;
   }
 >()("@t3tools/desktop/preview/BrowserImport/BrowserImport") {}
 
@@ -289,7 +301,14 @@ export const make = Effect.gen(function* BrowserImportMake() {
     return yield* writeCookies(session, result);
   });
 
-  return BrowserImport.of({ listSources, importCookies });
+  return BrowserImport.of({
+    listSources,
+    importCookies,
+    listBookmarkSources: listBookmarkSources(pathContext).pipe(Effect.provide(platformServices)),
+    readBookmarks: Effect.fn("BrowserImport.readBookmarks")((input) =>
+      readBookmarks(pathContext, input).pipe(Effect.provide(platformServices)),
+    ),
+  });
 });
 
 export const layer = Layer.effect(BrowserImport, make);

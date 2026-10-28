@@ -10,11 +10,13 @@ import {
 import { cn } from "../../lib/utils";
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import { InlineButton } from "../ui/button";
+import { useT } from "../../i18n";
 
 export function SidebarThreadUndoNotice({ className }: { className?: string }) {
+  const t = useT();
   const notice = useThreadUndoNotice((state) => state.notice);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const summary = notice ? threadUndoNoticeSummary(notice) : null;
+  const summary = notice ? threadUndoNoticeSummary(notice, t) : null;
 
   // Keeps the last text on screen while it fades out, then unmounts on transitionend.
   const [shownSummary, setShownSummary] = useState(summary);
@@ -36,8 +38,13 @@ export function SidebarThreadUndoNotice({ className }: { className?: string }) {
         className,
       )}
     >
-      <span className="min-w-0 truncate">{text},</span>
-      <InlineButton onClick={undoLatestThreadAction}>{threadUndoLabel(keybindings)}</InlineButton>
+      <span className="min-w-0 truncate">
+        {text}
+        {t("sidebar.undo.separator").trimEnd()}
+      </span>
+      <InlineButton onClick={undoLatestThreadAction}>
+        {threadUndoLabel(keybindings, t)}
+      </InlineButton>
     </div>
   );
 }

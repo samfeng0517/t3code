@@ -18,6 +18,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { MessageSquareIcon } from "lucide-react";
 import { useState } from "react";
 
+import { useT } from "../i18n";
 import {
   applyProviderInstanceSettings,
   deriveProviderInstanceEntries,
@@ -98,6 +99,7 @@ export function useCommandPaletteThreadItems(input: {
   readonly threadSearchQuery: string;
 }) {
   const { activeThread, threadSearchQuery } = input;
+  const t = useT();
   const navigate = useNavigate();
   const threads = useThreadShells();
   const { projectEnvironmentLocationById } = useEnvironmentLookups();
@@ -142,7 +144,8 @@ export function useCommandPaletteThreadItems(input: {
           project={projectByKey.get(`${thread.environmentId}:${thread.projectId}`) ?? null}
           projectTitle={projectTitle ?? null}
           environmentLabel={
-            projectEnvironmentLocationById.get(thread.environmentId)?.label ?? "Remote"
+            projectEnvironmentLocationById.get(thread.environmentId)?.label ??
+            t("commandPalette.environment.remote")
           }
           branch={thread.branch}
           worktreePath={thread.worktreePath}
@@ -188,6 +191,7 @@ export function useCommandPaletteThreadItems(input: {
         params: buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id)),
       });
     },
+    t,
   });
 
   const itemByValue = new Map(threadItems.map((item) => [item.value, item]));

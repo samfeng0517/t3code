@@ -46,10 +46,14 @@ import * as DocumentText from "./provider/DocumentText.ts";
 import * as DirectEndpoints from "./environment/DirectEndpoints.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
+import * as GitHistoryService from "./git/GitHistoryService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
+import * as CompatProjectConfig from "./project/CompatProjectConfig.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
 import * as ManagedProjectFolders from "./project/ManagedProjectFolders.ts";
 import * as McpAppRequests from "./mcpApps/McpAppRequests.ts";
+import * as ModSurfaceActions from "./mods/ModSurfaceActions.ts";
+import * as ModSurfaceHub from "./mods/ModSurfaceHub.ts";
 import * as ModelManifest from "./provider/ModelManifest.ts";
 import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
 import * as OtlpEndpointCheck from "./observability/OtlpEndpointCheck.ts";
@@ -411,9 +415,12 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(CodexInstallation.CodexInstallation)({ managedDirectory: "/unused" }),
   Layer.mock(DeviceService.DeviceService)({}),
   Layer.mock(EnvironmentTheme.EnvironmentThemeService)({}),
+  Layer.mock(GitHistoryService.GitHistoryService)({}),
   Layer.mock(GitWorkflowService.GitWorkflowService)({}),
   Layer.mock(HostResources.HostResources)({}),
   Layer.mock(McpAppRequests.McpAppRequests)({}),
+  Layer.mock(ModSurfaceHub.ModSurfaceHub)({}),
+  Layer.mock(ModSurfaceActions.ModSurfaceActions)({}),
   Layer.mock(ModelManifest.ModelManifest)({}),
   Layer.mock(OrchestrationEventStore.OrchestrationEventStore)({}),
   Layer.mock(Orchestrator.OrchestratorV2)({}),
@@ -457,6 +464,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(UsageService.UsageService)({}),
   Layer.mock(VcsProvisioningService.VcsProvisioningService)({}),
   Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
+  Layer.mock(CompatProjectConfig.CompatProjectConfig)({}),
   Layer.mock(WorkspaceEntries.WorkspaceEntries)({}),
   Layer.mock(WorkspaceFileSystem.WorkspaceFileSystem)({}),
   Layer.mock(WorktreeSetupTracker.WorktreeSetupTracker)({}),

@@ -43,10 +43,12 @@ T3 Code uses the Claude configuration on the connected server.
 
 ## Compact long conversations
 
-Set **Auto-compact after** in the Claude provider settings to an integer between
-`100000` and `1000000`. For example, `300000` asks Claude to summarize at about
-300,000 tokens. This changes when compaction happens, not the model's context
-window. Leave it empty for Claude Code's default.
+Set **Auto-compact after (K tokens)** in the Claude provider settings to a
+number of thousands between `100` and `1000`. For example, `300` asks Claude to
+summarize at about 300K tokens. This changes when compaction happens, not the
+model's context window, so a model with a smaller context compacts at its own
+limit. Leave it empty for Claude Code's default. A value saved earlier as a full
+token count, such as `300000`, reads as `300`.
 
 You can also send `/compact` in an existing conversation. Web and desktop offer
 **Compact context** from the context meter. When you return to a large thread
@@ -60,10 +62,13 @@ composer commands.
 **Compact idle threads** in **Settings > Providers > Advanced** controls this for threads
 over 200,000 tokens. Each Claude provider's settings can override it:
 
-- **When you return** shows the **Compact** chip described above. This is the default.
-- **Before the cache expires (beta)** compacts an idle thread shortly before its
+- **Before the cache expires** compacts an idle thread shortly before its
   prompt cache expires, so coming back does not reprocess the whole conversation.
-  The compaction appears in the thread as a `/compact` turn sent by T3 Code.
+  The compaction appears in the thread as a `/compact` turn sent by T3 Code. It
+  needs the hour-long subscription cache; with a 5-minute cache, and for any
+  thread that could not be compacted in time, the **Compact** chip shows when
+  you return. This is the default.
+- **When you return** shows the **Compact** chip described above.
 - **Never** skips idle compaction and Claude's resume prompt. **Auto-compact after**
   still applies, and you can still compact by hand.
 
@@ -86,6 +91,30 @@ contribute skills under names such as `plugin:review`. Skills marked `disable-mo
 can still be started by you. Invoke those one per message: Claude directly runs
 only the last named skill and may try to start earlier ones through its Skill
 tool, which refuses skills reserved for manual invocation.
+
+## Mods
+
+Claude Code mods are plugins that add their own panes, buttons, status lines and
+notifications to Claude. Install them the way you install any Claude plugin; T3
+Code shows what they draw while the thread's Claude session is running.
+
+Open the **Mods** panel beside the chat from the command palette (**Toggle mods
+panel**) or a keybinding you assign to **Mods Panel: Toggle**. It lists the panes
+your mods have opened in the current thread. Buttons, text fields, pickers and
+images in a pane work as they do in Claude Code: pressing a button, typing in a
+field (Enter submits it; Shift+Enter starts a new line in a field of several
+lines) or picking an option runs the mod's action in that session. A mod's status
+lines and its band appear above the composer, and its notifications show as
+toasts.
+
+Mods draw nothing while the thread has no running Claude session, and their panes
+close when the session ends. Regions a mod draws with its own code are not shown
+yet. An image a mod marks as interactive responds to hover and follows its own
+links, but it runs no scripts and clicks inside it do not reach the mod. When a
+pane or the status band first shows, the control the mod asks to focus takes the
+keyboard, unless you are typing somewhere else. Mods need a Claude Code release
+that supports them; on older releases the panel says so. The mobile app does not
+show mods.
 
 ## Task lists
 

@@ -118,7 +118,8 @@ interface HarnessOptions {
   readonly adapters?: ReadonlyArray<ProviderAdapter.ProviderAdapterV2["Service"]>;
   readonly managedFolders?: Layer.Layer<ManagedProjectFolders.ManagedProjectFolders>;
   readonly createWorktree?: GitWorkflow.GitWorkflowService["Service"]["createWorktree"];
-  readonly fetchWorktreeBaseCommit?: GitWorkflow.GitWorkflowService["Service"]["fetchWorktreeBaseCommit"];
+  readonly prepareWorktreeBase?: GitWorkflow.GitWorkflowService["Service"]["prepareWorktreeBase"];
+  readonly fastForwardWorktree?: GitWorkflow.GitWorkflowService["Service"]["fastForwardWorktree"];
   readonly remoteExists?: GitWorkflow.GitWorkflowService["Service"]["remoteExists"];
   readonly hasCommit?: GitWorkflow.GitWorkflowService["Service"]["hasCommit"];
   readonly renameBranch?: GitWorkflow.GitWorkflowService["Service"]["renameBranch"];
@@ -152,6 +153,18 @@ function makeHarness(options: HarnessOptions = {}) {
         Effect.succeed({
           worktree: { path: "/repo-worktrees/feature", refName: input.newRefName, headSha: "abc" },
         } as never)),
+  );
+  const prepareWorktreeBase = vi.fn(
+    options.prepareWorktreeBase ??
+      (() =>
+        Effect.succeed({
+          startRef: "remote-main-sha",
+          baseRefName: "refs/remotes/origin/main",
+          remoteName: "origin",
+          remoteStart: true,
+          fastForwardTo: null,
+          warning: null,
+        })),
   );
   const renameBranch = vi.fn(
     options.renameBranch ?? ((input) => Effect.succeed({ branch: input.newBranch })),
@@ -195,9 +208,9 @@ function makeHarness(options: HarnessOptions = {}) {
     Layer.mock(GitWorkflow.GitWorkflowService)({
       createWorktree,
       renameBranch,
-      fetchWorktreeBaseCommit:
-        options.fetchWorktreeBaseCommit ??
-        (() => Effect.succeed({ commitSha: "remote-main-sha", remoteRefName: "origin/main" })),
+      prepareWorktreeBase,
+      fastForwardWorktree:
+        options.fastForwardWorktree ?? (() => Effect.succeed("fast-forwarded" as const)),
       hasCommit: options.hasCommit ?? (() => Effect.succeed(false)),
       resolveWorktreeBaseRemote: () => Effect.succeed({ remoteName: "origin", branchName: "main" }),
       remoteExists: options.remoteExists ?? (() => Effect.succeed(true)),
@@ -268,6 +281,7 @@ function makeHarness(options: HarnessOptions = {}) {
       layerExternalServices,
     ),
     createWorktree,
+    prepareWorktreeBase,
     removeWorktree,
     renameBranch,
     generateBranchName,
@@ -1056,7 +1070,8 @@ it.effect.each(["stable", "upstream/release"])(
           resolveWorktreeBaseRemote: (input) => git.resolveWorktreeBaseRemote({ ...input, cwd }),
           hasRefNamed: () => Effect.succeed(false),
         },
-        fetchWorktreeBaseCommit: (input) => git.fetchWorktreeBaseCommit({ ...input, cwd }),
+        prepareWorktreeBase: (input) => git.prepareWorktreeBase({ ...input, cwd }),
+        fastForwardWorktree: (input) => git.fastForwardWorktree(input),
         createWorktree: (input, options) =>
           git.createWorktree({ ...input, cwd, path: worktreePath }, options),
         runSetup: () =>
@@ -1107,54 +1122,580 @@ it.effect.each(["stable", "upstream/release"])(
     ),
 );
 
-it.effect("shows the fetch diagnosis when preparing a worktree from origin fails", () => {
-  const detail =
-    "Git could not authenticate with the remote. Check Git credentials or SSH access on the server, then retry.";
-  const harness = makeHarness({
-    fetchWorktreeBaseCommit: () =>
+it.effect.each([
+  { baseRef: "feature/local", branch: "feature/local", head: "local" },
+  { baseRef: "origin/feature/remote", branch: "feature/remote", head: "latest-remote" },
+] as const)("launches into existing branch $baseRef without creating a new one", (testCase) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const git = yield* GitVcsDriver.GitVcsDriver;
+    const directory = yield* fs.makeTempDirectoryScoped({ prefix: "launch-existing-branch-" });
+    const cwd = `${directory}/repo`;
+    const remote = `${directory}/remote.git`;
+    const worktreePath = `${directory}/worktree`;
+    yield* fs.makeDirectory(cwd);
+    const command = (at: string, args: string[]) =>
+      git.execute({ operation: "launch-test", cwd: at, args });
+    const commit = (message: string) =>
+      command(cwd, [
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.test",
+        "commit",
+        "--allow-empty",
+        "-m",
+        message,
+      ]);
+    yield* command(cwd, ["init", "-b", "main"]);
+    yield* commit("initial");
+    yield* command(cwd, ["init", "--bare", remote]);
+    yield* command(cwd, ["remote", "add", "origin", remote]);
+    yield* command(cwd, ["switch", "-c", "feature/remote"]);
+    yield* commit("remote work");
+    yield* command(cwd, ["push", "origin", "feature/remote"]);
+    yield* commit("newer remote work");
+    yield* command(cwd, ["push", "origin", "feature/remote"]);
+    const heads = {
+      "latest-remote": (yield* command(cwd, ["rev-parse", "HEAD"])).stdout.trim(),
+    } as Record<string, string>;
+    // The local tracking ref lags one commit, so only a fetch reaches the latest.
+    yield* command(cwd, ["update-ref", "refs/remotes/origin/feature/remote", "HEAD~1"]);
+    yield* command(cwd, ["switch", "main"]);
+    yield* command(cwd, ["branch", "-D", "feature/remote"]);
+    yield* command(cwd, ["switch", "-c", "feature/local"]);
+    yield* commit("local work");
+    heads.local = (yield* command(cwd, ["rev-parse", "HEAD"])).stdout.trim();
+    yield* command(cwd, ["switch", "main"]);
+
+    const setupStarted = yield* Deferred.make<void>();
+    const harness = makeHarness({
+      hasCommit: ({ refName }) =>
+        command(cwd, ["rev-parse", "--verify", `${refName}^{commit}`]).pipe(
+          Effect.as(true),
+          Effect.orElseSucceed(() => false),
+        ),
+      git: {
+        resolveWorktreeBaseRemote: (input) => git.resolveWorktreeBaseRemote({ ...input, cwd }),
+      },
+      prepareWorktreeBase: (input) => git.prepareWorktreeBase({ ...input, cwd }),
+      fastForwardWorktree: (input) => git.fastForwardWorktree(input),
+      createWorktree: (input, options) =>
+        git.createWorktree({ ...input, cwd, path: worktreePath }, options),
+      runSetup: () =>
+        Deferred.succeed(setupStarted, undefined).pipe(Effect.as({ status: "no-script" as const })),
+    });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const launched = yield* launches.launch(
+        launchInput({
+          command: `command:launch:existing:${testCase.branch}`,
+          thread: `thread:launch:existing:${testCase.branch}`,
+          message: "Work on the branch",
+          workspace: {
+            type: "worktree",
+            baseRef: testCase.baseRef,
+            startFromOrigin: true,
+            existingBranch: true,
+          },
+        }),
+      );
+      yield* Deferred.await(setupStarted);
+      const projection = yield* threads.getThreadProjection(launched.threadId);
+      assert.equal(projection.thread.worktreePath, worktreePath);
+      assert.equal(projection.thread.branch, testCase.branch);
+      assert.equal(
+        (yield* command(worktreePath, ["branch", "--show-current"])).stdout.trim(),
+        testCase.branch,
+      );
+      assert.equal(
+        (yield* command(worktreePath, ["rev-parse", "HEAD"])).stdout.trim(),
+        heads[testCase.head],
+      );
+      assert.equal(harness.generateBranchName.mock.calls.length, 0);
+      assert.equal(harness.renameBranch.mock.calls.length, 0);
+    }).pipe(Effect.provide(harness.layer));
+  }).pipe(
+    Effect.provide(
+      GitVcsDriver.layer.pipe(
+        Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "launch-existing-git-" })),
+        Layer.provideMerge(NodeServices.layer),
+      ),
+    ),
+  ),
+);
+
+it.effect("keeps an existing branch that looks temporary instead of renaming it", () =>
+  Effect.gen(function* () {
+    const setupStarted = yield* Deferred.make<void>();
+    const harness = makeHarness({
+      hasCommit: () => Effect.succeed(true),
+      createWorktree: () =>
+        Effect.succeed({
+          worktree: { path: "/repo-worktrees/t3-1a2b3c4d", refName: "t3/1a2b3c4d", headSha: "abc" },
+        } as never),
+      runSetup: () =>
+        Deferred.succeed(setupStarted, undefined).pipe(Effect.as({ status: "no-script" as const })),
+    });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const launched = yield* launches.launch(
+        launchInput({
+          command: "command:launch:existing:temporary-name",
+          thread: "thread:launch:existing:temporary-name",
+          message: "Work on the branch",
+          workspace: { type: "worktree", baseRef: "t3/1a2b3c4d", existingBranch: true },
+        }),
+      );
+      yield* Deferred.await(setupStarted);
+      const projection = yield* threads.getThreadProjection(launched.threadId);
+      assert.equal(projection.thread.branch, "t3/1a2b3c4d");
+      assert.equal(harness.generateBranchName.mock.calls.length, 0);
+      assert.equal(harness.renameBranch.mock.calls.length, 0);
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
+
+it.effect(
+  "ThreadLaunchService should fast-forward an existing behind branch inside the new worktree when existingBranch is launched",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const git = yield* GitVcsDriver.GitVcsDriver;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "launch-fast-forward-" });
+      const cwd = `${directory}/repo`;
+      const remote = `${directory}/remote.git`;
+      const worktreePath = `${directory}/worktree`;
+      yield* fs.makeDirectory(cwd);
+      const command = (at: string, args: string[]) =>
+        git.execute({ operation: "launch-test", cwd: at, args });
+      const commit = (message: string) =>
+        command(cwd, [
+          "-c",
+          "user.name=Test",
+          "-c",
+          "user.email=test@example.test",
+          "commit",
+          "--allow-empty",
+          "-m",
+          message,
+        ]);
+      yield* command(cwd, ["init", "-b", "main"]);
+      yield* commit("initial");
+      yield* command(cwd, ["init", "--bare", remote]);
+      yield* command(cwd, ["remote", "add", "origin", remote]);
+      yield* command(cwd, ["switch", "-c", "feat"]);
+      yield* commit("feature start");
+      yield* command(cwd, ["push", "-u", "origin", "feat"]);
+      yield* commit("remote work");
+      yield* commit("more remote work");
+      yield* command(cwd, ["push", "origin", "feat"]);
+      const remoteHead = (yield* command(cwd, ["rev-parse", "HEAD"])).stdout.trim();
+      yield* command(cwd, ["switch", "main"]);
+      // Local feat and its tracking ref lag two commits, so only the fetch sees the remote tip.
+      yield* command(cwd, ["branch", "-f", "feat", "feat~2"]);
+      yield* command(cwd, ["update-ref", "refs/remotes/origin/feat", "feat"]);
+
+      const setupStarted = yield* Deferred.make<void>();
+      const harness = makeHarness({
+        hasCommit: ({ refName }) =>
+          command(cwd, ["rev-parse", "--verify", `${refName}^{commit}`]).pipe(
+            Effect.as(true),
+            Effect.orElseSucceed(() => false),
+          ),
+        git: {
+          resolveWorktreeBaseRemote: (input) => git.resolveWorktreeBaseRemote({ ...input, cwd }),
+        },
+        prepareWorktreeBase: (input) => git.prepareWorktreeBase({ ...input, cwd }),
+        fastForwardWorktree: (input) => git.fastForwardWorktree(input),
+        createWorktree: (input, options) =>
+          git.createWorktree({ ...input, cwd, path: worktreePath }, options),
+        runSetup: () =>
+          Deferred.succeed(setupStarted, undefined).pipe(
+            Effect.as({ status: "no-script" as const }),
+          ),
+      });
+      yield* Effect.gen(function* () {
+        const launches = yield* ThreadLaunch.ThreadLaunchService;
+        yield* launches.launch(
+          launchInput({
+            command: "command:launch:existing:fast-forward",
+            thread: "thread:launch:existing:fast-forward",
+            message: "Work on the branch",
+            workspace: {
+              type: "worktree",
+              baseRef: "feat",
+              startFromOrigin: true,
+              existingBranch: true,
+            },
+          }),
+        );
+        yield* Deferred.await(setupStarted);
+        assert.equal(
+          (yield* command(worktreePath, ["rev-parse", "HEAD"])).stdout.trim(),
+          remoteHead,
+        );
+        assert.equal(
+          (yield* command(cwd, ["rev-parse", "refs/heads/feat"])).stdout.trim(),
+          remoteHead,
+        );
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(
+        GitVcsDriver.layer.pipe(
+          Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "launch-ff-git-" })),
+          Layer.provideMerge(NodeServices.layer),
+        ),
+      ),
+    ),
+);
+
+const existingFeatWorktree = () =>
+  Effect.succeed({
+    worktree: { path: "/repo-worktrees/feat", refName: "feat", headSha: "abc" },
+  } as never);
+
+it.effect(
+  "ThreadLaunchService should mark the fetch stage as a warning when the base diverged",
+  () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const harness = makeHarness({
+        prepareWorktreeBase: () =>
+          Effect.succeed({
+            startRef: "feat",
+            baseRefName: "feat",
+            remoteName: "origin",
+            remoteStart: false,
+            fastForwardTo: null,
+            warning: { kind: "diverged" as const, remoteRef: "origin/feat", branch: "feat" },
+          }),
+        createWorktree: existingFeatWorktree,
+        runSetup: () => Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
+      });
+      yield* Effect.gen(function* () {
+        const launches = yield* ThreadLaunch.ThreadLaunchService;
+        const tracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
+        const launched = yield* launches.launch(
+          launchInput({
+            command: "launch:diverged-warning",
+            thread: "thread:diverged-warning",
+            message: "Start",
+            workspace: {
+              type: "worktree",
+              baseRef: "feat",
+              startFromOrigin: true,
+              existingBranch: true,
+            },
+          }),
+        );
+        yield* Deferred.await(entered);
+        const fetch = (yield* tracker.get(launched.threadId))?.stages.find(
+          (stage) => stage.id === "fetch",
+        );
+        assert.equal(fetch?.status, "warning");
+        assert.equal(fetch?.detail, "feat diverged from origin/feat; not updated");
+        // A warned stage is finished, so its elapsed time must stop.
+        assert.isNotNull(fetch?.endedAt ?? null);
+        assert.equal(harness.createWorktree.mock.calls.length, 1);
+        assert.isTrue(yield* tracker.cancel(launched.threadId));
+      }).pipe(Effect.provide(harness.layer));
+    }),
+);
+
+/** Launches an existing behind branch and reads the fetch stage once setup starts. */
+const launchWithPostAddFastForward = (
+  name: string,
+  fastForwardWorktree: GitWorkflow.GitWorkflowService["Service"]["fastForwardWorktree"],
+) =>
+  Effect.gen(function* () {
+    const entered = yield* Deferred.make<void>();
+    const harness = makeHarness({
+      prepareWorktreeBase: () =>
+        Effect.succeed({
+          startRef: "feat",
+          baseRefName: "feat",
+          remoteName: "origin",
+          remoteStart: false,
+          fastForwardTo: { commitSha: "remote-feat-sha", remoteRef: "origin/feat" },
+          warning: null,
+        }),
+      fastForwardWorktree,
+      createWorktree: existingFeatWorktree,
+      runSetup: () => Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
+    });
+    return yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const tracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
+      const launched = yield* launches.launch(
+        launchInput({
+          command: `launch:fast-forward-${name}`,
+          thread: `thread:fast-forward-${name}`,
+          message: "Start",
+          workspace: {
+            type: "worktree",
+            baseRef: "feat",
+            startFromOrigin: true,
+            existingBranch: true,
+          },
+        }),
+      );
+      yield* Deferred.await(entered);
+      const fetch = (yield* tracker.get(launched.threadId))?.stages.find(
+        (stage) => stage.id === "fetch",
+      );
+      assert.isTrue(yield* tracker.cancel(launched.threadId));
+      return { fetch, setupRuns: harness.runSetup.mock.calls.length };
+    }).pipe(Effect.provide(harness.layer));
+  });
+
+it.effect(
+  "ThreadLaunchService should warn instead of failing when the post-add fast-forward is blocked",
+  () =>
+    Effect.gen(function* () {
+      const fastForwarded = vi.fn();
+      const { fetch, setupRuns } = yield* launchWithPostAddFastForward("blocked", (input) =>
+        Effect.sync(() => {
+          fastForwarded(input);
+          return "blocked" as const;
+        }),
+      );
+      assert.deepEqual(fastForwarded.mock.calls, [
+        [{ cwd: "/repo-worktrees/feat", commitSha: "remote-feat-sha" }],
+      ]);
+      assert.equal(fetch?.status, "warning");
+      assert.equal(fetch?.detail, "Couldn't fast-forward feat to origin; not updated");
+      assert.isNotNull(fetch?.endedAt ?? null);
+      assert.equal(setupRuns, 1);
+    }),
+);
+
+it.effect.each([
+  {
+    name: "fails",
+    fastForward: () =>
       Effect.fail(
         new GitCommandError({
-          operation: "GitVcsDriver.fetchRemote",
+          operation: "GitVcsDriver.fastForwardWorktree",
           command: "git",
-          cwd: project.workspaceRoot,
-          detail,
+          cwd: "/repo-worktrees/feat",
+          detail: "Git could not run the merge.",
           exitCode: 128,
         }),
       ),
-  });
-  return Effect.gen(function* () {
-    const launches = yield* ThreadLaunch.ThreadLaunchService;
-    const threads = yield* ThreadManagement.ThreadManagementService;
-    const launched = yield* launches.launch(
-      launchInput({
-        command: "command:launch:fetch-failure",
-        thread: "thread:launch:fetch-failure",
-        message: "Start from origin",
-        workspace: { type: "worktree", baseRef: "main", startFromOrigin: true },
-      }),
-    );
-    yield* threads.streamStoredEventsFrom({ threadId: launched.threadId }).pipe(
-      Stream.filter(
-        (stored) => stored.event.type === "run.updated" && stored.event.payload.status === "failed",
-      ),
-      Stream.runHead,
-    );
-    const projection = yield* threads.getThreadProjection(launched.threadId);
-    assert.equal(projection.messages[0]?.text, "Start from origin");
-    assert.equal(projection.runs[0]?.status, "failed");
-    assert.equal(projection.thread.worktreePath, null);
-    assert.equal(
-      projection.turnItems.find((item) => item.type === "command_execution")?.status,
-      "failed",
-    );
-    assert.include(
-      projection.turnItems.find((item) => item.type === "error")?.failure.message ?? "",
-      detail,
-    );
-    assert.equal(harness.createWorktree.mock.calls.length, 0);
-    assert.equal(harness.runSetup.mock.calls.length, 0);
-  }).pipe(Effect.provide(harness.layer));
-});
+    status: "warning",
+    detail: "Couldn't fast-forward feat to origin; not updated",
+  },
+  {
+    name: "diverged",
+    fastForward: () => Effect.succeed("diverged" as const),
+    status: "warning",
+    detail: "feat diverged from origin/feat; not updated",
+  },
+  {
+    name: "fast-forwarded",
+    fastForward: () => Effect.succeed("fast-forwarded" as const),
+    status: "done",
+    detail: null,
+  },
+])(
+  "ThreadLaunchService should mark the fetch stage $status and still run setup when the post-add fast-forward $name",
+  (testCase) =>
+    Effect.gen(function* () {
+      const { fetch, setupRuns } = yield* launchWithPostAddFastForward(
+        testCase.name,
+        testCase.fastForward,
+      );
+      assert.equal(fetch?.status, testCase.status);
+      assert.equal(fetch?.detail, testCase.detail);
+      assert.equal(setupRuns, 1);
+    }),
+);
+
+it.effect(
+  "ThreadLaunchService should keep the fetch stage running when the post-add fast-forward is still pending",
+  () =>
+    Effect.gen(function* () {
+      const fastForwardEntered = yield* Deferred.make<void>();
+      const harness = makeHarness({
+        prepareWorktreeBase: () =>
+          Effect.succeed({
+            startRef: "feat",
+            baseRefName: "feat",
+            remoteName: "origin",
+            remoteStart: false,
+            fastForwardTo: { commitSha: "remote-feat-sha", remoteRef: "origin/feat" },
+            warning: null,
+          }),
+        fastForwardWorktree: () =>
+          Deferred.succeed(fastForwardEntered, undefined).pipe(Effect.andThen(Effect.never)),
+        createWorktree: existingFeatWorktree,
+      });
+      yield* Effect.gen(function* () {
+        const launches = yield* ThreadLaunch.ThreadLaunchService;
+        const tracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
+        const launched = yield* launches.launch(
+          launchInput({
+            command: "launch:fast-forward-pending",
+            thread: "thread:fast-forward-pending",
+            message: "Start",
+            workspace: {
+              type: "worktree",
+              baseRef: "feat",
+              startFromOrigin: true,
+              existingBranch: true,
+            },
+          }),
+        );
+        yield* Deferred.await(fastForwardEntered);
+        const fetch = (yield* tracker.get(launched.threadId))?.stages.find(
+          (stage) => stage.id === "fetch",
+        );
+        assert.equal(fetch?.status, "running");
+        assert.isTrue(yield* tracker.cancel(launched.threadId));
+      }).pipe(Effect.provide(harness.layer));
+    }),
+);
+
+it.effect(
+  "ThreadLaunchService should not mark the fetch stage failed when createWorktree fails after a pending fast-forward",
+  () => {
+    const harness = makeHarness({
+      prepareWorktreeBase: () =>
+        Effect.succeed({
+          startRef: "feat",
+          baseRefName: "feat",
+          remoteName: "origin",
+          remoteStart: false,
+          fastForwardTo: { commitSha: "remote-feat-sha", remoteRef: "origin/feat" },
+          warning: null,
+        }),
+      createWorktree: () =>
+        Effect.fail(
+          new GitCommandError({
+            operation: "GitVcsDriver.createWorktree",
+            command: "git",
+            cwd: project.workspaceRoot,
+            detail: "'feat' is already checked out at '/elsewhere'.",
+            exitCode: 128,
+          }),
+        ),
+    });
+    return Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const tracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
+      const launched = yield* launches.launch(
+        launchInput({
+          command: "launch:fast-forward-add-fails",
+          thread: "thread:fast-forward-add-fails",
+          message: "Start",
+          workspace: {
+            type: "worktree",
+            baseRef: "feat",
+            startFromOrigin: true,
+            existingBranch: true,
+          },
+        }),
+      );
+      const finished = yield* tracker.stream(launched.threadId).pipe(
+        Stream.filter((snapshot) => snapshot !== null && snapshot.phase === "failed"),
+        Stream.runHead,
+      );
+      const stages = Option.getOrNull(finished)?.stages ?? [];
+      assert.equal(stages.find((stage) => stage.id === "fetch")?.status, "done");
+      assert.equal(stages.find((stage) => stage.id === "checkout")?.status, "failed");
+    }).pipe(Effect.provide(harness.layer));
+  },
+);
+
+it.effect(
+  "ThreadLaunchService should not prepare a remote base when startFromOrigin is omitted",
+  () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const harness = makeHarness({
+        runSetup: () => Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
+      });
+      yield* Effect.gen(function* () {
+        const launches = yield* ThreadLaunch.ThreadLaunchService;
+        const tracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
+        const launched = yield* launches.launch(
+          launchInput({
+            command: "launch:local-base",
+            thread: "thread:local-base",
+            message: "Start",
+            workspace: { type: "worktree", baseRef: "main", branch: "feature" },
+          }),
+        );
+        yield* Deferred.await(entered);
+        const fetch = (yield* tracker.get(launched.threadId))?.stages.find(
+          (stage) => stage.id === "fetch",
+        );
+        assert.equal(fetch?.status, "skipped");
+        assert.equal(harness.prepareWorktreeBase.mock.calls.length, 0);
+        assert.deepInclude(harness.createWorktree.mock.calls[0]?.[0], {
+          refName: "main",
+          baseRefName: "main",
+        });
+        assert.isTrue(yield* tracker.cancel(launched.threadId));
+      }).pipe(Effect.provide(harness.layer));
+    }),
+);
+
+it.effect(
+  "ThreadLaunchService should show the fetch diagnosis when preparing the base fails",
+  () => {
+    const detail =
+      "Git could not authenticate with the remote. Check Git credentials or SSH access on the server, then retry.";
+    const harness = makeHarness({
+      prepareWorktreeBase: () =>
+        Effect.fail(
+          new GitCommandError({
+            operation: "GitVcsDriver.fetchRemote",
+            command: "git",
+            cwd: project.workspaceRoot,
+            detail,
+            exitCode: 128,
+          }),
+        ),
+    });
+    return Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const launched = yield* launches.launch(
+        launchInput({
+          command: "command:launch:fetch-failure",
+          thread: "thread:launch:fetch-failure",
+          message: "Start from origin",
+          workspace: { type: "worktree", baseRef: "main", startFromOrigin: true },
+        }),
+      );
+      yield* threads.streamStoredEventsFrom({ threadId: launched.threadId }).pipe(
+        Stream.filter(
+          (stored) =>
+            stored.event.type === "run.updated" && stored.event.payload.status === "failed",
+        ),
+        Stream.runHead,
+      );
+      const projection = yield* threads.getThreadProjection(launched.threadId);
+      assert.equal(projection.messages[0]?.text, "Start from origin");
+      assert.equal(projection.runs[0]?.status, "failed");
+      assert.equal(projection.thread.worktreePath, null);
+      assert.equal(
+        projection.turnItems.find((item) => item.type === "command_execution")?.status,
+        "failed",
+      );
+      assert.include(
+        projection.turnItems.find((item) => item.type === "error")?.failure.message ?? "",
+        detail,
+      );
+      assert.equal(harness.createWorktree.mock.calls.length, 0);
+      assert.equal(harness.runSetup.mock.calls.length, 0);
+    }).pipe(Effect.provide(harness.layer));
+  },
+);
 
 it.effect.each(["fails", "is interrupted"] as const)(
   "holds a message queued during setup when the workspace preparation %s",
@@ -1164,9 +1705,16 @@ it.effect.each(["fails", "is interrupted"] as const)(
       const allowFetch = yield* Deferred.make<void>();
       let fetchFailures = 1;
       const harness = makeHarness({
-        fetchWorktreeBaseCommit: () =>
+        prepareWorktreeBase: () =>
           fetchFailures-- <= 0
-            ? Effect.succeed({ commitSha: "remote-main-sha", remoteRefName: "origin/main" })
+            ? Effect.succeed({
+                startRef: "remote-main-sha",
+                baseRefName: "refs/remotes/origin/main",
+                remoteName: "origin",
+                remoteStart: true,
+                fastForwardTo: null,
+                warning: null,
+              })
             : Deferred.succeed(fetchEntered, undefined).pipe(
                 Effect.andThen(Deferred.await(allowFetch)),
                 Effect.andThen(
@@ -1246,7 +1794,7 @@ it.effect.each(["failed", "interrupted"] as const)(
   (ending) => {
     let fetchEntered: Deferred.Deferred<void> | null = null;
     const harness = makeHarness({
-      fetchWorktreeBaseCommit: () =>
+      prepareWorktreeBase: () =>
         ending === "interrupted"
           ? Deferred.succeed(fetchEntered!, undefined).pipe(Effect.andThen(Effect.never))
           : Effect.fail(
@@ -2003,6 +2551,47 @@ it.effect("shared intake preserves durable attachment bytes after a lost launch 
     }
   }).pipe(Effect.provide(Layer.mergeAll(harness.layer, layerFiles)));
 });
+
+it.effect("reports skipped worktree population entries on the checkout stage", () =>
+  Effect.gen(function* () {
+    const entered = yield* Deferred.make<void>();
+    const harness = makeHarness({
+      createWorktree: (input, options) =>
+        (
+          options?.progress?.onPopulated?.({
+            linked: [],
+            copied: [".env"],
+            skipped: [{ path: ".env.local", reason: "not-ignored" }],
+          }) ?? Effect.void
+        ).pipe(
+          Effect.as({
+            worktree: { path: "/repo-worktrees/feature", refName: input.newRefName! },
+          }),
+        ),
+      runSetup: () => Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
+    });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const tracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
+      const launched = yield* launches.launch(
+        launchInput({
+          command: "launch:populate-warning",
+          thread: "thread:populate-warning",
+          message: "Start",
+          workspace: { type: "worktree", baseRef: "main" },
+        }),
+      );
+      yield* Deferred.await(entered);
+      const checkout = (yield* tracker.get(launched.threadId))?.stages.find(
+        (stage) => stage.id === "checkout",
+      );
+      assert.equal(checkout?.status, "warning");
+      assert.equal(checkout?.detail, "Skipped .env.local (not gitignored)");
+      assert.isNotNull(checkout?.endedAt ?? null);
+      assert.isTrue(yield* tracker.cancel(launched.threadId));
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
 
 it.effect("cancels tracked setup before provider work is released", () =>
   Effect.gen(function* () {

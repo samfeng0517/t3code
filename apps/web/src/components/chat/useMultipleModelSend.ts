@@ -51,7 +51,6 @@ interface MultipleModelSendInput {
   readonly composerRef: ComposerHandleRef;
   readonly promptRef: { current: string };
   readonly runtimeMode: RuntimeMode;
-  readonly startFromOrigin: boolean;
   readonly resetLocalDispatch: ReturnType<typeof useLocalDispatchState>["resetLocalDispatch"];
   readonly setThreadError: ReturnType<typeof makeThreadErrorSetter>;
 }
@@ -71,7 +70,6 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
     composerRef,
     promptRef,
     runtimeMode,
-    startFromOrigin,
     resetLocalDispatch,
     setThreadError,
   } = input;
@@ -195,7 +193,8 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
                       projectCwd: project.workspaceRoot,
                       baseBranch: branch,
                       requireWorktree: true,
-                      ...(startFromOrigin ? { startFromOrigin: true } : {}),
+                      // Fanout threads cannot share one checked-out branch, so each gets its own.
+                      startFromOrigin: true,
                     },
                     runSetupScript: true,
                   },

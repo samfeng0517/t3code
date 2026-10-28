@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { readUsagePagePreferences, saveUsagePagePreferences } from "./usagePagePreferences";
+import {
+  readUsagePagePreferences,
+  requestUsagePageMetric,
+  saveUsagePagePreferences,
+  subscribeUsagePageMetricRequests,
+} from "./usagePagePreferences";
 
 const key = "t3code:usage-page-preferences:v1";
 let values: Map<string, string>;
@@ -42,5 +47,23 @@ describe("Usage page preferences", () => {
     expect(readUsagePagePreferences()).toEqual({ metric: "limits", windowDays: 30 });
     saveUsagePagePreferences({ metric: "tokens", windowDays: 7 });
     expect(readUsagePagePreferences()).toEqual({ metric: "tokens", windowDays: 7 });
+  });
+
+  it("requestUsagePageMetric should save the metric and notify an open page when the page is already mounted", () => {
+    saveUsagePagePreferences({ metric: "cost", windowDays: 7, hiddenProviders: ["codex"] });
+    const listener = vi.fn();
+    const unsubscribe = subscribeUsagePageMetricRequests(listener);
+
+    requestUsagePageMetric("limits");
+    expect(listener).toHaveBeenCalledWith("limits");
+    expect(readUsagePagePreferences()).toEqual({
+      metric: "limits",
+      windowDays: 7,
+      hiddenProviders: ["codex"],
+    });
+
+    unsubscribe();
+    requestUsagePageMetric("tokens");
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 });

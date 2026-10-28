@@ -30,7 +30,6 @@ import {
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
-import * as ServerSettings from "../serverSettings.ts";
 import * as VcsStatusBroadcaster from "../vcs/VcsStatusBroadcaster.ts";
 import type * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as WorktreeMcpService from "./WorktreeMcpService.ts";
@@ -94,7 +93,6 @@ interface HarnessOptions {
   readonly capabilities?: ReadonlySet<McpInvocationContext.McpCapability>;
   readonly currentBranch?: string | null;
   readonly notARepo?: boolean;
-  readonly newWorktreesStartFromOrigin?: boolean;
   readonly setupScript?: "started" | "no-script" | "fails" | "dies";
   readonly dispatchFails?: boolean;
   readonly dispatchDies?: boolean;
@@ -108,8 +106,7 @@ interface HarnessOptions {
   readonly projectReadFails?: boolean;
   readonly existingBranchWorktreePath?: string | null;
   readonly createWorktreeFails?: boolean;
-  readonly fetchWorktreeBaseFails?: boolean;
-  readonly worktreeBaseMissing?: boolean;
+  readonly worktreeBase?: Partial<GitVcsDriver.GitPrepareWorktreeBaseResult>;
   readonly removeWorktreeFails?: boolean;
   readonly deleteLocalBranchFails?: boolean;
   readonly createWorktreeGate?: Effect.Effect<void>;
@@ -210,12 +207,16 @@ const makeHarness = (options: HarnessOptions = {}) => {
       ? (Effect.fail("simulated local branch deletion failure") as never)
       : Effect.void,
   );
-  const fetchWorktreeBaseCommit = vi.fn((_: unknown) =>
-    options.fetchWorktreeBaseFails
-      ? (Effect.fail("simulated fetch failure") as never)
-      : options.worktreeBaseMissing
-        ? Effect.succeed(null)
-        : Effect.succeed({ commitSha: "abc123", remoteRefName: "origin/dev" }),
+  const prepareWorktreeBase = vi.fn(() =>
+    Effect.succeed<GitVcsDriver.GitPrepareWorktreeBaseResult>({
+      startRef: "abc123",
+      baseRefName: "refs/remotes/origin/dev",
+      remoteName: "origin",
+      remoteStart: true,
+      fastForwardTo: null,
+      warning: null,
+      ...options.worktreeBase,
+    }),
   );
   const createWorktree = vi.fn(
     (input: { readonly newRefName?: string | undefined; readonly path: string | null }) =>
@@ -299,14 +300,11 @@ const makeHarness = (options: HarnessOptions = {}) => {
         Layer.mock(ProjectService.ProjectService)({
           getById,
         } satisfies Partial<ProjectService.ProjectService["Service"]>),
-        ServerSettings.layerTest({
-          newWorktreesStartFromOrigin: options.newWorktreesStartFromOrigin ?? false,
-        }),
         Layer.mock(GitWorkflowService.GitWorkflowService)({
           listRefs,
           listLocalBranchNames,
           localStatus,
-          fetchWorktreeBaseCommit,
+          prepareWorktreeBase,
           createWorktree,
           removeWorktree,
           deleteLocalBranch,
@@ -328,7 +326,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
     scope,
     dispatch,
     sendToThread,
-    fetchWorktreeBaseCommit,
+    prepareWorktreeBase,
     createWorktree,
     removeWorktree,
     deleteLocalBranch,
@@ -397,7 +395,7 @@ describe("t3_worktree_handoff", () => {
     });
   });
 
-  it.effect("uses the fetched commit and remote PR base for an explicit local alias", () =>
+  it.effect("handoff should start from the remote tip when a local alias is behind", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const git = yield* GitVcsDriver.GitVcsDriver;
@@ -411,15 +409,18 @@ describe("t3_worktree_handoff", () => {
       yield* command(cwd, ["init", "-b", "stable"]);
       yield* command(cwd, ["config", "user.name", "Test"]);
       yield* command(cwd, ["config", "user.email", "test@example.test"]);
-      yield* command(cwd, ["commit", "--allow-empty", "-m", "remote base"]);
-      const remoteHead = (yield* command(cwd, ["rev-parse", "HEAD"])).stdout.trim();
+      yield* command(cwd, ["commit", "--allow-empty", "-m", "shared base"]);
       yield* command(cwd, ["init", "--bare", remote]);
       yield* command(cwd, ["remote", "add", "upstream", remote]);
       yield* command(cwd, ["push", "-u", "upstream", "stable:release"]);
-      yield* command(cwd, ["commit", "--allow-empty", "-m", "local only"]);
+      // Advance the remote, then rewind local so the local alias is behind it.
+      yield* command(cwd, ["commit", "--allow-empty", "-m", "remote only"]);
+      const remoteHead = (yield* command(cwd, ["rev-parse", "HEAD"])).stdout.trim();
+      yield* command(cwd, ["push", "upstream", "stable:release"]);
+      yield* command(cwd, ["reset", "--hard", "HEAD~1"]);
       const harness = makeHarness({
         git: {
-          fetchWorktreeBaseCommit: (input) => git.fetchWorktreeBaseCommit({ ...input, cwd }),
+          prepareWorktreeBase: (input) => git.prepareWorktreeBase({ ...input, cwd }),
           createWorktree: (input) => git.createWorktree({ ...input, cwd, path: worktreePath }),
         },
       });
@@ -451,6 +452,81 @@ describe("t3_worktree_handoff", () => {
     ),
   );
 
+  it.effect("handoff should sync with the remote when startFromOrigin is omitted", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const result = yield* runHandoff(harness, { branch: "feature/default-sync" });
+      expect(harness.prepareWorktreeBase).toHaveBeenCalledTimes(1);
+      expect(harness.prepareWorktreeBase).toHaveBeenCalledWith({
+        cwd: workspaceRoot,
+        baseRef: "dev",
+        existingBranch: false,
+      });
+      expect(harness.createWorktree).toHaveBeenCalledWith(
+        expect.objectContaining({ refName: "abc123", baseRefName: "refs/remotes/origin/dev" }),
+      );
+      expect(result.startedFromOrigin).toBe(true);
+      expect(result.note).not.toMatch(/^Warning:/);
+    });
+  });
+
+  it.effect("handoff should start from the local base when startFromOrigin is false", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const result = yield* runHandoff(harness, {
+        branch: "feature/local-start",
+        startFromOrigin: false,
+      });
+      expect(harness.prepareWorktreeBase).not.toHaveBeenCalled();
+      expect(harness.createWorktree).toHaveBeenCalledWith(
+        expect.objectContaining({ refName: "dev", baseRefName: "dev" }),
+      );
+      expect(result.startedFromOrigin).toBe(false);
+    });
+  });
+
+  it.effect("handoff should prefix the note with the warning when the base diverged", () => {
+    const harness = makeHarness({
+      worktreeBase: {
+        startRef: "feature",
+        baseRefName: "feature",
+        remoteStart: false,
+        warning: { kind: "diverged", remoteRef: "origin/feature", branch: "feature" },
+      },
+    });
+    return Effect.gen(function* () {
+      const result = yield* runHandoff(harness, {
+        branch: "feature/diverged-base",
+        baseRef: "feature",
+      });
+      expect(
+        result.note.startsWith("Warning: feature diverged from origin/feature; not updated. "),
+      ).toBe(true);
+      expect(result.note).toContain("Handoff recorded.");
+      expect(result.startedFromOrigin).toBe(false);
+    });
+  });
+
+  it.effect(
+    "handoff should fail with operation_failed when preparing the remote base fails",
+    () => {
+      const harness = makeHarness({
+        git: {
+          prepareWorktreeBase: () => Effect.fail("simulated fetch failure") as never,
+        },
+      });
+      return Effect.gen(function* () {
+        const exit = yield* Effect.exit(runHandoff(harness, { branch: "feature/prepare-fails" }));
+        expectTypedFailure(exit, {
+          _tag: "WorktreeMcpFailure",
+          code: "operation_failed",
+          message: "Unable to fetch the remote base of 'dev': simulated fetch failure",
+        });
+        expect(harness.createWorktree).not.toHaveBeenCalled();
+      });
+    },
+  );
+
   it.effect("fails when the thread is already attached to a worktree", () => {
     const harness = makeHarness({
       thread: { branch: "feature/existing", worktreePath: "/worktrees/project/existing" },
@@ -480,7 +556,7 @@ describe("t3_worktree_handoff", () => {
       expect(error.message).toContain("already exists");
       expect(error.message).toContain("/elsewhere/checkout");
       expect(harness.createWorktree).not.toHaveBeenCalled();
-      expect(harness.fetchWorktreeBaseCommit).not.toHaveBeenCalled();
+      expect(harness.prepareWorktreeBase).not.toHaveBeenCalled();
     });
   });
 
@@ -506,7 +582,9 @@ describe("t3_worktree_handoff", () => {
   });
 
   it.effect("falls back to the local base when no remote holds it", () => {
-    const harness = makeHarness({ worktreeBaseMissing: true });
+    const harness = makeHarness({
+      worktreeBase: { startRef: "dev", baseRefName: "dev", remoteStart: false },
+    });
     return Effect.gen(function* () {
       const result = yield* runHandoff(harness, {
         branch: "feature/local-fallback",
@@ -671,21 +749,24 @@ describe("t3_worktree_handoff", () => {
 });
 
 describe("t3_worktree_status", () => {
-  it.effect("reports an attached thread's worktree and branch", () => {
-    const harness = makeHarness({
-      thread: {
-        worktreePath: "/worktrees/project/existing",
-        branch: "feature/existing",
-      },
-    });
-    return Effect.gen(function* () {
-      const result = yield* runStatus(harness);
-      expect(result).toMatchObject({
-        attached: true,
-        worktreePath: "/worktrees/project/existing",
-        branch: "feature/existing",
-        defaultStartFromOrigin: false,
+  it.effect(
+    "status should report defaultStartFromOrigin as true when the thread is attached",
+    () => {
+      const harness = makeHarness({
+        thread: {
+          worktreePath: "/worktrees/project/existing",
+          branch: "feature/existing",
+        },
       });
-    });
-  });
+      return Effect.gen(function* () {
+        const result = yield* runStatus(harness);
+        expect(result).toMatchObject({
+          attached: true,
+          worktreePath: "/worktrees/project/existing",
+          branch: "feature/existing",
+          defaultStartFromOrigin: true,
+        });
+      });
+    },
+  );
 });

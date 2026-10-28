@@ -8,6 +8,7 @@ import { EllipsisIcon, TriangleAlertIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { useT, type Translate } from "~/i18n";
 import { composerFloatingLayerProps } from "./composerEventScope";
 
 interface ComposerPendingApprovalActionsProps {
@@ -22,21 +23,23 @@ interface ComposerPendingApprovalActionsProps {
   ) => Promise<unknown>;
 }
 
-const DEFAULT_APPROVAL_OPTIONS = [
-  { decision: "cancel", label: "Cancel" },
-  { decision: "decline", label: "Decline" },
-  { decision: "acceptForSession", label: "Always allow this session" },
-  { decision: "accept", label: "Approve" },
-] satisfies ReadonlyArray<ProviderApprovalOption>;
+const defaultApprovalOptions = (t: Translate): ReadonlyArray<ProviderApprovalOption> => [
+  { decision: "cancel", label: t("composer.approval.option.cancel") },
+  { decision: "decline", label: t("composer.approval.option.decline") },
+  { decision: "acceptForSession", label: t("composer.approval.option.acceptForSession") },
+  { decision: "accept", label: t("composer.approval.option.accept") },
+];
 
 export const ComposerPendingApprovalActions = memo(function ComposerPendingApprovalActions({
   requestId,
   isResponding,
   canRespond,
   disabled = false,
-  options = DEFAULT_APPROVAL_OPTIONS,
+  options: providedOptions,
   onRespondToApproval,
 }: ComposerPendingApprovalActionsProps) {
+  const t = useT();
+  const options = providedOptions ?? defaultApprovalOptions(t);
   const primaryOptions = options.filter(
     (option) => option.decision === "decline" || option.decision === "accept",
   );
@@ -77,7 +80,13 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
         <Menu>
           <MenuTrigger
             disabled={disabled || isResponding}
-            render={<Button size="icon-xs" variant="outline" aria-label="More approval options" />}
+            render={
+              <Button
+                size="icon-xs"
+                variant="outline"
+                aria-label={t("composer.approval.moreOptions")}
+              />
+            }
           >
             <EllipsisIcon />
           </MenuTrigger>

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { useTheme } from "~/hooks/useTheme";
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { PIERRE_TREE_UNSAFE_CSS, pierreTreeStyle } from "~/pierre-tree-theme";
 
@@ -44,6 +45,7 @@ export function DiffFileTree({
   footer,
   className,
 }: DiffFileTreeProps) {
+  const t = useT();
   const { resolvedTheme } = useTheme();
   const paths = entries.map((entry) => entry.path);
   const presented = diffFileTreeModel(paths);
@@ -183,7 +185,7 @@ export function DiffFileTree({
         className="flex h-10 min-h-10 shrink-0 items-center gap-1 border-b border-border/60 bg-background px-2 text-xs text-muted-foreground in-data-[preview-panel-mode=inline]:mb-3 in-data-[preview-panel-mode=inline]:h-7 in-data-[preview-panel-mode=inline]:min-h-7 in-data-[preview-panel-mode=inline]:border-b-transparent"
         data-surface-subheader
       >
-        <span className="px-1 font-medium text-foreground">Files</span>
+        <span className="px-1 font-medium text-foreground">{t("workspace.files.title")}</span>
         <span className="ml-auto tabular-nums">{entries.length}</span>
         {headerAccessory}
         {directoryPaths.length > 0 ? (
@@ -194,9 +196,11 @@ export function DiffFileTree({
                   type="button"
                   size="icon-xs"
                   variant="ghost"
-                  aria-label={
-                    allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"
-                  }
+                  aria-label={t(
+                    allDirectoriesExpanded
+                      ? "workspace.files.collapseAllFolders"
+                      : "workspace.files.expandAllFolders",
+                  )}
                   onClick={() =>
                     setAllDirectoriesExpanded(model, directoryPaths, !allDirectoriesExpanded)
                   }
@@ -209,7 +213,11 @@ export function DiffFileTree({
               />
             </TooltipTrigger>
             <TooltipPopup>
-              {allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"}
+              {t(
+                allDirectoriesExpanded
+                  ? "workspace.files.collapseAllFolders"
+                  : "workspace.files.expandAllFolders",
+              )}
             </TooltipPopup>
           </Tooltip>
         ) : null}

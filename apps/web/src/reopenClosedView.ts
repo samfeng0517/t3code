@@ -1,7 +1,10 @@
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 
 import type { OpenPreviewMutation } from "./browser/openFileInPreview";
+import { isBrowserWorkspaceThreadRef } from "./browserWorkspace.logic";
+import { reopenInBrowserWorkspace } from "./browserWorkspaceStore";
 import type { ClosedView, ClosedViewEntry } from "./closedViewStore";
+import { useGitTabsStore } from "./components/git/gitTabsStore";
 import type { PullRequestListPreferences } from "./components/pullRequest/pullRequestListPreferences";
 import { openPreviewSession } from "./components/preview/openPreviewSession";
 import {
@@ -16,6 +19,8 @@ export interface ReopenOwnerState {
   ownerExists: boolean;
   shellLive: boolean;
   panel: ThreadRightPanelState;
+  /** Whether a `git-tab` entry's project already has a tab on the Git page. */
+  gitTabOpen?: boolean;
 }
 
 export function planNextReopen(
@@ -35,11 +40,13 @@ export function planNextReopen(
       break;
     }
     const alreadyOpen =
-      entry.kind === "panel-tab"
-        ? owner.panel.isOpen && owner.panel.surfaces.some((s) => s.id === entry.surface.id)
-        : owner.panel.surfaces.some(
-            (s) => s.kind === "preview" && s.resourceId === entry.snapshot.tabId,
-          );
+      entry.kind === "git-tab"
+        ? owner.gitTabOpen === true
+        : entry.kind === "panel-tab"
+          ? owner.panel.isOpen && owner.panel.surfaces.some((s) => s.id === entry.surface.id)
+          : owner.panel.surfaces.some(
+              (s) => s.kind === "preview" && s.resourceId === entry.snapshot.tabId,
+            );
     if (alreadyOpen) {
       drop.push(entry);
       continue;
@@ -94,9 +101,19 @@ export async function reopenClosedView(
     workspaceAvailable: boolean;
   },
 ): Promise<boolean> {
+  if (view.kind === "git-tab") {
+    useGitTabsStore.getState().open({
+      environmentId: view.environmentId as EnvironmentId,
+      projectId: view.projectId as ProjectId,
+    });
+    return true;
+  }
   const panels = useRightPanelStore.getState();
   const ref = view.threadRef;
 
+  if (view.kind === "browser" && isBrowserWorkspaceThreadRef(ref)) {
+    return reopenInBrowserWorkspace(view.snapshot) !== null;
+  }
   if (view.kind === "browser") {
     const url = view.snapshot.navStatus._tag === "Idle" ? undefined : view.snapshot.navStatus.url;
     const result = await openPreviewSession({

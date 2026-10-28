@@ -109,6 +109,21 @@ function ShimmerOverlay({ children }: { children: ReactNode }) {
   );
 }
 
+function isWarningStage(stage: WorktreeSetupStage): boolean {
+  return stage.status === "warning";
+}
+
+function hasWarningStage(snapshot: WorktreeSetupSnapshot): boolean {
+  return snapshot.stages.some(isWarningStage);
+}
+
+function finishedWithIssues(snapshot: WorktreeSetupSnapshot): boolean {
+  return (
+    snapshot.phase === "done" &&
+    (snapshot.stages.some((stage) => stage.status === "failed") || hasWarningStage(snapshot))
+  );
+}
+
 function headerLabel(snapshot: WorktreeSetupSnapshot): string {
   switch (snapshot.phase) {
     case "running":
@@ -116,7 +131,9 @@ function headerLabel(snapshot: WorktreeSetupSnapshot): string {
     case "done":
       return snapshot.stages.some((stage) => stage.status === "failed")
         ? "Worktree ready, setup script failed"
-        : "Worktree ready";
+        : hasWarningStage(snapshot)
+          ? "Worktree ready, with warnings"
+          : "Worktree ready";
     case "failed":
       return "Worktree setup failed";
     case "cancelled":
@@ -127,12 +144,10 @@ function headerLabel(snapshot: WorktreeSetupSnapshot): string {
 function SetupHeaderRow({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
   const running = snapshot.phase === "running";
   const failed = snapshot.phase === "failed";
-  const finishedWithFailedStage =
-    snapshot.phase === "done" && snapshot.stages.some((stage) => stage.status === "failed");
   const text = headerLabel(snapshot);
   const tone = failed
     ? "text-destructive-foreground"
-    : finishedWithFailedStage
+    : finishedWithIssues(snapshot)
       ? "text-warning-foreground"
       : "text-muted-foreground";
   return (
@@ -290,7 +305,9 @@ function CollapsedSummaryRow({ snapshot }: { snapshot: WorktreeSetupSnapshot }) 
       ? "failed"
       : snapshot.stages.some((stage) => stage.id === "setup-script" && stage.status === "failed")
         ? "failed"
-        : "done";
+        : hasWarningStage(snapshot)
+          ? "warning"
+          : "done";
   const label = headerLabel(snapshot);
   return (
     <WorkLogRow
@@ -325,7 +342,9 @@ export function WorktreeSetupCard({
   const setupStage = snapshot.stages.find((stage) => stage.id === "setup-script");
   const showTerminal = onOpenTerminal && setupStage && setupStage.status !== "pending";
   const collapsed = embedded && !running;
-  const showHeader = !embedded && !running && snapshot.phase !== "done";
+  // A clean "done" needs no title, but one that finished with warnings must say so.
+  const showHeader =
+    !embedded && !running && (snapshot.phase !== "done" || finishedWithIssues(snapshot));
   const showTail =
     setupStage !== undefined &&
     (setupStage.status === "failed" ||
@@ -335,7 +354,18 @@ export function WorktreeSetupCard({
     <section aria-label="Worktree setup" data-worktree-setup-phase={snapshot.phase}>
       {showHeader ? <SetupHeaderRow snapshot={snapshot} /> : null}
       {collapsed ? (
-        <CollapsedSummaryRow snapshot={snapshot} />
+        <>
+          <CollapsedSummaryRow snapshot={snapshot} />
+          {snapshot.stages.filter(isWarningStage).map((stage) => (
+            <StageRow
+              key={stage.id}
+              stage={stage}
+              setupRunning={running}
+              setupEndedAt={snapshot.endedAt}
+              scriptName={snapshot.setupScript?.name ?? null}
+            />
+          ))}
+        </>
       ) : (
         <div className={showHeader ? "pt-1.5" : undefined}>
           {snapshot.stages.map((stage) => (

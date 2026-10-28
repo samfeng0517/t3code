@@ -21,6 +21,14 @@ Android uses **Material You Layout** by default unless you have turned it off in
 It changes shapes, spacing, and controls independently
 of the selected theme.
 
+## Display language
+
+On web and desktop, open **Settings → General → Language** to choose the interface language:
+**Match system**, **English**, or **繁體中文** (Traditional Chinese). Match system follows your
+browser or OS language and uses Traditional Chinese for any `zh-TW`, `zh-HK`, `zh-MO`, or
+`zh-Hant` locale, and English otherwise. The choice is saved per device or browser and does not
+change the language agents answer in. Mobile uses English.
+
 ## Composer context
 
 Git-backed projects show branch and worktree controls below the composer while you create a thread.

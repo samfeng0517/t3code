@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
+import { AppSelfUpdateEnabled } from "@t3tools/shared/appSelfUpdate";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Duration from "effect/Duration";
@@ -214,7 +215,10 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
         control.failCommand = "loginctl enable-linger --no-ask-password 501";
         yield* fs.remove(runtime.sentinelPath);
 
-        const error = yield* service.install().pipe(Effect.flip);
+        // Upstream behavior: a fork build would refuse the download before lingering.
+        const error = yield* service
+          .install()
+          .pipe(Effect.provideService(AppSelfUpdateEnabled, true), Effect.flip);
 
         expect(error).toMatchObject({
           _tag: "BootServicePrerequisiteError",
@@ -502,6 +506,29 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
       expect(
         yield* fs.exists(path.join(path.dirname(statePath), SERVICE_RESTART_PENDING_FILE)),
       ).toBe(true);
+    }),
+  );
+
+  it.effect("install on a fork build refuses the upstream runtime download", () =>
+    Effect.gen(function* () {
+      const { service, fs, baseDir, commands, control } = yield* makeHarness();
+      const path = yield* Path.Path;
+      yield* fs.remove(pinnedRuntimePaths(path, baseDir, "1.2.3", "linux").sentinelPath);
+      // Lingering would be enabled by a normal install; a refused one must not touch it.
+      control.linger = "no";
+      commands.length = 0;
+
+      const error = yield* service
+        .install()
+        .pipe(Effect.provideService(AppSelfUpdateEnabled, false), Effect.flip);
+      expect(error).toMatchObject({
+        _tag: "BootServicePrerequisiteError",
+        problem: "fork-release-url-required",
+      });
+      expect(error.message).toContain("T3CODE_RELEASE_BASE_URL");
+      expect(commands).toEqual([]);
+      expect(control.linger).toBe("no");
+      expect(yield* fs.exists(path.join(baseDir, "userdata", "logs"))).toBe(false);
     }),
   );
 

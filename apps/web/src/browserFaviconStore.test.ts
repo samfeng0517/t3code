@@ -21,6 +21,7 @@ import { DraftId, useComposerDraftStore } from "./composerDraftStore";
 import {
   lookupFavicon,
   lookupFaviconForThread,
+  lookupFaviconInAnyProject,
   recordFaviconForProject,
   recordFaviconForThread,
   resetBrowserFaviconsForTests,
@@ -83,6 +84,24 @@ describe("browser favicon store", () => {
         null,
       ),
     ).toBeNull();
+  });
+
+  it("should find a public site's icon captured in any project when the current one has none", () => {
+    const otherProject = scopeProjectRef(environmentId, ProjectId.make("project-2"));
+    recordFaviconForProject(otherProject, favicon("https://example.com/", 1), null);
+    recordFaviconForProject(
+      projectRef,
+      favicon("https://example.com/a", 2, "data:image/png;base64,BBBB"),
+      null,
+    );
+    recordFaviconForProject(otherProject, favicon("http://localhost:3000/", 3), null);
+    const byKey = useBrowserFaviconStore.getState().byKey;
+    expect(lookupFaviconInAnyProject(byKey, "https://example.com/page")).toBe(
+      "data:image/png;base64,BBBB",
+    );
+    expect(lookupFaviconInAnyProject(byKey, "https://other.test/")).toBeNull();
+    // Local servers differ per project, so their icons stay with the project that saw them.
+    expect(lookupFaviconInAnyProject(byKey, "http://localhost:3000/")).toBeNull();
   });
 
   it("retains origins until the thread's project is known, then lands them with the next capture", () => {

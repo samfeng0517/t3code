@@ -28,6 +28,7 @@ import {
   parseWslRuntimeArchiveMembers,
   readWorkspaceConfig,
   createBuildConfig,
+  createStagePatchedDependencies,
   DESKTOP_FILE_EXCLUSIONS,
   InvalidMacPasskeyRpDomainError,
   InvalidMacPasskeyPublishableKeyError,
@@ -41,6 +42,7 @@ import {
   resolveMacPasskeySigningConfiguration,
   resolveMergedStageDependencies,
   resolveBuildOptions,
+  resolveDesktopRuntimeDependencies,
   stageWslRuntimeArchive,
   ancestorNodeModulesPaths,
   copyDirectoryPreservingSymlinks,
@@ -73,6 +75,11 @@ import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
 const encodeModuleUrl = Schema.encodeEffect(Schema.fromJsonString(Schema.String));
 const decodePackageVersion = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Struct({ version: Schema.String })),
+);
+const decodeDesktopManifest = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    Schema.Struct({ dependencies: Schema.Record(Schema.String, Schema.String) }),
+  ),
 );
 
 // Keeps pnpm from auto-installing TypeScript, a types-only peer, into the app.
@@ -564,6 +571,25 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     }),
   );
 
+  it.effect(
+    "desktop stage should carry electron-chrome-extensions and its patch when the desktop manifest depends on it",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const { catalog = {}, patchedDependencies = {} } = yield* readWorkspaceConfig();
+        const { dependencies } = yield* decodeDesktopManifest(
+          yield* fs.readFileString(path.join(import.meta.dirname, "../apps/desktop/package.json")),
+        );
+        const runtimeDependencies = resolveDesktopRuntimeDependencies(dependencies, catalog);
+        assert.strictEqual(runtimeDependencies["electron-chrome-extensions"], "4.9.0");
+        assert.property(
+          createStagePatchedDependencies(patchedDependencies, runtimeDependencies),
+          "electron-chrome-extensions@4.9.0",
+        );
+      }),
+  );
+
   it("stages only the externals of both bundles in merged packages", () => {
     assert.deepStrictEqual(
       resolveMergedStageDependencies({
@@ -578,6 +604,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         },
         desktopDependencies: {
           "@napi-rs/keyring": "1.3.0",
+          "electron-chrome-extensions": "4.9.0",
           "playwright-core": "1.60.0",
         },
         arch: "arm64",
@@ -588,6 +615,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "@ff-labs/fff-node": "0.9.4",
         "node-pty": "1.1.0",
         "@napi-rs/keyring": "1.3.0",
+        "electron-chrome-extensions": "4.9.0",
         "playwright-core": "1.60.0",
         "@ff-labs/fff-bin-darwin-arm64": "0.9.4",
       },
@@ -1389,7 +1417,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     });
 
     assert.deepStrictEqual(configuration, {
-      appId: "com.t3tools.t3code",
+      appId: "com.stormx.t3code",
       teamId: "ABC1234567",
       rpDomains: ["example.clerk.accounts.dev"],
       provisioningProfilePath: "/tmp/t3code.provisionprofile",
@@ -1412,7 +1440,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       "clerk.example.com",
       "example.clerk.accounts.dev",
     ]);
-    assert.include(entitlements, "<string>ABC1234567.com.t3tools.t3code</string>");
+    assert.include(entitlements, "<string>ABC1234567.com.stormx.t3code</string>");
     assert.include(entitlements, "<string>webcredentials:clerk.example.com</string>");
     assert.include(entitlements, "<string>webcredentials:example.clerk.accounts.dev</string>");
     assert.include(entitlements, "<key>com.apple.security.cs.allow-jit</key>");

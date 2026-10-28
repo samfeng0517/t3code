@@ -837,7 +837,6 @@ describe("composerDraftStore project draft thread mapping", () => {
       worktreePath: null,
       createdAt: "2026-01-01T00:00:00.000Z",
       envMode: "worktree",
-      startFromOrigin: true,
       runtimeMode: "approval-required",
       interactionMode: "plan",
     });
@@ -855,7 +854,6 @@ describe("composerDraftStore project draft thread mapping", () => {
       worktreePath: null,
       createdAt: "2026-01-01T00:01:00.000Z",
       envMode: "worktree",
-      startFromOrigin: true,
       runtimeMode: "approval-required",
       interactionMode: "plan",
       promotedTo: null,
@@ -1115,7 +1113,6 @@ describe("composerDraftStore project draft thread mapping", () => {
       branch: "feature/local-only",
       worktreePath: "/tmp/local-worktree",
       envMode: "worktree",
-      startFromOrigin: true,
     });
 
     store.setLogicalProjectDraftThreadId(scopedProjectKey(projectRef), remoteProjectRef, draftId, {
@@ -1128,7 +1125,6 @@ describe("composerDraftStore project draft thread mapping", () => {
       branch: null,
       worktreePath: null,
       envMode: "worktree",
-      startFromOrigin: true,
     });
   });
 
@@ -1898,7 +1894,6 @@ describe("composerDraftStore model seed migration", () => {
     branch: null,
     worktreePath: null,
     envMode: "local",
-    startFromOrigin: false,
     promotedTo: null,
   });
 
@@ -1946,6 +1941,51 @@ describe("composerDraftStore model seed migration", () => {
       }
     },
   );
+
+  it("composerDraftStore should hydrate a persisted draft thread when it still carries startFromOrigin", async () => {
+    vi.useFakeTimers();
+    try {
+      const storage = useComposerDraftStore.persist.getOptions().storage;
+      expect(storage).toBeDefined();
+      storage?.setItem(COMPOSER_DRAFT_STORAGE_KEY, {
+        version: 9,
+        state: {
+          draftsByThreadKey: {
+            [typedDraftId]: { prompt: "keep this prompt", attachments: [] },
+          },
+          draftThreadsByThreadKey: {
+            [typedDraftId]: {
+              ...draftThread(typedThreadId),
+              branch: "feature/legacy",
+              envMode: "worktree",
+              startFromOrigin: true,
+            },
+          },
+          logicalProjectDraftThreadKeyByLogicalProjectKey: {
+            [logicalProjectKey]: typedDraftId,
+          },
+        },
+      } as never);
+      await vi.advanceTimersByTimeAsync(300);
+
+      await useComposerDraftStore.persist.rehydrate();
+
+      const hydratedDraftThread =
+        useComposerDraftStore.getState().draftThreadsByThreadKey[typedDraftId];
+      expect(hydratedDraftThread).toMatchObject({
+        threadId: typedThreadId,
+        environmentId: TEST_ENVIRONMENT_ID,
+        projectId,
+        logicalProjectKey,
+        branch: "feature/legacy",
+        envMode: "worktree",
+      });
+      expect(hydratedDraftThread).not.toHaveProperty("startFromOrigin");
+      expect(draftByKey(typedDraftId)?.prompt).toBe("keep this prompt");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it("strips seeded models only from empty draft sessions when upgrading storage", async () => {
     vi.useFakeTimers();

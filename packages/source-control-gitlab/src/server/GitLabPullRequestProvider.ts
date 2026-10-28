@@ -2,11 +2,18 @@ import { SourceControlProviderKind } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import type {
   PullRequestCapabilities,
+  PullRequestCheck,
+  PullRequestCheckStatus,
   PullRequestReaction,
   PullRequestViewerPermissions,
 } from "@t3tools/contracts";
 
 import * as GitLabPullRequestCli from "./GitLabPullRequestCli.ts";
+import {
+  gitLabApprovalDecision,
+  type GitLabApprovals,
+  type GitLabMergeRequestDetail,
+} from "./gitLabMergeRequestJson.ts";
 import {
   PullRequestProviderError,
   type PullRequestProviderFailure,
@@ -21,6 +28,8 @@ const CAPABILITIES: PullRequestCapabilities = {
   comment: true,
   actions: [...definition.changeRequestActions],
   mergeMethods: ["merge", "squash", "rebase"],
+  deleteBranch: true,
+  labels: true,
   // GitLab has no merge-target-into-source operation.
   updateMethods: ["rebase"],
   search: true,
@@ -56,20 +65,58 @@ const MERGE_ACTIONS: ReadonlySet<string> = new Set([
   "disable-auto-merge",
 ]);
 
-/** Authors may close/reopen/change draft state regardless of role; REST omits authorship. */
+/**
+ * Authors may close/reopen/change draft state regardless of role; REST omits authorship.
+ * Approval is the exception: only the approver can take one back, so unapprove is offered only
+ * after approving, and approving stays on offer where approvals could not be read. Deleting the
+ * source branch is offered only where `canDeleteBranch` says it is still there and the reader's.
+ */
 export function gitLabViewerPermissions(input: {
   readonly viewerCanMerge: boolean;
+  readonly approvals?: GitLabApprovals | null | undefined;
+  readonly canDeleteBranch?: boolean | undefined;
 }): PullRequestViewerPermissions {
+  const hasApproved = input.approvals?.viewerHasApproved === true;
+  const canApprove = !hasApproved && input.approvals?.viewerCanApprove !== false;
   return {
     actions: CAPABILITIES.actions.filter(
-      (action) => !MERGE_ACTIONS.has(action) || input.viewerCanMerge,
+      (action) =>
+        (!MERGE_ACTIONS.has(action) || input.viewerCanMerge) &&
+        (action !== "unapprove" || hasApproved) &&
+        (action !== "delete-branch" || input.canDeleteBranch === true),
     ),
     comment: true,
     resolve: true,
-    verdicts: CAPABILITIES.review.verdicts,
+    verdicts: CAPABILITIES.review.verdicts.filter((verdict) => verdict !== "approve" || canApprove),
     requestReviewers: true,
+    labels: true,
     ...(input.viewerCanMerge ? { updateMethods: CAPABILITIES.updateMethods } : {}),
   };
+}
+
+/** Pipeline outcomes a job list can hide: GitLab leaves trigger jobs out of it. */
+const UNSETTLED_PIPELINE_STATUSES: ReadonlySet<PullRequestCheckStatus> = new Set([
+  "failure",
+  "pending",
+  "cancelled",
+]);
+
+/**
+ * The head pipeline's jobs as its checks, keeping the pipeline's own check wherever it says
+ * something none of them does: a failed downstream pipeline fails its parent while every job
+ * listed beside it passed.
+ */
+function gitLabPipelineChecks(
+  pipeline: ReadonlyArray<PullRequestCheck>,
+  jobs: ReadonlyArray<PullRequestCheck>,
+): ReadonlyArray<PullRequestCheck> {
+  if (jobs.length === 0) return pipeline;
+  const unexplained = pipeline.filter(
+    (check) =>
+      UNSETTLED_PIPELINE_STATUSES.has(check.status) &&
+      !jobs.some((job) => job.status === check.status),
+  );
+  return [...jobs, ...unexplained];
 }
 
 function gitLabProviderFailure(
@@ -111,18 +158,76 @@ export const make = Effect.gen(function* () {
       }),
     );
 
+  // Approvals and jobs fill in a merge request that reads without them, so losing either to a
+  // host that withholds them must not lose the merge request.
+  const approvalsOf = (input: GitLabPullRequestCli.GitLabTarget) =>
+    recoverRead<GitLabApprovals | null>(cli.getApprovals(input), null);
+
+  /** The head pipeline's jobs and trigger jobs, or the pipeline as one check without them. */
+  const checksOf = Effect.fn("GitLabPullRequestProvider.checksOf")(function* (
+    input: GitLabPullRequestCli.GitLabTarget,
+    mergeRequest: GitLabMergeRequestDetail,
+  ) {
+    const pipeline = mergeRequest.headPipeline;
+    if (pipeline === undefined) return mergeRequest.checks;
+    const target = {
+      cwd: input.cwd,
+      host: input.host,
+      project: pipeline.projectId ?? input.repository,
+      pipelineId: pipeline.id,
+    };
+    const none: ReadonlyArray<PullRequestCheck> = [];
+    const [jobs, bridges] = yield* Effect.all(
+      [
+        recoverRead(cli.listPipelineJobs(target), { checks: none, truncated: false }),
+        recoverRead(cli.listPipelineBridges(target), { checks: none, truncated: false }),
+      ],
+      { concurrency: 2 },
+    );
+    return gitLabPipelineChecks(mergeRequest.checks, [...jobs.checks, ...bridges.checks]);
+  });
+
+  /**
+   * Whether the reader may delete an ended merge request's source branch: only while it still
+   * exists at the commit the merge request ended on, as `deleteSourceBranch` will insist, and
+   * where GitLab says the reader can push to it. An open merge request keeps its branch, so it
+   * costs no request.
+   */
+  const canDeleteBranchOf = Effect.fn("GitLabPullRequestProvider.canDeleteBranchOf")(function* (
+    input: GitLabPullRequestCli.GitLabTarget,
+    mergeRequest: GitLabMergeRequestDetail,
+  ) {
+    if (mergeRequest.state === "open" || mergeRequest.headSha === undefined) return false;
+    const branch = yield* recoverRead(
+      cli.getBranch({
+        cwd: input.cwd,
+        host: input.host,
+        project: mergeRequest.sourceProjectId ?? input.repository,
+        branch: mergeRequest.headBranch,
+      }),
+      null,
+    );
+    if (branch === null || branch.headSha !== mergeRequest.headSha) return false;
+    // `can_push` answers for the branch's own project, a fork included; an install too old to
+    // say falls back to whether the reader may merge at all.
+    return branch.canPush ?? mergeRequest.viewerCanMerge;
+  });
+
   const provider: PullRequestProviderApi = {
     kind: SourceControlProviderKind.make("gitlab"),
     capabilities: CAPABILITIES,
     unavailableRequirement: UNAVAILABLE_REQUIREMENT,
 
     getViewer: (input) =>
-      cli.getViewerUsername({ cwd: input.cwd }).pipe(Effect.mapError(fail("getViewer"))),
+      cli
+        .getViewerUsername({ cwd: input.cwd, host: input.host })
+        .pipe(Effect.mapError(fail("getViewer"))),
 
     listChangeRequests: (input) =>
       cli
         .listMergeRequests({
           cwd: input.cwd,
+          host: input.host,
           repository: input.repository,
           state: input.state,
           involvement: input.involvement,
@@ -139,7 +244,11 @@ export const make = Effect.gen(function* () {
 
     getChangeRequestChecks: (input) =>
       cli.getMergeRequestDetail(input).pipe(
-        Effect.map(({ state, checks }) => ({ state, checks })),
+        Effect.flatMap((mergeRequest) =>
+          checksOf(input, mergeRequest).pipe(
+            Effect.map((checks) => ({ state: mergeRequest.state, checks })),
+          ),
+        ),
         Effect.mapError(fail("getChangeRequestChecks")),
       ),
 
@@ -154,26 +263,65 @@ export const make = Effect.gen(function* () {
       Effect.all(
         [
           cli.getMergeRequestDetail(input),
-          cli.getProjectMergeCapabilities({ cwd: input.cwd, repository: input.repository }),
+          cli.getProjectMergeCapabilities({
+            cwd: input.cwd,
+            host: input.host,
+            repository: input.repository,
+          }),
+          approvalsOf(input),
         ],
-        { concurrency: 2 },
+        { concurrency: 3 },
       ).pipe(
+        Effect.flatMap(([mergeRequest, mergeCapabilities, approvals]) =>
+          Effect.all([checksOf(input, mergeRequest), canDeleteBranchOf(input, mergeRequest)], {
+            concurrency: 2,
+          }).pipe(
+            Effect.map(([checks, canDeleteBranch]) => ({
+              mergeRequest,
+              mergeCapabilities,
+              approvals,
+              checks,
+              canDeleteBranch,
+            })),
+          ),
+        ),
         Effect.mapError(fail("getChangeRequest")),
-        Effect.map(([mergeRequest, mergeCapabilities]): ProviderChangeRequestDetail => ({
-          ...mergeRequest,
-          mergeCapabilities,
-          viewerPermissions: gitLabViewerPermissions(mergeRequest),
-          // Missing divergence counts mean unknown, not up to date.
-          baseComparison:
-            mergeRequest.divergedCommits === undefined
-              ? "unknown"
-              : mergeRequest.divergedCommits > 0
-                ? "behind"
-                : "up-to-date",
-          ...(mergeRequest.divergedCommits === undefined
-            ? {}
-            : { behindBy: mergeRequest.divergedCommits }),
-        })),
+        Effect.map(
+          ({
+            mergeRequest,
+            mergeCapabilities,
+            approvals,
+            checks,
+            canDeleteBranch,
+          }): ProviderChangeRequestDetail => ({
+            ...mergeRequest,
+            checks,
+            // Changes requested outrank any approval count: GitLab blocks the merge on them
+            // while the approvals it already has still read as enough.
+            reviewDecision:
+              mergeRequest.reviewDecision === "changes-requested"
+                ? "changes-requested"
+                : ((approvals === null ? null : gitLabApprovalDecision(approvals)) ??
+                  mergeRequest.reviewDecision ??
+                  null),
+            mergeCapabilities,
+            viewerPermissions: gitLabViewerPermissions({
+              ...mergeRequest,
+              approvals,
+              canDeleteBranch,
+            }),
+            // Missing divergence counts mean unknown, not up to date.
+            baseComparison:
+              mergeRequest.divergedCommits === undefined
+                ? "unknown"
+                : mergeRequest.divergedCommits > 0
+                  ? "behind"
+                  : "up-to-date",
+            ...(mergeRequest.divergedCommits === undefined
+              ? {}
+              : { behindBy: mergeRequest.divergedCommits }),
+          }),
+        ),
       ),
 
     getChangeRequestActivity: (input) =>
@@ -210,9 +358,20 @@ export const make = Effect.gen(function* () {
       ),
 
     getViewerPermissions: (input) =>
-      cli
-        .getMergeRequestDetail(input)
-        .pipe(Effect.mapError(fail("getViewerPermissions")), Effect.map(gitLabViewerPermissions)),
+      Effect.all([cli.getMergeRequestDetail(input), approvalsOf(input)], { concurrency: 2 }).pipe(
+        Effect.flatMap(([mergeRequest, approvals]) =>
+          canDeleteBranchOf(input, mergeRequest).pipe(
+            Effect.map((canDeleteBranch) =>
+              gitLabViewerPermissions({
+                viewerCanMerge: mergeRequest.viewerCanMerge,
+                approvals,
+                canDeleteBranch,
+              }),
+            ),
+          ),
+        ),
+        Effect.mapError(fail("getViewerPermissions")),
+      ),
 
     getDiff: (input) => cli.getMergeRequestDiff(input).pipe(Effect.mapError(fail("getDiff"))),
 
@@ -230,6 +389,7 @@ export const make = Effect.gen(function* () {
       cli
         .listReviewerCandidates({
           cwd: input.cwd,
+          host: input.host,
           repository: input.repository,
           number: input.number,
         })
@@ -237,18 +397,29 @@ export const make = Effect.gen(function* () {
 
     listRepositoryLabels: (input) =>
       cli
-        .listProjectLabels({ cwd: input.cwd, repository: input.repository, search: input.query })
+        .listProjectLabels({
+          cwd: input.cwd,
+          host: input.host,
+          repository: input.repository,
+          search: input.query,
+        })
         .pipe(Effect.mapError(fail("listRepositoryLabels"))),
 
     searchRepositoryAuthors: (input) =>
       cli
-        .listProjectUsers({ cwd: input.cwd, repository: input.repository, search: input.query })
+        .listProjectUsers({
+          cwd: input.cwd,
+          host: input.host,
+          repository: input.repository,
+          search: input.query,
+        })
         .pipe(Effect.mapError(fail("searchRepositoryAuthors"))),
 
     setReviewerRequest: (input) =>
       cli
         .setReviewerRequest({
           cwd: input.cwd,
+          host: input.host,
           repository: input.repository,
           number: input.number,
           reviewers: input.reviewers,
@@ -260,6 +431,7 @@ export const make = Effect.gen(function* () {
       cli
         .runMergeRequestAction({
           cwd: input.cwd,
+          host: input.host,
           repository: input.repository,
           number: input.number,
           action: input.action,
@@ -271,6 +443,7 @@ export const make = Effect.gen(function* () {
       cli
         .updateMergeRequest({
           cwd: input.cwd,
+          host: input.host,
           repository: input.repository,
           number: input.number,
           ...(input.title === undefined ? {} : { title: input.title }),
@@ -278,12 +451,28 @@ export const make = Effect.gen(function* () {
         })
         .pipe(Effect.mapError(fail("updateChangeRequest"))),
 
+    listLabelCandidates: (input) =>
+      cli.listLabelCandidates(input).pipe(Effect.mapError(fail("listLabelCandidates"))),
+
+    setLabels: (input) =>
+      cli
+        .setLabels({
+          cwd: input.cwd,
+          host: input.host,
+          repository: input.repository,
+          number: input.number,
+          labels: input.labels,
+          applied: input.applied,
+        })
+        .pipe(Effect.mapError(fail("setLabels"))),
+
     comment: (input) => cli.commentOnMergeRequest(input).pipe(Effect.mapError(fail("comment"))),
 
     updateComment: (input) =>
       cli
         .updateNote({
           cwd: input.cwd,
+          host: input.host,
           repository: input.repository,
           number: input.number,
           noteId: input.commentId,
@@ -297,6 +486,7 @@ export const make = Effect.gen(function* () {
       cli
         .replyToDiscussion({
           cwd: input.cwd,
+          host: input.host,
           repository: input.repository,
           number: input.number,
           discussionId: input.threadId,
@@ -308,6 +498,7 @@ export const make = Effect.gen(function* () {
       cli
         .setReaction({
           cwd: input.cwd,
+          host: input.host,
           repository: input.repository,
           number: input.number,
           ...(input.subjectId === undefined ? {} : { noteId: input.subjectId }),
@@ -320,6 +511,7 @@ export const make = Effect.gen(function* () {
       cli
         .setDiscussionResolution({
           cwd: input.cwd,
+          host: input.host,
           repository: input.repository,
           number: input.number,
           discussionId: input.threadId,

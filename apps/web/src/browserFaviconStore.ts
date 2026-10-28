@@ -345,6 +345,61 @@ function lookupFaviconEntry(
   }
 }
 
+const ANY_PROJECT_SCOPE = "any";
+const anyProjectIndexCache = new WeakMap<
+  Record<string, BrowserFaviconEntry>,
+  ReadonlyMap<string, BrowserFaviconEntry>
+>();
+
+/** The newest icon per origin across projects, rebuilt only when the stored icons change. */
+function anyProjectIndex(
+  byKey: Record<string, BrowserFaviconEntry>,
+): ReadonlyMap<string, BrowserFaviconEntry> {
+  const cached = anyProjectIndexCache.get(byKey);
+  if (cached) return cached;
+  const index = new Map<string, BrowserFaviconEntry>();
+  for (const [key, entry] of Object.entries(byKey)) {
+    const origin = key.slice(key.indexOf(" ") + 1);
+    const existing = index.get(origin);
+    if (!existing || existing.capturedAt < entry.capturedAt) index.set(origin, entry);
+  }
+  anyProjectIndexCache.set(byKey, index);
+  return index;
+}
+
+/**
+ * A public site's icon from whichever project captured it, for pages like the new tab that
+ * list sites from every project. Local servers are left out: `localhost:3000` is a different
+ * app in each project.
+ */
+export function lookupFaviconInAnyProject(
+  byKey: Record<string, BrowserFaviconEntry>,
+  url: string,
+): string | null {
+  const key = faviconKey(ANY_PROJECT_SCOPE, url, null);
+  if (!key) return null;
+  const origin = key.slice(ANY_PROJECT_SCOPE.length + 1);
+  if (origin.includes("//localhost:")) return null;
+  return anyProjectIndex(byKey).get(origin)?.dataUrl ?? null;
+}
+
+/** The thread's own capture first, then any project's capture of the same public site. */
+export function useFaviconForUrlInAnyProject(
+  threadRef: ScopedThreadRef,
+  url: string,
+): string | null {
+  const projectRef = useFaviconProjectRefForThread(threadRef);
+  const preparedConnection = usePreparedConnection(threadRef.environmentId);
+  const environmentHostname = Option.isSome(preparedConnection)
+    ? new URL(preparedConnection.value.httpBaseUrl).hostname
+    : null;
+  return useBrowserFaviconStore(
+    (state) =>
+      lookupFavicon(state.byKey, projectRef, url, environmentHostname) ??
+      lookupFaviconInAnyProject(state.byKey, url),
+  );
+}
+
 export function resetBrowserFaviconsForTests(): void {
   useBrowserFaviconStore.setState({
     byKey: {},

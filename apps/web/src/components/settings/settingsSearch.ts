@@ -1,5 +1,7 @@
 import { HOSTED_APP_CHANNEL } from "~/branding";
 import { isElectron } from "~/env";
+import type { Translate } from "~/i18n";
+import { en, type MessageKey } from "~/i18n/messages/en";
 import { isMacPlatform, isWindowsPlatform, normalizeSearchText } from "~/lib/utils";
 import { STATIC_KEYBINDING_COMMANDS, type KeybindingCommand } from "@t3tools/contracts";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -67,6 +69,7 @@ export interface SettingsSearchItem {
   readonly managedTunnelOnly?: boolean;
   readonly secondary?: boolean;
   readonly requiresThreadAutoSettlement?: boolean;
+  readonly requiresThreadAutoCleanup?: boolean;
 }
 
 export interface SettingsSearchAvailability {
@@ -78,6 +81,7 @@ export interface SettingsSearchAvailability {
   readonly canManageLocalBackend: boolean;
   readonly isWslSettingsRowVisible: boolean;
   readonly hasThreadAutoSettlement: boolean;
+  readonly hasThreadAutoCleanup: boolean;
   readonly managedTunnelActive?: boolean;
 }
 
@@ -105,6 +109,15 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/archived": "Archive",
 };
 
+// English labels above stay in the search index in every locale; rendered labels go
+// through the message key so each section title follows the display language.
+export function settingsSectionMessageKey(path: SettingsPath) {
+  return `settings.section.${path.slice("/settings/".length) as SettingsPathSlug}` as const;
+}
+
+type SettingsPathSlug = SettingsPath extends `/settings/${infer Slug}` ? Slug : never;
+
+const KEYBINDING_ID_PREFIX = "keybinding-";
 /** Sidebar order. A group without a heading is set apart by space alone. */
 export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
   readonly heading: string | null;
@@ -143,7 +156,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
 ];
 
 export function keybindingSearchAnchorId<Command extends KeybindingCommand>(command: Command) {
-  return `keybinding-${command}` as const;
+  return `${KEYBINDING_ID_PREFIX}${command}` as const;
 }
 
 const KEYBINDING_SEARCH_ITEMS = STATIC_KEYBINDING_COMMANDS.toSorted((left, right) =>
@@ -202,6 +215,14 @@ const SOURCE_CONTROL_HOST_LABELS = sourceControlClients.definitions
 const SOURCE_CONTROL_HOST_TERMS = sourceControlClients.definitions
   .flatMap((definition) => [definition.label, ...(definition.searchKeywords ?? [])])
   .join(" ");
+
+// Generated host titles carry the host label, so they translate through a template key.
+const SOURCE_CONTROL_HOST_DEFINITIONS = new Map<string, SourceControlDefinition>(
+  sourceControlClients.definitions.map((definition) => [
+    sourceControlHostSettingsSearchId(definition.kind),
+    definition,
+  ]),
+);
 
 export const SETTINGS_SEARCH_ITEMS = [
   {
@@ -380,6 +401,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/appearance",
   },
   {
+    id: "language",
+    title: "Display language",
+    to: "/settings/general",
+    searchTerms: ["locale english chinese 語言 繁體中文 中文"],
+  },
+  {
     id: "project-grouping",
     title: "Project grouping",
     to: "/settings/general",
@@ -456,6 +483,22 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["thread timeout activity sidebar"],
     requiresThreadAutoSettlement: true,
     scope: "project-defaults",
+  },
+  {
+    id: "auto-archive-settled-threads",
+    title: "Auto-archive settled threads",
+    to: "/settings/threads",
+    scope: "environment-defaults",
+    requiresThreadAutoCleanup: true,
+    searchTerms: ["cleanup clean up old settled days archive automatically"],
+  },
+  {
+    id: "auto-delete-archived-threads",
+    title: "Delete auto-archived threads",
+    to: "/settings/threads",
+    scope: "environment-defaults",
+    requiresThreadAutoCleanup: true,
+    searchTerms: ["cleanup clean up remove old archived days delete automatically"],
   },
   {
     id: "thread-notifications",
@@ -574,13 +617,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/worktrees",
     scope: "project-defaults",
     searchTerms: ["git submodule init recursive top-level none worktree t3.json"],
-  },
-  {
-    id: "start-from-origin",
-    title: "Start from remote",
-    to: "/settings/worktrees",
-    scope: "project-defaults",
-    searchTerms: ["new worktrees start remote origin latest fetched branch local"],
   },
   {
     id: "add-project-starts-in",
@@ -861,6 +897,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Open links in",
     to: "/settings/browser",
     searchTerms: ["links default browser in-app browser external open"],
+  },
+  {
+    id: "browser-bookmarks",
+    title: "Browser bookmarks",
+    to: "/settings/browser",
+    searchTerms: ["import chrome bookmarks html favorites new tab"],
   },
   {
     id: "browser-search-engine",
@@ -1172,22 +1214,27 @@ export function getSettingsSearchTargetScope(targetId: string) {
         title: item.title,
         scope: item.scope ?? SETTINGS_CATEGORY_SCOPES[item.to],
         ...(item.requiresThreadAutoSettlement ? { requiresThreadAutoSettlement: true } : {}),
+        ...(item.requiresThreadAutoCleanup ? { requiresThreadAutoCleanup: true } : {}),
       }
     : null;
 }
 
-interface AutoSettlementSearchEnvironment {
+type ThreadAutomationCapability = "threadAutoSettlement" | "threadAutoCleanup";
+
+interface ThreadAutomationSearchEnvironment {
   readonly environmentId: EnvironmentId;
   readonly connection: { readonly phase: EnvironmentConnectionPhase };
   readonly serverConfig: {
     readonly environment: {
-      readonly capabilities: { readonly threadAutoSettlement?: boolean };
+      readonly capabilities: { readonly [K in ThreadAutomationCapability]?: boolean };
     };
   } | null;
 }
 
-export function getThreadAutoSettlementSearchAvailability(
-  environments: readonly AutoSettlementSearchEnvironment[],
+/** Where settings that need a server-side thread automation can be edited. */
+export function getThreadAutomationSearchAvailability(
+  capability: ThreadAutomationCapability,
+  environments: readonly ThreadAutomationSearchEnvironment[],
   scope?: Pick<ResolvedSettingsScope, "kind" | "environmentIds">,
 ) {
   const connected = environments.filter(
@@ -1196,8 +1243,7 @@ export function getThreadAutoSettlementSearchAvailability(
   );
   const eligibleEnvironmentIds = connected
     .filter(
-      (environment) =>
-        environment.serverConfig?.environment.capabilities.threadAutoSettlement === true,
+      (environment) => environment.serverConfig?.environment.capabilities[capability] === true,
     )
     .map((environment) => environment.environmentId);
   const selected = connected.filter((environment) =>
@@ -1260,8 +1306,50 @@ export function filterAvailableSettingsSearchItems(
       (!item.localEnvironmentOnly || !availability.localEnvironmentDisabled) &&
       (!item.wslAvailableOnly || availability.isWslSettingsRowVisible) &&
       (!item.requiresThreadAutoSettlement || availability.hasThreadAutoSettlement) &&
+      (!item.requiresThreadAutoCleanup || availability.hasThreadAutoCleanup) &&
       (!item.managedTunnelOnly || availability.managedTunnelActive === true),
   );
+}
+
+function isMessageKey(key: string): key is MessageKey {
+  return Object.hasOwn(en, key);
+}
+
+export function settingsSearchItemTitle(item: SettingsSearchItem, translate: Translate): string {
+  const host = SOURCE_CONTROL_HOST_DEFINITIONS.get(item.id);
+  if (host !== undefined) {
+    return translate(
+      host.credentials
+        ? "searchIndex.source-control-host.accounts"
+        : "searchIndex.source-control-host",
+      { label: host.label },
+    );
+  }
+  const key = item.id.startsWith(KEYBINDING_ID_PREFIX)
+    ? `searchIndex.keybinding.${item.id.slice(KEYBINDING_ID_PREFIX.length)}`
+    : `searchIndex.${item.id}`;
+  return isMessageKey(key) ? translate(key) : item.title;
+}
+
+// English fields stay searchable in every display language, so English queries keep working.
+// Titles come first and sections next: the command palette ranks earlier fields higher.
+export function settingsSearchItemTerms(
+  item: SettingsSearchItem,
+  translate?: Translate,
+): ReadonlyArray<string> {
+  const section = SETTINGS_SECTION_LABELS[item.to];
+  if (!translate) return [item.title, section, ...(item.searchTerms ?? [])];
+  const termsKey = SOURCE_CONTROL_HOST_DEFINITIONS.has(item.id)
+    ? "searchIndex.source-control-host.terms"
+    : `searchIndex.${item.id}.terms`;
+  return [
+    item.title,
+    settingsSearchItemTitle(item, translate),
+    section,
+    translate(settingsSectionMessageKey(item.to)),
+    ...(item.searchTerms ?? []),
+    ...(isMessageKey(termsKey) ? [translate(termsKey)] : []),
+  ];
 }
 
 /** The settings that exist on this platform and app channel. */
@@ -1281,34 +1369,34 @@ export function settingsForThisPlatform(
 export function searchSettings(
   query: string,
   items: ReadonlyArray<SettingsSearchItem> = SETTINGS_SEARCH_ITEMS,
+  options: { readonly translate?: Translate | undefined } = {},
 ): ReadonlyArray<SettingsSearchItem> {
   const normalizedQuery = normalizeSearchText(query);
   if (normalizedQuery.length === 0) return [];
   const queryTokens = normalizedQuery.split(" ");
+  const { translate } = options;
+  const rankTitle = (title: string) =>
+    title === normalizedQuery
+      ? 5
+      : title.startsWith(normalizedQuery)
+        ? 4
+        : title.includes(normalizedQuery)
+          ? 3
+          : queryTokens.every((token) => title.includes(token))
+            ? 2
+            : 0;
 
   return settingsForThisPlatform(items)
     .flatMap((item, index) => {
-      const title = normalizeSearchText(item.title);
-      const fields = [
-        title,
-        normalizeSearchText(SETTINGS_SECTION_LABELS[item.to]),
-        ...(item.searchTerms ?? []).map(normalizeSearchText),
-      ];
+      const fields = settingsSearchItemTerms(item, translate)
+        .map(normalizeSearchText)
+        .filter((field) => field.length > 0);
       if (!queryTokens.every((token) => fields.some((field) => field.includes(token)))) return [];
 
-      const exactPhraseField = fields.findIndex((field) => field.includes(normalizedQuery));
+      const titles = [item.title, ...(translate ? [settingsSearchItemTitle(item, translate)] : [])];
+      const titleRank = Math.max(...titles.map((title) => rankTitle(normalizeSearchText(title))));
       const rank =
-        title === normalizedQuery
-          ? 5
-          : title.startsWith(normalizedQuery)
-            ? 4
-            : title.includes(normalizedQuery)
-              ? 3
-              : queryTokens.every((token) => title.includes(token))
-                ? 2
-                : exactPhraseField >= 0
-                  ? 1
-                  : 0;
+        titleRank > 0 ? titleRank : fields.some((field) => field.includes(normalizedQuery)) ? 1 : 0;
       return [{ item, index, rank }];
     })
     .toSorted(

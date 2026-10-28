@@ -20,8 +20,8 @@ import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
-import * as ServerSettings from "../serverSettings.ts";
 import * as VcsStatusBroadcaster from "../vcs/VcsStatusBroadcaster.ts";
+import { worktreeBaseWarningDetail } from "../vcs/worktreeBaseWarning.ts";
 import type { McpInvocationScope, McpThreadInvocationScope } from "./McpInvocationContext.ts";
 
 export class WorktreeMcpService extends Context.Service<
@@ -58,7 +58,6 @@ const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const threadManagement = yield* ThreadManagementService.ThreadManagementService;
   const projects = yield* ProjectService.ProjectService;
-  const serverSettings = yield* ServerSettings.ServerSettingsService;
   const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
   const setupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
@@ -115,11 +114,6 @@ const make = Effect.gen(function* () {
         }),
       ),
     );
-
-  const readDefaultStartFromOrigin = serverSettings.getSettings.pipe(
-    Effect.map((settings) => settings.newWorktreesStartFromOrigin),
-    asOperationFailed("Unable to read server settings"),
-  );
 
   const handoffIds = (scope: McpThreadInvocationScope) =>
     crypto.randomUUIDv4().pipe(
@@ -205,20 +199,19 @@ const make = Effect.gen(function* () {
       baseRef = localStatus.refName;
     }
 
-    const startFromOrigin = input.startFromOrigin ?? (yield* readDefaultStartFromOrigin);
-
     let worktreeBaseRef = baseRef;
     let baseRefName = baseRef;
     let startedFromOrigin = false;
-    if (startFromOrigin) {
-      const resolvedRemoteBase = yield* gitWorkflow
-        .fetchWorktreeBaseCommit({ cwd: projectCwd, refName: baseRef })
+    let baseWarning: string | null = null;
+    if (input.startFromOrigin ?? true) {
+      // A handoff always creates a new branch, so there is never an existing branch to fast-forward.
+      const prepared = yield* gitWorkflow
+        .prepareWorktreeBase({ cwd: projectCwd, baseRef, existingBranch: false })
         .pipe(asOperationFailed(`Unable to fetch the remote base of '${baseRef}'`));
-      if (resolvedRemoteBase !== null) {
-        worktreeBaseRef = resolvedRemoteBase.commitSha;
-        baseRefName = `refs/remotes/${resolvedRemoteBase.remoteRefName}`;
-        startedFromOrigin = true;
-      }
+      worktreeBaseRef = prepared.startRef;
+      baseRefName = prepared.baseRefName;
+      startedFromOrigin = prepared.remoteStart;
+      baseWarning = prepared.warning === null ? null : worktreeBaseWarningDetail(prepared.warning);
     }
 
     const ids = yield* handoffIds(scope);
@@ -371,9 +364,10 @@ const make = Effect.gen(function* () {
           setupScript,
           continuation,
           note:
-            continuation.status === "scheduled"
+            (baseWarning === null ? "" : `Warning: ${baseWarning}. `) +
+            (continuation.status === "scheduled"
               ? "Handoff recorded. Changing the workspace detaches this provider session, so the current turn ends shortly after this call; the queued continuation prompt then starts the next turn inside the worktree with the conversation preserved. The worktree is not removed automatically when the thread is deleted."
-              : "Handoff recorded. Changing the workspace detaches this provider session, so the current turn ends shortly after this call; the conversation continues inside the worktree when the thread receives its next message. Pass continuationPrompt to resume automatically. The worktree is not removed automatically when the thread is deleted.",
+              : "Handoff recorded. Changing the workspace detaches this provider session, so the current turn ends shortly after this call; the conversation continues inside the worktree when the thread receives its next message. Pass continuationPrompt to resume automatically. The worktree is not removed automatically when the thread is deleted."),
         };
         return result;
       }),
@@ -413,14 +407,12 @@ const make = Effect.gen(function* () {
       const projection = yield* loadThread(scope);
       const project = yield* loadProject(scope, projection.thread.projectId);
 
-      const defaultStartFromOrigin = yield* readDefaultStartFromOrigin;
-
       const result: WorktreeMcpStatusResult = {
         attached: projection.thread.worktreePath !== null,
         worktreePath: projection.thread.worktreePath,
         branch: projection.thread.branch,
         projectWorkspaceRoot: project.workspaceRoot,
-        defaultStartFromOrigin,
+        defaultStartFromOrigin: true,
       };
       return result;
     },
@@ -435,7 +427,6 @@ export const layer: Layer.Layer<
   | Crypto.Crypto
   | ThreadManagementService.ThreadManagementService
   | ProjectService.ProjectService
-  | ServerSettings.ServerSettingsService
   | GitWorkflowService.GitWorkflowService
   | ProjectSetupScriptRunner.ProjectSetupScriptRunner
   | VcsStatusBroadcaster.VcsStatusBroadcaster

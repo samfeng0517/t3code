@@ -16,6 +16,7 @@ import {
   type VcsRef,
   type ThreadId,
 } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
 import { ChevronDownIcon, GitBranchIcon } from "lucide-react";
 import {
   useDeferredValue,
@@ -29,6 +30,12 @@ import {
 } from "react";
 
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
+import { updateClientSettings, useClientSettings } from "../hooks/useSettings";
+import { useT } from "~/i18n";
+import {
+  canCheckOutInNewWorktree,
+  shouldClearExistingBranchSelection,
+} from "./BranchPickerNewWorktree.logic";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { readLocalApi } from "../localApi";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
@@ -85,8 +92,6 @@ interface BranchToolbarBranchSelectorProps {
   effectiveEnvModeOverride?: "local" | "worktree";
   activeThreadBranchOverride?: string | null;
   onActiveThreadBranchOverrideChange?: (refName: string | null) => void;
-  startFromOrigin: boolean;
-  onStartFromOriginChange: (startFromOrigin: boolean) => void;
   onCheckoutPullRequestRequest?: (reference: string) => void;
   onComposerFocusRequest?: () => void;
 }
@@ -107,8 +112,6 @@ export function BranchToolbarBranchSelector({
   effectiveEnvModeOverride,
   activeThreadBranchOverride,
   onActiveThreadBranchOverrideChange,
-  startFromOrigin,
-  onStartFromOriginChange,
   onCheckoutPullRequestRequest,
   onComposerFocusRequest,
 }: BranchToolbarBranchSelectorProps) {
@@ -132,6 +135,13 @@ export function BranchToolbarBranchSelector({
   const createRefMutation = useAtomCommand(vcsEnvironment.createRef, {
     reportFailure: false,
   });
+  const t = useT();
+  const fetchRefs = useAtomCommand(vcsEnvironment.fetch, { reportFailure: false });
+  const canFetchRefs = useAtomValue(vcsEnvironment.fetch.permissionAtom(environmentId));
+  const [isFetchingRefs, setIsFetchingRefs] = useState(false);
+  const newWorktreeCreatesBranch = useClientSettings(
+    (settings) => settings.newWorktreeCreatesBranch,
+  );
   const threadRef = scopeThreadRef(environmentId, threadId);
   const serverThread = useQuietThreadShell(threadRef);
   const serverSession = serverThread?.runtime ?? null;
@@ -307,12 +317,6 @@ export function BranchToolbarBranchSelector({
   const queriedActiveBranch = activeBranchRefQuery.data?.refs.find(
     (refName) => refName.name === resolvedActiveBranch,
   );
-  const resolvedActiveBranchIsRemote =
-    listedActiveBranch !== null
-      ? listedActiveBranch.isRemote === true
-      : queriedActiveBranch
-        ? queriedActiveBranch.isRemote === true
-        : null;
   const [isBranchActionPending, startBranchActionTransition] = useTransition();
   const totalBranchCount = branchRefState.data?.totalCount ?? 0;
   const branchStatusText = isInitialBranchesLoadPending
@@ -380,10 +384,32 @@ export function BranchToolbarBranchSelector({
     });
   };
 
+  const fetchRemoteRefs = () => {
+    if (!branchCwd || isFetchingRefs) return;
+    setIsFetchingRefs(true);
+    void fetchRefs({ environmentId, input: { cwd: branchCwd } }).then((result) => {
+      setIsFetchingRefs(false);
+      if (result._tag === "Success") {
+        branchRefState.refresh();
+        return;
+      }
+      if (!isAtomCommandInterrupted(result)) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: t("composer.branchPicker.fetchFailed"),
+            description: toBranchActionErrorMessage(squashAtomCommandFailure(result)),
+          }),
+        );
+      }
+    });
+  };
+
   const selectBranch = (refName: VcsRef) => {
     if (!canUpdateThreadBranch || !branchCwd || !activeProjectCwd || isBranchActionPending) return;
 
     if (isSelectingWorktreeBase) {
+      if (!newWorktreeCreatesBranch && !canCheckOutInNewWorktree(refName, branchByName)) return;
       setThreadBranch(refName.name, null);
       setIsBranchMenuOpen(false);
       onComposerFocusRequest?.();
@@ -490,6 +516,7 @@ export function BranchToolbarBranchSelector({
       effectiveEnvMode !== "worktree" ||
       activeWorktreePath ||
       activeThreadBranch ||
+      !newWorktreeCreatesBranch ||
       !worktreeBaseBranchCandidate
     ) {
       return;
@@ -499,10 +526,27 @@ export function BranchToolbarBranchSelector({
     activeThreadBranch,
     activeWorktreePath,
     effectiveEnvMode,
+    newWorktreeCreatesBranch,
     setThreadBranch,
     threadStarted,
     worktreeBaseBranchCandidate,
   ]);
+
+  // In a new worktree an unset branch displays the current one, which is not a selection.
+  const selectedRef =
+    activeThreadBranch === null ? null : (listedActiveBranch ?? queriedActiveBranch ?? null);
+  const clearExistingBranchSelection =
+    !threadStarted &&
+    shouldClearExistingBranchSelection({
+      createsBranch: newWorktreeCreatesBranch,
+      isSelectingWorktreeBase,
+      selectedRef,
+      branchByName,
+    });
+  // oxlint-disable-next-line t3code/react-effect-budget -- clears the stored thread branch when the selection is stale, a store write outside render
+  useEffect(() => {
+    if (clearExistingBranchSelection) setThreadBranch(null, null, true);
+  }, [clearExistingBranchSelection, setThreadBranch]);
 
   const handleOpenChange = (open: boolean) => {
     setIsBranchMenuOpen(open);
@@ -525,13 +569,15 @@ export function BranchToolbarBranchSelector({
     [handleOpenChange, isBranchActionPending, isInitialBranchesLoadPending],
   );
 
-  const triggerLabel = resolveBranchTriggerLabel({
-    activeWorktreePath,
-    effectiveEnvMode,
-    resolvedActiveBranch,
-    resolvedActiveBranchIsRemote,
-    startFromOrigin,
-  });
+  const isExistingBranchWorktree = isSelectingWorktreeBase && !newWorktreeCreatesBranch;
+  const triggerLabel =
+    isExistingBranchWorktree && activeThreadBranch !== null
+      ? t("composer.branchPicker.existingBranchTrigger", { branch: activeThreadBranch })
+      : resolveBranchTriggerLabel({
+          activeWorktreePath,
+          effectiveEnvMode,
+          resolvedActiveBranch: isExistingBranchWorktree ? null : resolvedActiveBranch,
+        });
 
   const branchPrBranch = resolveBranchToolbarPrBranch({
     activeThreadBranch,
@@ -628,6 +674,9 @@ export function BranchToolbarBranchSelector({
         value={itemValue}
         disabled={
           !canUpdateThreadBranch ||
+          (isSelectingWorktreeBase &&
+            !newWorktreeCreatesBranch &&
+            !canCheckOutInNewWorktree(refName, branchByName)) ||
           (!canWriteSourceControl &&
             !isSelectingWorktreeBase &&
             (!activeProjectCwd ||
@@ -665,9 +714,18 @@ export function BranchToolbarBranchSelector({
             ? "create-branch"
             : "branch"
       }
-      originControl={
+      newBranchControl={
         isSelectingWorktreeBase
-          ? { checked: startFromOrigin, onCheckedChange: onStartFromOriginChange }
+          ? {
+              checked: newWorktreeCreatesBranch,
+              onCheckedChange: (checked) =>
+                void updateClientSettings({ newWorktreeCreatesBranch: checked }),
+            }
+          : undefined
+      }
+      fetchControl={
+        branchCwd !== null && branchRefState.data?.isRepo !== false
+          ? { pending: isFetchingRefs, disabled: !canFetchRefs, onFetch: fetchRemoteRefs }
           : undefined
       }
       popupProps={{

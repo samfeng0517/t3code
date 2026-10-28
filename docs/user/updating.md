@@ -4,10 +4,22 @@ The app you use and the server running your agents can be on different machines.
 When a server is behind your web or desktop app, the update button at the bottom
 of the sidebar and **Settings → Environments** offer to update it.
 
+## Fork builds
+
+A fork build of T3 Code does not update itself, so upstream releases never
+replace it. The desktop app does not check for or install updates, `t3 update`
+and remote server updates are refused, and the sidebar has no update button;
+update providers from **Settings → Providers** or the update notice. To update, pull the fork's latest source, then rebuild and reinstall it on
+each machine. Installing the background service or an SSH runtime downloads a
+release archive, so it is refused until `T3CODE_RELEASE_BASE_URL` points at your
+own archive host. Set it on the machine that runs the T3 Code app (for an SSH
+runtime, your computer, not the remote host); for the background service, set it
+where that service is installed. Provider updates work as described below.
+
 ## Update everything at once
 
-The update button at the bottom of the sidebar updates every connected machine
-in one step. It updates outdated providers, then servers that are behind, then
+On builds that update themselves, the update button at the bottom of the sidebar
+updates every connected machine in one step. It updates outdated providers, then servers that are behind, then
 the desktop app you are using. Servers move to the
 version your desktop app is installing, or to your web app's version. A
 background service stays on its current release channel. A remote desktop app

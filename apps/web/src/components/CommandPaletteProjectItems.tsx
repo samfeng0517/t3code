@@ -1,6 +1,7 @@
 import type { EnvironmentId, EnvironmentMachineKind } from "@t3tools/contracts";
 
 import type { SidebarProjectSnapshot } from "../sidebarProjectGrouping";
+import { useT } from "../i18n";
 import type { Project } from "../types";
 import {
   buildCommandPaletteProjectMetadata,
@@ -17,12 +18,6 @@ export interface CommandPaletteProjectLocation {
   readonly label: string;
   readonly machine: EnvironmentMachineKind;
 }
-
-const UNKNOWN_PROJECT_LOCATION: CommandPaletteProjectLocation = {
-  kind: "remote",
-  label: "Remote",
-  machine: "server",
-};
 
 interface ProjectItemsInput {
   readonly projects: ReadonlyArray<CommandPaletteProject>;
@@ -97,7 +92,12 @@ function ProjectLocationDescription(props: {
   readonly location: CommandPaletteProjectLocation | undefined;
   readonly workspaceRoot: string;
 }) {
-  const location = props.location ?? UNKNOWN_PROJECT_LOCATION;
+  const t = useT();
+  const location: CommandPaletteProjectLocation = props.location ?? {
+    kind: "remote",
+    label: t("commandPalette.environment.remote"),
+    machine: "server",
+  };
   return (
     <span className="flex min-w-0 items-center gap-1">
       <span className="inline-flex min-w-0 items-center gap-1">

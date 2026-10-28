@@ -1,0 +1,200 @@
+diff --git a/dist/cjs/index.js b/dist/cjs/index.js
+index b4242b0b847d33d8544832bfb2d8723a884a3072..00074cb79622c89d39383f44e8312af6bf563b13 100644
+--- a/dist/cjs/index.js
++++ b/dist/cjs/index.js
+@@ -61,6 +61,20 @@ var getExtensionUrl = (extension, uri) => {
+   }
+ };
+ var resolveExtensionPath = (extension, uri, requestPath) => {
++  // T3 Code: extensions may pass their own absolute origin (for example
++  // chrome.runtime.getURL() to setIcon); resolve it against the extension root.
++  // Only the decoded path names the file, so a query, hash or %20 still resolves.
++  // A URL on any other origin keeps joining as a plain, non-existent file.
++  const ownOrigin = `chrome-extension://${extension.id}/`;
++  if (typeof uri === "string" && uri.startsWith(ownOrigin)) {
++    try {
++      const url = new URL(uri);
++      if (url.host !== extension.id) return;
++      uri = decodeURIComponent(url.pathname);
++    } catch {
++      return;
++    }
++  }
+   const relativePath = path.join(requestPath || "/", uri);
+   const resPath = path.join(extension.path, relativePath);
+   if (!resPath.startsWith(extension.path)) return;
+@@ -766,8 +780,12 @@ var _WindowsAPI = class _WindowsAPI {
+   getAll(event) {
+     return Array.from(this.ctx.store.windows).map(this.getWindowDetails.bind(this));
+   }
+-  async create(event, details) {
+-    const win = await this.ctx.store.createWindow(event, details);
++  async create(event, details = {}) {
++    // T3 Code: resolve and vet URLs like tabs.create does; upstream passes
++    // them through, so relative URLs load nothing and chrome:/javascript: reach the impl.
++    const resolve = (url) => validateExtensionUrl(url, event.extension);
++    const url = typeof details.url === "string" ? resolve(details.url) : Array.isArray(details.url) ? details.url.map(resolve) : details.url;
++    const win = await this.ctx.store.createWindow(event, { ...details, url });
+     return this.getWindowDetails(win);
+   }
+   async update(event, windowId, updateProperties = {}) {
+@@ -2258,6 +2276,31 @@ var getSessionFromEvent = (event) => {
+     return event.sender.session;
+   }
+ };
++// T3 Code: the renderer supplies extensionId, so a web page frame or a
++// service worker of another extension could otherwise claim any extension's
++// identity. Node's URL.origin is "null" for chrome-extension:, so compare
++// protocol and host instead. An empty id is a claimed id too: it must not
++// pass as the "no extension id" toolbar call below.
++var isTrustedExtensionSender = (event, extensionId) => {
++  if (typeof extensionId !== "string" || extensionId === "") return false;
++  if (event.type === "service-worker") {
++    const scope = event.serviceWorker?.scope;
++    return typeof scope === "string" && scope.startsWith(`chrome-extension://${extensionId}/`);
++  }
++  const url = event.senderFrame?.url;
++  if (!url) return false;
++  try {
++    const parsed = new URL(url);
++    return parsed.protocol === "chrome-extension:" && parsed.host === extensionId;
++  } catch {
++    return false;
++  }
++};
++// T3 Code: calls without an extension id drive the toolbar
++// (browserAction.getState/activate). Browser tabs are webviews whose page frames
++// can reach this IPC, so only the app's own window may make them.
++var isAppWindowSender = (event) => event.type === "frame" && typeof event.sender?.getType === "function" && event.sender.getType() !== "webview";
++var isTrustedSender = (event, extensionId) => extensionId === void 0 ? isAppWindowSender(event) : isTrustedExtensionSender(event, extensionId);
+ var d8 = (0, import_debug8.default)("electron-chrome-extensions:router");
+ var DEFAULT_SESSION = "_self";
+ var gRoutingDelegate;
+@@ -2277,6 +2320,7 @@ var RoutingDelegate = class _RoutingDelegate {
+       return observer?.onExtensionMessage(event, void 0, handlerName, ...args);
+     };
+     this.onAddListener = (event, extensionId, eventName) => {
++      if (!isTrustedSender(event, extensionId)) return;
+       const observer = this.sessionMap.get(getSessionFromEvent(event));
+       const listener = event.type === "frame" ? {
+         type: event.type,
+@@ -2289,6 +2333,7 @@ var RoutingDelegate = class _RoutingDelegate {
+       return observer?.addListener(listener, extensionId, eventName);
+     };
+     this.onRemoveListener = (event, extensionId, eventName) => {
++      if (!isTrustedSender(event, extensionId)) return;
+       const observer = this.sessionMap.get(getSessionFromEvent(event));
+       const listener = event.type === "frame" ? {
+         type: event.type,
+@@ -2452,6 +2497,11 @@ var ExtensionRouter = class {
+     return handler;
+   }
+   async onExtensionMessage(event, extensionId, handlerName, ...args) {
++    if (!isTrustedSender(event, extensionId)) {
++      throw new Error(
++        extensionId === void 0 ? `${handlerName} without an extension id is allowed from only the app window` : `${handlerName} was sent from a context that does not belong to extension ${extensionId}`
++      );
++    }
+     const { session: session2 } = this;
+     const eventSession = getSessionFromEvent(event);
+     const eventSessionExtensions = eventSession.extensions || eventSession;
+diff --git a/dist/esm/index.mjs b/dist/esm/index.mjs
+index dc598ce8f74c1e813c4014ecf8fc6ca5809f4ba5..f3ae19e655008a6830b7fd9fb2243b9458aaa6ec 100644
+--- a/dist/esm/index.mjs
++++ b/dist/esm/index.mjs
+@@ -24,6 +24,20 @@ var getExtensionUrl = (extension, uri) => {
+   }
+ };
+ var resolveExtensionPath = (extension, uri, requestPath) => {
++  // T3 Code: extensions may pass their own absolute origin (for example
++  // chrome.runtime.getURL() to setIcon); resolve it against the extension root.
++  // Only the decoded path names the file, so a query, hash or %20 still resolves.
++  // A URL on any other origin keeps joining as a plain, non-existent file.
++  const ownOrigin = `chrome-extension://${extension.id}/`;
++  if (typeof uri === "string" && uri.startsWith(ownOrigin)) {
++    try {
++      const url = new URL(uri);
++      if (url.host !== extension.id) return;
++      uri = decodeURIComponent(url.pathname);
++    } catch {
++      return;
++    }
++  }
+   const relativePath = path.join(requestPath || "/", uri);
+   const resPath = path.join(extension.path, relativePath);
+   if (!resPath.startsWith(extension.path)) return;
+@@ -729,8 +743,12 @@ var _WindowsAPI = class _WindowsAPI {
+   getAll(event) {
+     return Array.from(this.ctx.store.windows).map(this.getWindowDetails.bind(this));
+   }
+-  async create(event, details) {
+-    const win = await this.ctx.store.createWindow(event, details);
++  async create(event, details = {}) {
++    // T3 Code: resolve and vet URLs like tabs.create does; upstream passes
++    // them through, so relative URLs load nothing and chrome:/javascript: reach the impl.
++    const resolve = (url) => validateExtensionUrl(url, event.extension);
++    const url = typeof details.url === "string" ? resolve(details.url) : Array.isArray(details.url) ? details.url.map(resolve) : details.url;
++    const win = await this.ctx.store.createWindow(event, { ...details, url });
+     return this.getWindowDetails(win);
+   }
+   async update(event, windowId, updateProperties = {}) {
+@@ -2221,6 +2239,31 @@ var getSessionFromEvent = (event) => {
+     return event.sender.session;
+   }
+ };
++// T3 Code: the renderer supplies extensionId, so a web page frame or a
++// service worker of another extension could otherwise claim any extension's
++// identity. Node's URL.origin is "null" for chrome-extension:, so compare
++// protocol and host instead. An empty id is a claimed id too: it must not
++// pass as the "no extension id" toolbar call below.
++var isTrustedExtensionSender = (event, extensionId) => {
++  if (typeof extensionId !== "string" || extensionId === "") return false;
++  if (event.type === "service-worker") {
++    const scope = event.serviceWorker?.scope;
++    return typeof scope === "string" && scope.startsWith(`chrome-extension://${extensionId}/`);
++  }
++  const url = event.senderFrame?.url;
++  if (!url) return false;
++  try {
++    const parsed = new URL(url);
++    return parsed.protocol === "chrome-extension:" && parsed.host === extensionId;
++  } catch {
++    return false;
++  }
++};
++// T3 Code: calls without an extension id drive the toolbar
++// (browserAction.getState/activate). Browser tabs are webviews whose page frames
++// can reach this IPC, so only the app's own window may make them.
++var isAppWindowSender = (event) => event.type === "frame" && typeof event.sender?.getType === "function" && event.sender.getType() !== "webview";
++var isTrustedSender = (event, extensionId) => extensionId === void 0 ? isAppWindowSender(event) : isTrustedExtensionSender(event, extensionId);
+ var d8 = debug8("electron-chrome-extensions:router");
+ var DEFAULT_SESSION = "_self";
+ var gRoutingDelegate;
+@@ -2240,6 +2283,7 @@ var RoutingDelegate = class _RoutingDelegate {
+       return observer?.onExtensionMessage(event, void 0, handlerName, ...args);
+     };
+     this.onAddListener = (event, extensionId, eventName) => {
++      if (!isTrustedSender(event, extensionId)) return;
+       const observer = this.sessionMap.get(getSessionFromEvent(event));
+       const listener = event.type === "frame" ? {
+         type: event.type,
+@@ -2252,6 +2296,7 @@ var RoutingDelegate = class _RoutingDelegate {
+       return observer?.addListener(listener, extensionId, eventName);
+     };
+     this.onRemoveListener = (event, extensionId, eventName) => {
++      if (!isTrustedSender(event, extensionId)) return;
+       const observer = this.sessionMap.get(getSessionFromEvent(event));
+       const listener = event.type === "frame" ? {
+         type: event.type,
+@@ -2415,6 +2460,11 @@ var ExtensionRouter = class {
+     return handler;
+   }
+   async onExtensionMessage(event, extensionId, handlerName, ...args) {
++    if (!isTrustedSender(event, extensionId)) {
++      throw new Error(
++        extensionId === void 0 ? `${handlerName} without an extension id is allowed from only the app window` : `${handlerName} was sent from a context that does not belong to extension ${extensionId}`
++      );
++    }
+     const { session: session2 } = this;
+     const eventSession = getSessionFromEvent(event);
+     const eventSessionExtensions = eventSession.extensions || eventSession;

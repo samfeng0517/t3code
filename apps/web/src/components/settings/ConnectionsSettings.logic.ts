@@ -24,6 +24,7 @@ import {
   getDesktopUpdateDownloadedVersion,
   resolveDesktopUpdateButtonAction,
 } from "../desktopUpdate.logic";
+import { t as translate } from "~/i18n";
 
 /** Keep terminal:read with terminal:operate to avoid creating unseen shells on every script run. */
 export function togglePairingScopeSelection(
@@ -162,7 +163,7 @@ export function parseManualDesktopSshTarget(input: {
 }): DesktopSshEnvironmentTarget {
   const rawHost = input.host.trim();
   if (rawHost.length === 0) {
-    throw new Error("SSH host or alias is required.");
+    throw new Error(translate("settingsPages.connections.ssh.hostRequired"));
   }
 
   let hostname = rawHost;
@@ -198,11 +199,11 @@ export function parseManualDesktopSshTarget(input: {
   }
 
   if (hostname.length === 0) {
-    throw new Error("SSH host or alias is required.");
+    throw new Error(translate("settingsPages.connections.ssh.hostRequired"));
   }
 
   if (port !== null && (!Number.isInteger(port) || port <= 0 || port > 65_535)) {
-    throw new Error("SSH port must be between 1 and 65535.");
+    throw new Error(translate("settingsPages.connections.ssh.portRange"));
   }
 
   return {
@@ -257,16 +258,16 @@ export function parseRemotePairingFields(input: {
   const host = input.host.trim();
   const pairingCode = input.pairingCode.trim();
   if (!host) {
-    throw new Error("Enter a backend host.");
+    throw new Error(translate("settingsPages.connections.pairing.enterHost"));
   }
   if (!pairingCode) {
-    throw new Error("Enter a pairing code.");
+    throw new Error(translate("settingsPages.connections.pairing.enterCode"));
   }
   return { host, pairingCode };
 }
 
 export function formatDesktopSshConnectionError(error: unknown): string {
-  const fallback = "Failed to connect SSH host.";
+  const fallback = translate("settingsPages.connections.ssh.connectFailed");
   const rawMessage = error instanceof Error ? error.message : fallback;
   const withoutIpcPrefix = rawMessage.replace(
     /^Error invoking remote method 'desktop:ensure-ssh-environment':\s*/u,
@@ -287,9 +288,19 @@ export function summarizeAuthorizedClients(
   links: ReadonlyArray<ServerPairingLinkRecord>,
 ): string {
   const parts = [
-    `${sessions.length} ${sessions.length === 1 ? "client" : "clients"}`,
+    translate(
+      sessions.length === 1
+        ? "settingsPages.connections.clients.one"
+        : "settingsPages.connections.clients.other",
+      { count: sessions.length },
+    ),
     links.length > 0
-      ? `${links.length} ${links.length === 1 ? "pairing link" : "pairing links"}`
+      ? translate(
+          links.length === 1
+            ? "settingsPages.connections.pairingLinks.one"
+            : "settingsPages.connections.pairingLinks.other",
+          { count: links.length },
+        )
       : null,
   ];
   return parts.filter((part): part is string => part !== null).join(" · ");
@@ -407,16 +418,7 @@ export function isHostedAppPairingUrl(value: string): boolean {
 
 export function endpointShareHint(endpoint: AdvertisedEndpoint, url: string): string {
   if (isHostedAppPairingUrl(url)) {
-    return "Opens the hosted app, no install needed";
+    return translate("settingsPages.connections.shareHint.hosted");
   }
-  switch (endpoint.reachability) {
-    case "lan":
-      return "Devices on the same network";
-    case "private-network":
-      return "Devices on your private network";
-    case "public":
-      return "Reachable from anywhere";
-    case "loopback":
-      return "Clients on this machine";
-  }
+  return translate(`settingsPages.connections.shareHint.${endpoint.reachability}`);
 }

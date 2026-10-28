@@ -5,6 +5,7 @@ import * as Option from "effect/Option";
 import { SourceControlProviderError, type ChangeRequest } from "@t3tools/contracts";
 import {
   parseGitRemoteHost,
+  readSourceControlHostSettings,
   unknownRemoteProvider as unknownHostProvider,
 } from "@t3tools/source-control-core/shared/definition";
 
@@ -17,12 +18,33 @@ import {
   firstSafeAuthLine,
   matchFirst,
   parseCliHost,
+  probeSourceControlProvider,
   providerAuth,
+  refineUnknownRemoteProvider,
   type SourceControlAuthProbeInput,
   type SourceControlCliDiscoverySpec,
+  type SourceControlManagedCliDiscoverySpec,
   type SourceControlUnknownRemoteRefinementInput,
 } from "@t3tools/source-control-core/server/discovery";
+import * as GitLabDefinition from "../shared/definition.ts";
 import { findAuthenticatedGitLabHost, parseGitLabAuthStatusHosts } from "./gitLabAuthStatus.ts";
+
+class GitLabRemoteUnanswered extends Schema.TaggedError<GitLabRemoteUnanswered>()(
+  "GitLabRemoteUnanswered",
+  {},
+) {}
+
+/** The server a provider context names, as `host[:port]`, for matching a token saved for it. */
+function gitLabContextHost(
+  context: SourceControlProvider.SourceControlProviderContext | undefined,
+): string | undefined {
+  if (context === undefined || context.provider.kind !== "gitlab") return undefined;
+  try {
+    return new URL(context.provider.baseUrl).host.toLowerCase() || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 const decodeLinkSubject = Schema.decodeUnknownEffect(
   Schema.fromJsonString(
@@ -161,8 +183,84 @@ export const discovery = {
   parseAuth: parseGitLabAuth,
   refineUnknownRemote: refineUnknownGitLabRemote,
   installHint:
-    "Install the GitLab command-line tool (`glab`) from https://gitlab.com/gitlab-org/cli or your package manager (for example `brew install glab`).",
+    "Install the GitLab command-line tool (`glab`) from https://gitlab.com/gitlab-org/cli or your package manager (for example `brew install glab`), then run `glab auth login` or save a server and token in Settings.",
 } satisfies SourceControlCliDiscoverySpec;
+
+/**
+ * `discovery`, with what Settings holds: a saved token is what glab is asked about, and a saved
+ * server is GitLab whatever its name, which is how a host such as `git.example.com` is claimed
+ * without a glab login.
+ */
+export const makeDiscovery = Effect.gen(function* () {
+  const { process, settings } = yield* SourceControlHost.SourceControlHost;
+  const saved = settings.get.pipe(
+    Effect.map((current) =>
+      readSourceControlHostSettings(
+        GitLabDefinition.settings,
+        current.sourceControlHosts[GitLabDefinition.definition.kind],
+      ),
+    ),
+    Effect.orElseSucceed(() => null),
+  );
+  return {
+    type: "managed-cli",
+    kind: discovery.kind,
+    label: discovery.label,
+    installHint: discovery.installHint,
+    probe: (cwd: string) =>
+      saved.pipe(
+        Effect.flatMap((current) => {
+          if (current === null || current.token.length === 0) {
+            return probeSourceControlProvider({ cwd, spec: discovery, process });
+          }
+          const authority = GitLabDefinition.gitLabSettingsAuthority(current);
+          return probeSourceControlProvider({
+            cwd,
+            // Asked about that server alone: the token would otherwise be offered to every
+            // server glab holds a login for.
+            spec: { ...discovery, authArgs: ["auth", "status", "--hostname", authority] },
+            process: {
+              run: (input) =>
+                process.run({
+                  ...input,
+                  env: {
+                    ...input.env,
+                    GITLAB_TOKEN: current.token,
+                    GITLAB_HOST: `https://${authority}`,
+                  },
+                }),
+            },
+          });
+        }),
+      ),
+    refineUnknownRemote: ({ cwd, context }) =>
+      saved.pipe(
+        Effect.flatMap((current) => {
+          if (
+            current !== null &&
+            current.host.length > 0 &&
+            GitLabDefinition.gitLabHostname(GitLabDefinition.gitLabSettingsAuthority(current)) ===
+              GitLabDefinition.gitLabHostname(context.provider.name)
+          ) {
+            return Effect.succeed({
+              kind: SourceControlProviderKind.make("gitlab"),
+              name: "GitLab Self-Hosted",
+              // The remote's own base URL carries its SSH port; the web lives where Settings
+              // saved it.
+              baseUrl: `https://${GitLabDefinition.gitLabSettingsAuthority(current)}`,
+            });
+          }
+          return refineUnknownRemoteProvider({ specs: [discovery], process, cwd, context }).pipe(
+            Effect.flatMap(({ provider, settled }) =>
+              provider !== null || settled
+                ? Effect.succeed(provider)
+                : Effect.fail(new GitLabRemoteUnanswered()),
+            ),
+          );
+        }),
+      ),
+  } satisfies SourceControlManagedCliDiscoverySpec;
+});
 
 export const make = Effect.gen(function* () {
   const gitlab = yield* GitLabCli.GitLabCli;
@@ -232,6 +330,7 @@ export const make = Effect.gen(function* () {
         return gitlab
           .listMergeRequests({
             cwd: input.cwd,
+            host: gitLabContextHost(input.context),
             headSelector: input.headSelector,
             ...(source ? { source } : {}),
             state: input.state,
@@ -257,23 +356,29 @@ export const make = Effect.gen(function* () {
       },
     ),
     getChangeRequest: Effect.fn("GitLabSourceControlProvider.getChangeRequest")(function (input) {
-      return gitlab.getMergeRequest(input).pipe(
-        Effect.map(toChangeRequest),
-        Effect.mapError(
-          (error) =>
-            new SourceControlProviderError({
-              provider: SourceControlProviderKind.make("gitlab"),
-              operation: "getChangeRequest",
-              command: error.command,
-              cwd: input.cwd,
-              reference: SourceControlProvider.transportSafeSourceControlErrorValue(
-                input.reference,
-              ),
-              detail: error.detail,
-              cause: error,
-            }),
-        ),
-      );
+      return gitlab
+        .getMergeRequest({
+          cwd: input.cwd,
+          host: gitLabContextHost(input.context),
+          reference: input.reference,
+        })
+        .pipe(
+          Effect.map(toChangeRequest),
+          Effect.mapError(
+            (error) =>
+              new SourceControlProviderError({
+                provider: SourceControlProviderKind.make("gitlab"),
+                operation: "getChangeRequest",
+                command: error.command,
+                cwd: input.cwd,
+                reference: SourceControlProvider.transportSafeSourceControlErrorValue(
+                  input.reference,
+                ),
+                detail: error.detail,
+                cause: error,
+              }),
+          ),
+        );
     }),
     createChangeRequest: Effect.fn("GitLabSourceControlProvider.createChangeRequest")(
       function (input) {
@@ -281,6 +386,7 @@ export const make = Effect.gen(function* () {
         return gitlab
           .createMergeRequest({
             cwd: input.cwd,
+            host: gitLabContextHost(input.context),
             baseBranch: input.baseRefName,
             headSelector: input.headSelector,
             ...(source ? { source } : {}),
@@ -308,22 +414,28 @@ export const make = Effect.gen(function* () {
     ),
     getRepositoryCloneUrls: Effect.fn("GitLabSourceControlProvider.getRepositoryCloneUrls")(
       function (input) {
-        return gitlab.getRepositoryCloneUrls(input).pipe(
-          Effect.mapError(
-            (error) =>
-              new SourceControlProviderError({
-                provider: SourceControlProviderKind.make("gitlab"),
-                operation: "getRepositoryCloneUrls",
-                command: error.command,
-                cwd: input.cwd,
-                repository: SourceControlProvider.transportSafeSourceControlErrorValue(
-                  input.repository,
-                ),
-                detail: error.detail,
-                cause: error,
-              }),
-          ),
-        );
+        return gitlab
+          .getRepositoryCloneUrls({
+            cwd: input.cwd,
+            host: gitLabContextHost(input.context),
+            repository: input.repository,
+          })
+          .pipe(
+            Effect.mapError(
+              (error) =>
+                new SourceControlProviderError({
+                  provider: SourceControlProviderKind.make("gitlab"),
+                  operation: "getRepositoryCloneUrls",
+                  command: error.command,
+                  cwd: input.cwd,
+                  repository: SourceControlProvider.transportSafeSourceControlErrorValue(
+                    input.repository,
+                  ),
+                  detail: error.detail,
+                  cause: error,
+                }),
+            ),
+          );
       },
     ),
     createRepository: Effect.fn("GitLabSourceControlProvider.createRepository")(function (input) {
@@ -345,38 +457,47 @@ export const make = Effect.gen(function* () {
       );
     }),
     getDefaultBranch: Effect.fn("GitLabSourceControlProvider.getDefaultBranch")(function (input) {
-      return gitlab.getDefaultBranch(input).pipe(
-        Effect.mapError(
-          (error) =>
-            new SourceControlProviderError({
-              provider: SourceControlProviderKind.make("gitlab"),
-              operation: "getDefaultBranch",
-              command: error.command,
-              cwd: input.cwd,
-              detail: error.detail,
-              cause: error,
-            }),
-        ),
-      );
-    }),
-    checkoutChangeRequest: Effect.fn("GitLabSourceControlProvider.checkoutChangeRequest")(
-      function (input) {
-        return gitlab.checkoutMergeRequest(input).pipe(
+      return gitlab
+        .getDefaultBranch({ cwd: input.cwd, host: gitLabContextHost(input.context) })
+        .pipe(
           Effect.mapError(
             (error) =>
               new SourceControlProviderError({
                 provider: SourceControlProviderKind.make("gitlab"),
-                operation: "checkoutChangeRequest",
+                operation: "getDefaultBranch",
                 command: error.command,
                 cwd: input.cwd,
-                reference: SourceControlProvider.transportSafeSourceControlErrorValue(
-                  input.reference,
-                ),
                 detail: error.detail,
                 cause: error,
               }),
           ),
         );
+    }),
+    checkoutChangeRequest: Effect.fn("GitLabSourceControlProvider.checkoutChangeRequest")(
+      function (input) {
+        return gitlab
+          .checkoutMergeRequest({
+            cwd: input.cwd,
+            host: gitLabContextHost(input.context),
+            reference: input.reference,
+            ...(input.force === undefined ? {} : { force: input.force }),
+          })
+          .pipe(
+            Effect.mapError(
+              (error) =>
+                new SourceControlProviderError({
+                  provider: SourceControlProviderKind.make("gitlab"),
+                  operation: "checkoutChangeRequest",
+                  command: error.command,
+                  cwd: input.cwd,
+                  reference: SourceControlProvider.transportSafeSourceControlErrorValue(
+                    input.reference,
+                  ),
+                  detail: error.detail,
+                  cause: error,
+                }),
+            ),
+          );
       },
     ),
   });

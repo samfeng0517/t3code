@@ -60,6 +60,7 @@ import { resolvePlanFollowUpSubmission } from "../../proposedPlan";
 import { type ChatMessage } from "../../types";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { newMessageId, newThreadId } from "~/lib/utils";
+import { useT } from "~/i18n";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import {
@@ -84,7 +85,12 @@ import {
 import { environmentServerConfigsAtom } from "../../state/server";
 import { threadEnvironment } from "../../state/threads";
 import { runMobileComposerTransition } from "./draftHeroTransition";
-import { useClientSettingsHydrated, useEnvironmentSettings } from "../../hooks/useSettings";
+import {
+  useClientSettings,
+  useClientSettingsHydrated,
+  useEnvironmentSettings,
+} from "../../hooks/useSettings";
+import { resolveNewWorktreeBranchOptions } from "../BranchPickerNewWorktree.logic";
 import { environmentPresentations } from "../../state/presentation";
 import {
   approvalRedirectNotice,
@@ -122,7 +128,7 @@ import type {
   EnvironmentProject,
   EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
-import type { UnifiedSettings } from "@t3tools/contracts";
+import type { ClientSettings, UnifiedSettings } from "@t3tools/contracts";
 import type { Dispatch } from "react";
 import type { ComposerThreadTarget } from "../../composerDraftStore";
 import type { ProviderInstanceEntry } from "../../providerInstances";
@@ -142,6 +148,8 @@ import type { useWorktreeSetup } from "./useWorktreeSetup";
 const ENVIRONMENT_UNAVAILABLE_SEND_TOAST_TRAIL_SIZE = 3;
 
 const selectPlanModeEnabled = (settings: UnifiedSettings) => settings.planModeEnabled;
+const selectNewWorktreeCreatesBranch = (settings: ClientSettings) =>
+  settings.newWorktreeCreatesBranch;
 
 function readEnvironmentPresentation(environmentId: EnvironmentId) {
   return appAtomRegistry.get(environmentPresentations.presentationsAtom).get(environmentId);
@@ -177,7 +185,6 @@ interface ComposerSendInput {
   readonly phase: SessionPhase;
   readonly runtimeMode: RuntimeMode;
   readonly sendEnvMode: DraftThreadEnvMode;
-  readonly startFromOrigin: boolean;
   readonly localCheckoutBranchMismatch: {
     readonly threadBranch: string;
     readonly currentBranch: string;
@@ -272,7 +279,6 @@ export function useComposerSend(input: ComposerSendInput) {
     phase,
     runtimeMode,
     sendEnvMode,
-    startFromOrigin,
     localCheckoutBranchMismatch,
     logicalProjectEnvironments,
     providerInstanceEntries,
@@ -325,10 +331,12 @@ export function useComposerSend(input: ComposerSendInput) {
     handleNewThreadInActiveProject,
     persistThreadSettingsForNextTurn,
   } = input;
+  const t = useT();
   const handleNewThread = useNewThreadHandler();
   const navigate = useNavigate();
   const clientSettingsHydrated = useClientSettingsHydrated();
   const planModeEnabled = useEnvironmentSettings(environmentId, selectPlanModeEnabled);
+  const newWorktreeCreatesBranch = useClientSettings(selectNewWorktreeCreatesBranch);
   const startThreadTurn = useOrchestrationCommand(threadEnvironment.startTurn, {
     reportFailure: false,
   });
@@ -354,7 +362,6 @@ export function useComposerSend(input: ComposerSendInput) {
     composerRef,
     promptRef,
     runtimeMode,
-    startFromOrigin,
     resetLocalDispatch,
     setThreadError,
   });
@@ -1064,8 +1071,8 @@ export function useComposerSend(input: ComposerSendInput) {
         if (notice !== null) {
           toastManager.add({
             type: "info",
-            title: notice,
-            description: "Send again when it's ready.",
+            title: t(notice),
+            description: t("composer.toast.approvalRedirect.description"),
           });
         }
         return;
@@ -1251,7 +1258,9 @@ export function useComposerSend(input: ComposerSendInput) {
                     prepareWorktree: {
                       projectCwd: activeProject.workspaceRoot,
                       baseBranch: baseBranchForWorktree,
-                      ...(startFromOrigin ? { startFromOrigin: true } : {}),
+                      ...resolveNewWorktreeBranchOptions({
+                        createsBranch: newWorktreeCreatesBranch,
+                      }),
                     },
                     runSetupScript: true,
                   }
@@ -1300,7 +1309,6 @@ export function useComposerSend(input: ComposerSendInput) {
               resolveBackgroundDraftWorkspaceOptions({
                 envMode: sendEnvMode,
                 branch: activeThreadBranch,
-                startFromOrigin,
               }),
             ),
           );

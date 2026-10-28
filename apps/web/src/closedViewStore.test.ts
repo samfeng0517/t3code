@@ -5,7 +5,7 @@ import {
   type PreviewSessionSnapshot,
   ThreadId,
 } from "@t3tools/contracts";
-import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { type ClosedViewEntry, useClosedViewStore } from "./closedViewStore";
 
@@ -63,7 +63,9 @@ describe("closedViewStore", () => {
     });
     await useClosedViewStore.persist.rehydrate();
     expect(useClosedViewStore.persist.hasHydrated()).toBe(true);
-    expect(useClosedViewStore.getState().entries).toEqual([{ ...diff(refA), id }]);
+    expect(useClosedViewStore.getState().entries).toEqual([
+      { ...diff(refA), id, closedAt: expect.any(Number) },
+    ]);
     expect(() => useClosedViewStore.getState().remember(diff(refB))).not.toThrow();
   });
 
@@ -119,5 +121,50 @@ describe("closedViewStore", () => {
     const saved = JSON.stringify(await storage!.getItem(name!));
     expect(saved).not.toContain("private.example");
     expect(saved).not.toContain("Private page");
+  });
+
+  it("should keep git-tab entries when migrating persisted entries", async () => {
+    const gitTab = {
+      kind: "git-tab",
+      threadRef: refA,
+      environmentId: "env-1",
+      projectId: "project-1",
+    } as const;
+    const id = useClosedViewStore.getState().remember(gitTab);
+    const { storage, name } = useClosedViewStore.persist.getOptions();
+    await storage!.setItem(name!, {
+      state: {
+        entries: [
+          { id: "bad", kind: "git-tab", threadRef: refA, environmentId: "env-1" },
+          ...useClosedViewStore.getState().entries,
+        ] as ClosedViewEntry[],
+      },
+      version: 1,
+    });
+    await useClosedViewStore.persist.rehydrate();
+    expect(useClosedViewStore.getState().entries).toEqual([
+      { ...gitTab, id, closedAt: expect.any(Number) },
+    ]);
+  });
+
+  it("should replace an earlier git-tab entry when the same project closes again", () => {
+    const store = useClosedViewStore.getState();
+    const gitTab = (projectId: string) =>
+      ({ kind: "git-tab", threadRef: refA, environmentId: "env-1", projectId }) as const;
+    store.remember(gitTab("project-1"));
+    store.remember(gitTab("project-2"));
+    const latest = store.remember(gitTab("project-1"));
+    expect(
+      useClosedViewStore.getState().entries.map((entry) => [entry.id === latest, entry]),
+    ).toEqual([
+      [true, expect.objectContaining({ projectId: "project-1" })],
+      [false, expect.objectContaining({ projectId: "project-2" })],
+    ]);
+  });
+
+  it("should record the close time when a view is remembered", () => {
+    using _now = vi.spyOn(Date, "now").mockReturnValue(1_234);
+    useClosedViewStore.getState().remember({ kind: "browser", threadRef: refA, snapshot });
+    expect(useClosedViewStore.getState().entries[0]?.closedAt).toBe(1_234);
   });
 });

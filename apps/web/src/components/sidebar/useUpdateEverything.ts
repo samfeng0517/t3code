@@ -4,6 +4,7 @@ import { PROVIDER_DISPLAY_NAMES } from "@t3tools/contracts";
 import { APP_VERSION } from "~/branding";
 import { isDesktopLocalConnectionTarget } from "~/connection/desktopLocal";
 import { isElectron } from "~/env";
+import { useT } from "~/i18n";
 import { useEnvironments } from "~/state/environments";
 import { useNpmReleasePublished } from "~/state/npmRelease";
 import { environmentIdsKey } from "~/state/environmentAtomList";
@@ -37,6 +38,7 @@ const UPDATE_RESTART_DELAY_MS = 5_000;
 export type ReportLocalUpdateError = (title: string, description: string) => void;
 
 export function useUpdateEverything(localUpdateVersion: string | null) {
+  const t = useT();
   const targetVersion = localUpdateVersion ?? APP_VERSION;
   const { environments } = useEnvironments();
   const environmentIds = environmentIdsKey(environments.map(({ environmentId }) => environmentId));
@@ -57,6 +59,7 @@ export function useUpdateEverything(localUpdateVersion: string | null) {
   const { targets: behindServers, skipped: unreachable } = collectServerUpdateTargets(
     machines,
     targetVersion,
+    t,
   );
   // Desktop-managed servers use their app feed; only npm installs need to wait for publication.
   const needsNpm = behindServers.some((server) => server.selfUpdate !== "desktop-managed");
@@ -71,28 +74,32 @@ export function useUpdateEverything(localUpdateVersion: string | null) {
       .map((server) => ({
         environmentId: server.environmentId,
         label: server.serverLabel,
-        reason: `t3@${targetVersion} is not on npm yet`,
+        reason: t("sidebar.updateSkip.notOnNpm", { version: targetVersion }),
       })),
   ];
   const restarts = collectRestartingMachines(machines, servers, localUpdateVersion !== null);
   const providers = useProviderUpdates();
   const updateServer = useServerUpdate();
 
-  const { summary, lines } = describeUpdateEverything({
-    localVersion: localUpdateVersion,
-    servers,
-    providerMachines: providers.machines.map((machine) => ({
-      environmentId: machine.environmentId,
-      label: machine.label,
-      providers: machine.candidates.map(
-        (candidate) => PROVIDER_DISPLAY_NAMES[candidate.driver] ?? candidate.driver,
-      ),
-    })),
-  });
+  const { summary, items, lines } = describeUpdateEverything(
+    {
+      localVersion: localUpdateVersion,
+      servers,
+      providerMachines: providers.machines.map((machine) => ({
+        environmentId: machine.environmentId,
+        label: machine.label,
+        providers: machine.candidates.map(
+          (candidate) => PROVIDER_DISPLAY_NAMES[candidate.driver] ?? candidate.driver,
+        ),
+      })),
+    },
+    t,
+  );
 
   return {
     hasUpdates: servers.length > 0 || providers.machines.length > 0,
     summary,
+    items,
     lines,
     restarts,
     skipped,
@@ -105,7 +112,9 @@ export function useUpdateEverything(localUpdateVersion: string | null) {
     }) => {
       const localFailures: Array<string> = [];
       const reportLocalError: ReportLocalUpdateError = (title, description) => {
-        localFailures.push(`${title}: ${description}`);
+        localFailures.push(
+          t("sidebar.updateSummary.labeledLine", { label: title, detail: description }),
+        );
       };
       const startedAt = Date.now();
       const machinesById = new Map<UpdateRunMachine["environmentId"], UpdateRunMachine>();
@@ -155,7 +164,9 @@ export function useUpdateEverything(localUpdateVersion: string | null) {
               if (runOutcome.status !== "updated") {
                 providerFailures.set(
                   run.environmentId,
-                  runOutcome.status === "failed" ? runOutcome.line : "Provider update interrupted",
+                  runOutcome.status === "failed"
+                    ? runOutcome.line
+                    : t("sidebar.updateSummary.providerInterrupted"),
                 );
               }
               return runOutcome;
@@ -207,12 +218,15 @@ export function useUpdateEverything(localUpdateVersion: string | null) {
           },
         });
         const result = (finished: ReadonlyArray<{ label: string; outcome: ServerUpdateOutcome }>) =>
-          collectUpdateEverythingResult({
-            localVersion: null,
-            localFailures,
-            servers: finished,
-            providers: outcome.providers,
-          });
+          collectUpdateEverythingResult(
+            {
+              localVersion: null,
+              localFailures,
+              servers: finished,
+              providers: outcome.providers,
+            },
+            t,
+          );
         if (outcome.localReady && installLocal) {
           if (await waitForUpdateRestart(UPDATE_RESTART_DELAY_MS)) {
             setUpdateEverythingRun(

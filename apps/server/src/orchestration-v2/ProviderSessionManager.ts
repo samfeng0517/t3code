@@ -47,6 +47,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
 import * as EventSink from "./EventSink.ts";
 import * as CommandOutputHub from "./CommandOutputHub.ts";
+import * as ModSurfaceHub from "../mods/ModSurfaceHub.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
@@ -315,6 +316,10 @@ export const layerWithOptions = (
       const projectService = yield* Effect.serviceOption(ProjectService.ProjectService);
       const eventSink = yield* EventSink.EventSinkV2;
       const commandOutput = yield* CommandOutputHub.CommandOutputHub;
+      // Optional so hosts and tests without mods need not provide it.
+      const modSurfaces = Option.getOrUndefined(
+        yield* Effect.serviceOption(ModSurfaceHub.ModSurfaceHub),
+      );
       const idAllocator = yield* IdAllocator.IdAllocatorV2;
       const providerEventIngestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
       const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
@@ -1885,6 +1890,15 @@ export const layerWithOptions = (
             if (event.type === "command_output.delta") {
               return commandOutput.append(event);
             }
+            if (event.type === "mod_surface.updated") {
+              return (
+                modSurfaces?.publish({
+                  providerSessionId: entry.runtime.providerSessionId,
+                  threadId: event.threadId,
+                  event: event.event,
+                }) ?? Effect.void
+              );
+            }
             const releaseLiveOutput =
               event.type === "turn_item.updated" &&
               event.turnItem.type === "command_execution" &&
@@ -1973,6 +1987,10 @@ export const layerWithOptions = (
               ),
             );
           }),
+          // What the process drew dies with it, however its event stream ended.
+          Effect.ensuring(
+            modSurfaces?.releaseSession(entry.runtime.providerSessionId) ?? Effect.void,
+          ),
           Effect.exit,
           Effect.flatMap((exit) =>
             Effect.gen(function* () {

@@ -264,6 +264,7 @@ function actionArgs(
     case "revert":
     case "approve-workflows":
     case "delete-branch":
+    case "unapprove":
       throw new Error(`Azure DevOps pull request action ${action} is unsupported`);
   }
 }

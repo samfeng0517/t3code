@@ -337,14 +337,6 @@ export function NewTaskBranchPickerRouteScreen() {
       onLoadMore={branchState.loadNext}
       selectionDisabled={switchingBranchName !== null}
       onSelect={selectBranch}
-      worktree={
-        flow.workspaceMode === "worktree"
-          ? {
-              startFromOrigin: flow.startFromOrigin,
-              onChangeStartFromOrigin: flow.setStartFromOrigin,
-            }
-          : undefined
-      }
     />
   );
 }

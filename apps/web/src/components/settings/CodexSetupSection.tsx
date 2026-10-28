@@ -726,7 +726,7 @@ function ManagedCodexSetup({
           <details>
             <summary className="cursor-pointer">Other ways to connect</summary>
             <Button className="mt-2" size="sm" variant="outline" render={<a href={handoffUrl} />}>
-              Use T3 desktop for automatic return
+              Use T3 Code desktop for automatic return
             </Button>
           </details>
         ) : null}

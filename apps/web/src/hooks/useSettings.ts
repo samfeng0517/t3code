@@ -61,6 +61,7 @@ import {
 } from "~/state/session";
 import { environmentIdsKey } from "~/state/environmentAtomList";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
+import { setLanguagePreference } from "~/i18n/languagePreferenceStore";
 
 const CLIENT_SETTINGS_PERSISTENCE_ERROR_SCOPE = "[CLIENT_SETTINGS]";
 
@@ -92,8 +93,13 @@ function getClientSettingsSnapshot(): ClientSettings {
   return clientSettingsSnapshot;
 }
 
-function replaceClientSettingsSnapshot(settings: ClientSettings): void {
+function assignClientSettingsSnapshot(settings: ClientSettings): void {
   clientSettingsSnapshot = settings;
+  setLanguagePreference(settings.language);
+}
+
+function replaceClientSettingsSnapshot(settings: ClientSettings): void {
+  assignClientSettingsSnapshot(settings);
   emitClientSettingsChange();
 }
 
@@ -733,7 +739,7 @@ export function updateClientSettings(patch: ClientSettingsPatch): Promise<void> 
 
 export function __resetClientSettingsPersistenceForTests(): void {
   clientSettingsHydrationGeneration += 1;
-  clientSettingsSnapshot = DEFAULT_CLIENT_SETTINGS;
+  assignClientSettingsSnapshot(DEFAULT_CLIENT_SETTINGS);
   clientSettingsHydrationStatus = "pending";
   clientSettingsHydrationPromise = null;
   clientSettingsPersistenceQueue = Promise.resolve();
@@ -744,7 +750,7 @@ export function __resetClientSettingsPersistenceForTests(): void {
 
 export function __setClientSettingsForTests(settings: ClientSettings): void {
   clientSettingsHydrationGeneration += 1;
-  clientSettingsSnapshot = settings;
+  assignClientSettingsSnapshot(settings);
   clientSettingsHydrationStatus = "ready";
   clientSettingsHydrationPromise = null;
 }

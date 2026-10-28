@@ -29,3 +29,21 @@ export function saveUsagePagePreferences(preferences: UsagePagePreferences): voi
     console.error("Could not save Usage page preferences.", error);
   }
 }
+
+type UsageMetric = UsagePagePreferences["metric"];
+const metricRequestListeners = new Set<(metric: UsageMetric) => void>();
+
+/** Opens the page on `metric` next mount, and switches an already open page too. */
+export function requestUsagePageMetric(metric: UsageMetric): void {
+  saveUsagePagePreferences({ ...readUsagePagePreferences(), metric });
+  for (const listener of metricRequestListeners) listener(metric);
+}
+
+export function subscribeUsagePageMetricRequests(
+  listener: (metric: UsageMetric) => void,
+): () => void {
+  metricRequestListeners.add(listener);
+  return () => {
+    metricRequestListeners.delete(listener);
+  };
+}

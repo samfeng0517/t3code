@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type { DesktopUpdateState } from "@t3tools/contracts";
+import { AppSelfUpdateEnabled } from "@t3tools/shared/appSelfUpdate";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as PlatformError from "effect/PlatformError";
@@ -35,6 +36,8 @@ export interface UpdatesHarnessOptions {
   readonly platform?: NodeJS.Platform;
   readonly packageType?: string | undefined;
   readonly installRecord?: string | undefined;
+  /** Defaults to upstream behavior so these tests keep covering the gated updater code. */
+  readonly appSelfUpdateEnabled?: boolean;
 }
 
 export function makeHarness(options: UpdatesHarnessOptions = {}) {
@@ -266,6 +269,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
     ),
     Layer.provideMerge(layerEnvironment),
     Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.succeed(AppSelfUpdateEnabled, options.appSelfUpdateEnabled ?? true)),
   );
 
   return {

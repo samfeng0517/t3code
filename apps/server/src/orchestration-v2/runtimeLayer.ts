@@ -15,6 +15,7 @@ import * as AgentSessionImporter from "../project/AgentSessionImporter.ts";
 import * as AgentSessionScanner from "../project/AgentSessionScanner.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
+import * as WorktreeRemoveScripts from "../project/WorktreeRemoveScripts.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as CheckpointCaptureService from "./CheckpointCaptureService.ts";
 import * as CheckpointService from "./CheckpointService.ts";
@@ -40,6 +41,8 @@ import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as CommandOutputHub from "./CommandOutputHub.ts";
+import * as ModSurfaceActions from "../mods/ModSurfaceActions.ts";
+import * as ModSurfaceHub from "../mods/ModSurfaceHub.ts";
 import * as ProviderRuntimeRecoveryService from "./ProviderRuntimeRecoveryService.ts";
 import * as ProviderSwitchService from "./ProviderSwitchService.ts";
 import * as ProviderTurnControlService from "./ProviderTurnControlService.ts";
@@ -137,6 +140,7 @@ const layerProviderSessionManagerProvided = ProviderSessionManager.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
       layerCommandOutputHubProvided,
+      ModSurfaceHub.layer,
       layerProviderAdapterRegistryProvided,
       layerEventSinkProvided,
       IdAllocator.layer,
@@ -263,6 +267,9 @@ const layerThreadManagementProvided = ThreadManagementService.layerWithLegacyImp
 export const layerProjectSetupScriptRunner = ProjectSetupScriptRunner.layer.pipe(
   Layer.provide(layerProjectService),
 );
+export const layerWorktreeRemoveScripts = WorktreeRemoveScripts.layer.pipe(
+  Layer.provide(layerProjectService),
+);
 const layerManagedProjectFoldersProvided = ManagedProjectFolders.layer.pipe(
   Layer.provide(layerProjectService),
 );
@@ -337,6 +344,10 @@ const layerProviderRuntimeRecoveryProvided = ProviderRuntimeRecoveryService.laye
   ),
 );
 
+const layerModSurfaceActionsProvided = ModSurfaceActions.layer.pipe(
+  Layer.provide(Layer.merge(ModSurfaceHub.layer, layerProviderSessionManagerProvided)),
+);
+
 const layerMcpAppRequestsProvided = McpAppRequests.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
@@ -350,6 +361,8 @@ const layerMcpAppRequestsProvided = McpAppRequests.layer.pipe(
 
 export const layer = Layer.mergeAll(
   layerCommandOutputHubProvided,
+  ModSurfaceHub.layer,
+  layerModSurfaceActionsProvided,
   layerOrchestratorProvided,
   layerMcpAppRequestsProvided,
   layerThreadManagementProvided,

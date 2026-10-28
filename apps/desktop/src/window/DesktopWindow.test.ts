@@ -33,6 +33,21 @@ vi.mock("electron", async (importOriginal) => ({
   },
 }));
 
+const { extensionContextMenuItems, extensionWindows } = vi.hoisted(() => ({
+  extensionContextMenuItems: vi.fn<
+    (contents: Electron.WebContents, params: Electron.ContextMenuParams) => Electron.MenuItem[]
+  >(() => []),
+  extensionWindows: new WeakSet<Electron.BaseWindow>(),
+}));
+
+vi.mock("../preview/ChromeExtensions.ts", () => ({
+  addExtensionTab: vi.fn(),
+  attachChromeExtensions: vi.fn(),
+  closeExtensionWindows: vi.fn(),
+  extensionContextMenuItems,
+  isExtensionWindow: (window: Electron.BaseWindow) => extensionWindows.has(window),
+}));
+
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
@@ -229,6 +244,7 @@ function layerTest(input: {
   readonly previewZoomReapplies?: number[];
   readonly onReveal?: (window: Electron.BrowserWindow) => void;
   readonly focusedWindow?: Electron.BrowserWindow;
+  readonly firstWindow?: Electron.BrowserWindow;
 }) {
   let desktopSettings = input.desktopSettings ?? DesktopAppSettings.DEFAULT_DESKTOP_SETTINGS;
   const layerDesktopAppSettings = Layer.succeed(DesktopAppSettings.DesktopAppSettings, {
@@ -275,7 +291,9 @@ function layerTest(input: {
         Effect.as(input.window),
       ),
     main: Ref.get(input.mainWindow),
-    currentMainOrFirst: Ref.get(input.mainWindow),
+    currentMainOrFirst: Ref.get(input.mainWindow).pipe(
+      Effect.map((main) => (Option.isSome(main) ? main : Option.fromNullishOr(input.firstWindow))),
+    ),
     focusedMainOrFirst:
       input.focusedWindow === undefined
         ? Ref.get(input.mainWindow)
@@ -501,6 +519,34 @@ describe("DesktopWindow", () => {
           assert.equal(yield* Ref.get(createCount), 3);
         }).pipe(Effect.provide(layer));
       }),
+  );
+
+  it.effect("activate should open the main window when only an extension window is left", () =>
+    Effect.gen(function* () {
+      const fakeWindow = makeFakeBrowserWindow();
+      const extensionWindow = makeFakeBrowserWindow().window;
+      extensionWindows.add(extensionWindow);
+      const createCount = yield* Ref.make(0);
+      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+      const revealedWindows: Array<Electron.BrowserWindow> = [];
+      const layer = layerTest({
+        window: fakeWindow.window,
+        createCount,
+        mainWindow,
+        firstWindow: extensionWindow,
+        onReveal: (window) => revealedWindows.push(window),
+        desktopSettings: {
+          ...DesktopAppSettings.DEFAULT_DESKTOP_SETTINGS,
+          localEnvironmentEnabled: false,
+        },
+      });
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.activate;
+        assert.equal(yield* Ref.get(createCount), 1);
+        assert.notInclude(revealedWindows, extensionWindow);
+      }).pipe(Effect.provide(layer));
+    }),
   );
 
   it.effect("blocks only repeated Cmd+W input before it reaches the native window menu", () =>
@@ -988,6 +1034,63 @@ describe("DesktopWindow", () => {
         assert.deepEqual(openedExternalUrls, ["https://accounts.microsoft.com/oauth"]);
       }).pipe(Effect.provide(layer));
     }),
+  );
+
+  it.effect(
+    "should keep the editing menu and log a warning when extension context menu items throw",
+    () =>
+      Effect.gen(function* () {
+        const fakeWindow = makeFakeBrowserWindow();
+        const createCount = yield* Ref.make(0);
+        const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+        const popupTemplate =
+          yield* Deferred.make<ElectronMenu.ElectronMenuTemplateInput["template"]>();
+        const warnings: unknown[] = [];
+        const logger = Logger.make(({ logLevel, message }) => {
+          if (logLevel === "Warn") warnings.push(message);
+        });
+        extensionContextMenuItems.mockImplementationOnce(() => {
+          throw new Error("invalid extension menu item");
+        });
+        const layer = layerTest({
+          window: fakeWindow.window,
+          createCount,
+          mainWindow,
+          onPopupTemplate: (input) => Deferred.succeed(popupTemplate, input.template),
+        });
+
+        yield* Effect.gen(function* () {
+          const desktopWindow = yield* DesktopWindow.DesktopWindow;
+          yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+
+          const contextMenu = fakeWindow.webContentsListeners.get("context-menu");
+          if (!contextMenu) {
+            return yield* Effect.die("context-menu listener was not registered");
+          }
+          contextMenu(
+            { preventDefault: () => undefined },
+            {
+              misspelledWord: "",
+              dictionarySuggestions: [],
+              linkURL: "",
+              mediaType: "none",
+              editFlags: { canCut: true, canCopy: true, canPaste: true, canSelectAll: true },
+            },
+          );
+          const template = yield* Deferred.await(popupTemplate);
+
+          assert.deepEqual(
+            template.map((item) => item.role),
+            ["cut", "copy", "paste", "selectAll"],
+          );
+          assert.deepEqual(warnings, [["failed to build extension context-menu items"]]);
+        }).pipe(
+          // Provided into the layer: the window logs through the context it was built with.
+          Effect.provide(
+            layer.pipe(Layer.provideMerge(Logger.layer([logger], { mergeWithExisting: false }))),
+          ),
+        );
+      }),
   );
 
   it.effect(

@@ -379,6 +379,14 @@ export const OrchestrationV2LimitRecoveryUpdate = Schema.Struct({
 export type OrchestrationV2LimitRecoveryUpdate = typeof OrchestrationV2LimitRecoveryUpdate.Type;
 
 /**
+ * Who archived the thread. Only `"auto"` threads are eligible for automatic
+ * deletion; threads archived before this field existed decode without it and
+ * are treated like manual archives.
+ */
+export const OrchestrationV2ThreadArchivedBy = Schema.Literals(["user", "auto"]);
+export type OrchestrationV2ThreadArchivedBy = typeof OrchestrationV2ThreadArchivedBy.Type;
+
+/**
  * `score` is an open count that halves every two weeks, as of `openedAt`.
  * `picks` stores lowercase palette queries, newest first.
  * Times are epoch milliseconds for ranking arithmetic.
@@ -429,6 +437,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
   createdAt: Schema.DateTimeUtc,
   updatedAt: Schema.DateTimeUtc,
   archivedAt: Schema.NullOr(Schema.DateTimeUtc),
+  archivedBy: Schema.optional(Schema.NullOr(OrchestrationV2ThreadArchivedBy)),
   settledOverride: Schema.NullOr(Schema.Literals(["settled", "active"])).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -618,7 +627,18 @@ export const OrchestrationV2ThreadLaunchWorkspaceStrategy = Schema.Union([
     type: Schema.Literal("worktree"),
     baseRef: TrimmedNonEmptyString,
     branch: Schema.optional(TrimmedNonEmptyString),
-    startFromOrigin: Schema.optional(Schema.Boolean),
+    startFromOrigin: Schema.optional(
+      Schema.Boolean.annotate({
+        description:
+          "Sync with the base's remote first: a local base that is behind is updated (new branch starts from the remote tip; an existing branch is fast-forwarded), a local base that is ahead or diverged is used as is, and a remote base is fetched. Falls back to local refs with a warning when the fetch fails. Omitted means false.",
+      }),
+    ),
+    existingBranch: Schema.optional(
+      Schema.Boolean.annotate({
+        description:
+          "Check out baseRef itself instead of creating a new branch from it. baseRef must be a local branch that is not checked out elsewhere, or a remote branch such as origin/feature, which gets a local tracking branch of the same name. branch is ignored.",
+      }),
+    ),
   }),
 ]);
 export type OrchestrationV2ThreadLaunchWorkspaceStrategy =
@@ -1978,6 +1998,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   createdAt: Schema.DateTimeUtc,
   updatedAt: Schema.DateTimeUtc,
   archivedAt: Schema.NullOr(Schema.DateTimeUtc),
+  archivedBy: Schema.optional(Schema.NullOr(OrchestrationV2ThreadArchivedBy)),
   settledOverride: Schema.NullOr(Schema.Literals(["settled", "active"])),
   settledAt: Schema.NullOr(Schema.DateTimeUtc),
   unsettledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -3259,6 +3280,27 @@ const OrchestrationV2InternalCommand = Schema.Union([
         notification: OrchestrationV2Notification,
       }),
     ),
+  }),
+  /**
+   * Archives a settled thread for the cleanup sweep. Rejected when the thread
+   * changed after `snapshotAt`, is no longer settled, is pinned, or has work in
+   * flight, so the sweep never races a user action.
+   */
+  Schema.Struct({
+    type: Schema.Literal("thread.auto-archive"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    snapshotAt: Schema.DateTimeUtc,
+  }),
+  /**
+   * Deletes a thread the server archived itself. Rejected unless the thread is
+   * still archived with `archivedBy: "auto"` and unchanged since `snapshotAt`.
+   */
+  Schema.Struct({
+    type: Schema.Literal("thread.auto-delete"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    snapshotAt: Schema.DateTimeUtc,
   }),
   Schema.Struct({
     type: Schema.Literal("checkpoint.rollback.fail"),

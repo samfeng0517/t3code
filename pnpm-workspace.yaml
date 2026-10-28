@@ -281,6 +281,24 @@ overrides:
   "@alchemy.run/sigil>react": "-"
   "@alchemy.run/sigil>react-reconciler": "-"
   "@alchemy.run/sigil>scheduler": "-"
+  # Security advisory floors for the server, web and desktop dependency trees.
+  # The Claude Agent SDK's MCP peer (pinned in apps/server) pulls in express and
+  # hono. The bundled server never loads them, but dev and test runs install them.
+  # The relay's @neon/functions declares hono as an optional peer, so it resolves to
+  # whichever hono copy the workspace already has.
+  "@modelcontextprotocol/sdk>hono": ^4.13.11
+  proxy-addr: ^2.0.8
+  # TanStack Router's serializer; router-core 1.171.x accepts ^1.5.4.
+  # Drop once router-core requires seroval >= 1.6.
+  "@tanstack/router-core>seroval": ^1.6.3
+  "@tanstack/router-core>seroval-plugins": ^1.6.3
+  # React Native's devtools bridge, reached on the web through morphicons' optional
+  # react-native peer. Dev tooling only; react-devtools-core accepts ^1.6.1.
+  "react-devtools-core>shell-quote": ^1.11.0
+  # dbus-next asks for ^0.4.17. 0.5.0 is 0.4.23 plus the prototype-pollution fix:
+  # parsed objects now have a null prototype and emptyTag may be a function. Neither
+  # matters to dbus-next, which only reads introspection data by key.
+  "dbus-next>xml2js": ^0.5.0
   "@clerk/backend": "catalog:"
   "@clerk/clerk-js": "catalog:"
   "@clerk/clerk-js>@base-org/account": "-"
@@ -394,6 +412,10 @@ patchedDependencies:
   # Observe the owned host exit independently of descendants retaining its stdio.
   "@muse-code/sdk@1.4.6": patches/@muse-code__sdk@1.4.6.patch
   app-builder-lib@26.16.1: patches/app-builder-lib@26.16.1.patch
+  # Rejects extension IPC whose sender is not that extension's own page or service worker, since
+  # the renderer supplies the extension id, and toolbar calls without an id from browser tabs;
+  # windows.create resolves URLs like tabs.create (ChromeExtensionsSenderPatch.test.ts).
+  electron-chrome-extensions@4.9.0: patches/electron-chrome-extensions@4.9.0.patch
 
 peerDependencyRules:
   allowAny:

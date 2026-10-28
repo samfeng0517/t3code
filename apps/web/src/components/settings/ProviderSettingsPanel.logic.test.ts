@@ -8,6 +8,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildProviderInstanceOverridePatch,
+  orderProviderRowsEnabledFirst,
   resolvePrimaryOperateAccess,
   resolveRemoteOperateAccess,
 } from "./ProviderSettingsPanel.logic";
@@ -143,5 +144,35 @@ describe("remote operate access", () => {
         hasError: false,
       }),
     ).toBe("denied");
+  });
+});
+
+describe("orderProviderRowsEnabledFirst", () => {
+  const row = (id: string) => ({ instanceId: ProviderInstanceId.make(id) });
+  const rows = [row("codex"), row("claudeAgent"), row("cursor"), row("grok")];
+
+  it("should list enabled rows first in registry order when some are disabled", () => {
+    const enabled = new Map([
+      [ProviderInstanceId.make("codex"), false],
+      [ProviderInstanceId.make("claudeAgent"), true],
+      [ProviderInstanceId.make("cursor"), true],
+      [ProviderInstanceId.make("grok"), false],
+    ]);
+    expect(orderProviderRowsEnabledFirst(rows, enabled).map((r) => r.instanceId)).toEqual([
+      "claudeAgent",
+      "cursor",
+      "codex",
+      "grok",
+    ]);
+  });
+
+  it("should treat a row as disabled when the entry snapshot has not seen it", () => {
+    const enabled = new Map([[ProviderInstanceId.make("grok"), true]]);
+    expect(orderProviderRowsEnabledFirst(rows, enabled).map((r) => r.instanceId)).toEqual([
+      "grok",
+      "codex",
+      "claudeAgent",
+      "cursor",
+    ]);
   });
 });

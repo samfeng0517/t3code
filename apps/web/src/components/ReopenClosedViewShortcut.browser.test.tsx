@@ -75,6 +75,7 @@ vi.mock(import("./ui/toast"), async (original) => {
 });
 
 import { useClosedViewStore } from "../closedViewStore";
+import { GIT_PAGE_REF, type GitTab, gitTabKey, useGitTabsStore } from "./git/gitTabsStore";
 import { selectThreadRightPanelState, useRightPanelStore } from "../rightPanelStore";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { ReopenClosedViewShortcut } from "./ReopenClosedViewShortcut";
@@ -100,6 +101,7 @@ function setup() {
   state.navigate.mockResolvedValue(undefined);
   state.openPreview.mockReset();
   useClosedViewStore.setState({ entries: [] });
+  useGitTabsStore.setState({ tabs: [], activeKey: null });
   useRightPanelStore.setState({ byThreadKey: {}, userActionRevisionByThreadKey: {} });
   useTerminalUiStateStore.setState({
     terminalUiStateByThreadKey: {},
@@ -265,4 +267,23 @@ describe("root reopen shortcut", () => {
       expect(useClosedViewStore.getState().entries).toEqual([]);
     },
   );
+
+  it("should reopen a closed git tab on the Git page when its project tab is not open", async () => {
+    setup();
+    const gitTab = (projectId: string) =>
+      ({ kind: "git-tab", threadRef: GIT_PAGE_REF, environmentId: "gone", projectId }) as const;
+    const store = useClosedViewStore.getState();
+    store.remember(gitTab("project-1"));
+    store.remember(gitTab("project-2"));
+    useGitTabsStore.getState().open({ environmentId: "gone", projectId: "project-2" } as GitTab);
+    await using _view = await renderShortcut();
+    await act(() => {
+      press();
+    });
+    const reopened = { environmentId: "gone", projectId: "project-1" } as GitTab;
+    expect(useGitTabsStore.getState().activeKey).toBe(gitTabKey(reopened));
+    expect(useGitTabsStore.getState().tabs).toHaveLength(2);
+    expect(state.navigate).toHaveBeenCalledWith({ to: "/git" });
+    expect(useClosedViewStore.getState().entries).toEqual([]);
+  });
 });

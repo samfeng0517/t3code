@@ -4,6 +4,7 @@ import { createBrowserHistory, createHashHistory } from "@tanstack/react-router"
 
 import { applyAppearanceContrast } from "./appearanceContrast";
 import { applyAppearanceFontVariables } from "./appearanceFonts";
+import { startBrowserExtensionsAutoUpdate } from "./browser/BrowserExtensionsUpdate";
 import { startElectronBrowserHost } from "./browser/ElectronBrowserHost";
 import { startBrowserProfileReporting } from "./browser/BrowserProfileReporter";
 import { startPreviewTitleRecording } from "./browserHistoryStore";
@@ -36,6 +37,8 @@ import {
   subscribeClientSettings,
 } from "./hooks/useSettings";
 import { syncBrowserChromeTheme } from "./hooks/useTheme";
+import { getLocale } from "./i18n";
+import { subscribeLanguagePreference } from "./i18n/languagePreferenceStore";
 import { startThreadVisitedMigration } from "./hooks/useThreadVisitedMigration";
 import { installDesktopPasteAsText } from "./lib/desktopPasteAsText";
 import {
@@ -117,6 +120,16 @@ function startDocumentTitle(): void {
   );
 }
 
+/** Screen readers and the browser's own spellcheck and hyphenation follow the display language. */
+function startDocumentLanguage(): void {
+  const apply = () => {
+    document.documentElement.lang = getLocale();
+  };
+  subscribeLanguagePreference(apply);
+  window.addEventListener("languagechange", apply);
+  apply();
+}
+
 /**
  * Each route paints its own surface, which the browser chrome samples once it is on screen.
  * onRendered only fires for a new href; onResolved also covers `router.invalidate()`, which
@@ -166,12 +179,14 @@ export function startAppServices(): AppRouter {
 
   startClientAppearance();
   startDocumentTitle();
+  startDocumentLanguage();
   startEnvironmentThemeRepaint();
   startBrowserChromeThemeSync(router);
   startDefaultThemeAdoption();
   startModelPreferencesMigration();
   startAgentOpenedPreviews();
   if (isElectron) startElectronBrowserHost();
+  startBrowserExtensionsAutoUpdate();
   startPreviewTitleRecording();
   startBrowserProfileReporting();
   installChatRouteCommands(router);

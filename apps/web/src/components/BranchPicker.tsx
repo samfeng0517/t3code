@@ -2,6 +2,8 @@ import type { VcsRef } from "@t3tools/contracts";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { useId, useRef, useState, type ComponentProps, type ReactNode } from "react";
 
+import { useT } from "~/i18n";
+import { Button } from "./ui/button";
 import { MiddleTruncate } from "./ui/middle-truncate";
 import { observeResize } from "../lib/observeResize";
 import { cn } from "../lib/utils";
@@ -34,6 +36,8 @@ export function BranchPicker({
   onLoadNext,
   statusText,
   originControl,
+  newBranchControl,
+  fetchControl,
   popupProps,
   renderItem,
   getItemType,
@@ -52,13 +56,17 @@ export function BranchPicker({
   onLoadNext: () => void;
   statusText: string | null;
   originControl?: { checked: boolean; onCheckedChange: (checked: boolean) => void } | undefined;
+  newBranchControl?: { checked: boolean; onCheckedChange: (checked: boolean) => void } | undefined;
+  fetchControl?: { pending: boolean; disabled: boolean; onFetch: () => void } | undefined;
   popupProps: Omit<ComponentProps<typeof ComboboxPopup>, "children">;
   renderItem: (value: string, index: number) => ReactNode;
   getItemType?: ((value: string) => string) | undefined;
   children: ReactNode;
 }) {
+  const t = useT();
   const highlightedValueRef = useRef<string | null>(null);
   const startFromOriginSwitchId = useId();
+  const newBranchSwitchId = useId();
   const branchListScrollElementRef = useRef<HTMLElement | null>(null);
   const previousBranchListScrollTopRef = useRef<number | null>(null);
   const handleOpenChange = (nextOpen: boolean) => {
@@ -203,6 +211,36 @@ export function BranchPicker({
               />
             </ComboboxListVirtualized>
           </div>
+          {newBranchControl ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <label
+                    htmlFor={newBranchSwitchId}
+                    className="flex cursor-pointer items-center justify-between gap-3 border-t border-border/60 px-3 py-2 text-xs"
+                  >
+                    <span className="truncate font-medium text-muted-foreground">
+                      {newBranchControl.checked
+                        ? t("composer.branchPicker.createNewBranch")
+                        : t("composer.branchPicker.useExistingBranch")}
+                    </span>
+                    <Switch
+                      id={newBranchSwitchId}
+                      checked={newBranchControl.checked}
+                      size="sm"
+                      aria-label={t("composer.branchPicker.createNewBranch")}
+                      onCheckedChange={(checked) =>
+                        newBranchControl.onCheckedChange(Boolean(checked))
+                      }
+                    />
+                  </label>
+                }
+              />
+              <TooltipPopup side="top" className="max-w-72 whitespace-normal">
+                {t("composer.branchPicker.createNewBranchTooltip")}
+              </TooltipPopup>
+            </Tooltip>
+          ) : null}
           {originControl ? (
             <Tooltip>
               <TooltipTrigger
@@ -226,11 +264,36 @@ export function BranchPicker({
                 }
               />
               <TooltipPopup side="top" className="max-w-72 whitespace-normal">
-                Uses the latest commit of the base branch’s tracked remote branch, even if its name
-                differs. Otherwise uses the same-named branch on origin. Uses your local branch if
-                that remote branch is missing.
+                Starts from the base branch after syncing it with its remote: a local branch is
+                pulled, a remote branch is fetched. Uses the local state if the remote can’t be
+                reached.
               </TooltipPopup>
             </Tooltip>
+          ) : null}
+          {fetchControl ? (
+            <div className="flex justify-end border-t border-border/60 px-2 py-1">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost-muted"
+                      size="micro"
+                      disabled={fetchControl.disabled || fetchControl.pending}
+                      onClick={fetchControl.onFetch}
+                    />
+                  }
+                >
+                  <RefreshIcon refreshing={fetchControl.pending} />
+                  {fetchControl.pending
+                    ? t("composer.branchPicker.fetching")
+                    : t("composer.branchPicker.fetch")}
+                </TooltipTrigger>
+                <TooltipPopup side="top" className="max-w-72 whitespace-normal">
+                  {t("composer.branchPicker.fetchTooltip")}
+                </TooltipPopup>
+              </Tooltip>
+            </div>
           ) : null}
           {statusText ? <ComboboxStatus>{statusText}</ComboboxStatus> : null}
         </div>

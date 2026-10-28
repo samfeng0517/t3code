@@ -1,5 +1,10 @@
+// @effect-diagnostics nodeBuiltinImport:off - runs the generated remote runner script in a real sh with an isolated HOME.
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import * as NetService from "@t3tools/shared/Net";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -79,7 +84,10 @@ function commandArgs(command: ChildProcess.Command): ReadonlyArray<string> {
   return command._tag === "StandardCommand" ? command.args : [];
 }
 
-const ARCHIVE = { archiveVersion: "1.2.3-preview.20260911.4" } as const;
+const ARCHIVE = {
+  archiveVersion: "1.2.3-preview.20260911.4",
+  releaseBaseUrl: "https://releases.example.com/t3",
+} as const;
 
 describe("ssh tunnel scripts", () => {
   it("rejects archive versions that are not a single exact version segment", () => {
@@ -102,6 +110,81 @@ describe("ssh tunnel scripts", () => {
       SshTunnel.buildRemoteT3RunnerScript(ARCHIVE),
       "T3_ARCHIVE_VERSION='1.2.3-preview.20260911.4'",
     );
+  });
+
+  describe("on a fork build", () => {
+    const runnerOnRemote = (
+      runner: SshTunnel.RemoteT3RunnerOptions,
+      appSelfUpdateEnabled: boolean,
+      installedRuntime: boolean,
+    ) => {
+      const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-ssh-runner-"));
+      try {
+        if (installedRuntime) {
+          const runtimeDir = NodePath.join(home, ".t3", "runtime", "versions", "1.2.3");
+          NodeFS.mkdirSync(runtimeDir, { recursive: true });
+          NodeFS.writeFileSync(
+            NodePath.join(runtimeDir, "t3"),
+            "#!/bin/sh\necho reused runtime\n",
+            {
+              mode: 0o755,
+            },
+          );
+          NodeFS.writeFileSync(NodePath.join(runtimeDir, ".install-complete"), "1.2.3\n");
+        }
+        const result = NodeChildProcess.spawnSync(
+          "sh",
+          ["-c", SshTunnel.buildRemoteT3RunnerScript(runner, appSelfUpdateEnabled)],
+          { env: { ...process.env, HOME: home }, encoding: "utf8" },
+        );
+        return {
+          status: result.status,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          runtimeRootCreated: NodeFS.existsSync(NodePath.join(home, ".t3", "runtime")),
+        };
+      } finally {
+        NodeFS.rmSync(home, { recursive: true, force: true });
+      }
+    };
+
+    it("fails the download step, not the script, when no release base URL is set", () => {
+      for (const releaseBaseUrl of [undefined, "", "  "]) {
+        const result = runnerOnRemote(
+          { archiveVersion: "1.2.3", ...(releaseBaseUrl === undefined ? {} : { releaseBaseUrl }) },
+          false,
+          false,
+        );
+        assert.notEqual(result.status, 0);
+        assert.include(result.stderr, "T3CODE_RELEASE_BASE_URL");
+        assert.include(result.stderr, "for the T3 Code app on your computer");
+        assert.isFalse(result.runtimeRootCreated);
+      }
+    });
+
+    it("still launches a runtime that is already installed on the remote", () => {
+      const result = runnerOnRemote({ archiveVersion: "1.2.3" }, false, true);
+      assert.equal(result.status, 0);
+      assert.equal(result.stdout.trim(), "reused runtime");
+    });
+
+    it("downloads from the configured base URL, or upstream when self-update is enabled", () => {
+      assert.include(
+        SshTunnel.buildRemoteT3RunnerScript(
+          { archiveVersion: "1.2.3", releaseBaseUrl: "https://releases.example.com/t3/" },
+          false,
+        ),
+        "T3_RELEASE_BASE_URL='https://releases.example.com/t3'",
+      );
+      assert.include(
+        SshTunnel.buildRemoteT3RunnerScript({ archiveVersion: "1.2.3" }, true),
+        "T3_RELEASE_BASE_URL='https://github.com/pingdotgg/t3code/releases/download'",
+      );
+      assert.include(
+        SshTunnel.buildRemoteT3RunnerScript({ nodeScriptPath: "/opt/t3/bin.mjs" }, false),
+        "T3_NODE_SCRIPT_PATH='/opt/t3/bin.mjs'",
+      );
+    });
   });
 
   it.effect("accepts launch JSON after remote shell startup noise", () => {

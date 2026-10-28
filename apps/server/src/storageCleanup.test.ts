@@ -22,6 +22,7 @@ import * as ServerConfig from "./config.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as GitManager from "./git/GitManager.ts";
+import * as WorktreeRemoveScripts from "./project/WorktreeRemoveScripts.ts";
 import * as Settings from "./serverSettings.ts";
 import * as ProjectionStore from "./orchestration-v2/ProjectionStore.ts";
 import * as ProviderSessionManager from "./orchestration-v2/ProviderSessionManager.ts";
@@ -272,7 +273,20 @@ const cleanupFixture = (
     let snapshotReads = 0;
     let events: Stream.Stream<OrchestrationV2DomainEvent> = Stream.empty;
     const activated = yield* Deferred.make<void>();
+    const removeScriptCalls: Array<{
+      readonly input: WorktreeRemoveScripts.WorktreeRemoveScriptInput;
+      readonly existed: boolean;
+    }> = [];
     const context = yield* Layer.build(StorageCleanup.layer).pipe(
+      Effect.provideService(WorktreeRemoveScripts.WorktreeRemoveScripts, {
+        runBeforeRemove: (input) =>
+          fs.exists(input.worktreePath).pipe(
+            Effect.orElseSucceed(() => false),
+            Effect.map((existed) => {
+              removeScriptCalls.push({ input, existed });
+            }),
+          ),
+      }),
       Effect.provideService(GitVcsDriver.GitVcsDriver, {
         ...git,
         execute: (input) =>
@@ -381,6 +395,7 @@ const cleanupFixture = (
     );
     return {
       service: Context.get(context, StorageCleanup.StorageCleanup),
+      removeScriptCalls,
       repo,
       editBeforeRemoval: () => {
         editBeforeRemoval = true;
@@ -1288,6 +1303,13 @@ describe("storage cleanup reports and local file policies", () => {
           ],
         });
         expect(yield* fixture.fs.exists(fixture.worktree)).toBe(false);
+        // The project's removal action ran once, in the worktree, before git removed it.
+        expect(fixture.removeScriptCalls).toEqual([
+          {
+            input: { projectRoot: fixture.repo, worktreePath: fixture.worktree },
+            existed: true,
+          },
+        ]);
       }),
     ),
   );
@@ -1310,6 +1332,7 @@ describe("storage cleanup reports and local file policies", () => {
             outcome: "kept",
             reason: "Contains a project checkout",
           });
+          expect(fixture.removeScriptCalls).toEqual([]);
           expect(yield* fixture.fs.readFileString(`${fixture.worktree}/tracked.txt`)).toBe(
             "original\n",
           );

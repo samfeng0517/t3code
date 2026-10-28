@@ -258,6 +258,14 @@ export const make = Effect.gen(function* () {
     }));
     if (!snapshot) return null;
     yield* clearRetention(threadId);
+    // A warned or failed setup stays until the thread's next setup replaces it,
+    // so a client that remounts later can still show why the base is off.
+    if (
+      snapshot.phase === "failed" ||
+      snapshot.stages.some((entry) => entry.status === "warning" || entry.status === "failed")
+    ) {
+      return snapshot;
+    }
     const fiber = yield* remove(threadId).pipe(
       Effect.delay(FINISHED_RETENTION),
       Effect.ensuring(

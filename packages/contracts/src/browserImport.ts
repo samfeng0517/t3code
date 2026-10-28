@@ -99,3 +99,48 @@ export const BROWSER_IMPORT_FAILURE_COPY: Readonly<Record<BrowserImportFailureRe
     "You've reached the profile limit. Delete a profile or import into an existing one.",
   readFailed: "The browser's cookie database could not be read.",
 };
+
+/**
+ * A bookmark (`url` set) or folder (`children` set) read from another browser, without ids:
+ * the client assigns its own when it stores them.
+ */
+export interface BrowserBookmarkTreeNode {
+  readonly title: string;
+  readonly url?: string;
+  readonly children?: ReadonlyArray<BrowserBookmarkTreeNode>;
+}
+
+export const BrowserBookmarkTreeNode: Schema.Codec<BrowserBookmarkTreeNode> = Schema.Struct({
+  title: Schema.String,
+  url: Schema.optionalKey(Schema.String),
+  children: Schema.optionalKey(
+    Schema.Array(
+      Schema.suspend((): Schema.Codec<BrowserBookmarkTreeNode> => BrowserBookmarkTreeNode),
+    ),
+  ),
+});
+
+export const BrowserBookmarkSourceProfile = Schema.Struct({
+  directory: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+});
+export type BrowserBookmarkSourceProfile = typeof BrowserBookmarkSourceProfile.Type;
+
+export const BrowserBookmarkSource = Schema.Struct({
+  id: BrowserImportSourceId,
+  name: TrimmedNonEmptyString,
+  profiles: Schema.Array(BrowserBookmarkSourceProfile),
+});
+export type BrowserBookmarkSource = typeof BrowserBookmarkSource.Type;
+
+export const DesktopPreviewReadBookmarksInputSchema = Schema.Struct({
+  sourceId: BrowserImportSourceId,
+  sourceProfileDirectory: TrimmedNonEmptyString,
+});
+export type DesktopPreviewReadBookmarksInput = typeof DesktopPreviewReadBookmarksInputSchema.Type;
+
+/** The source's top-level folders (bookmarks bar, other, mobile), empty ones left out. */
+export const BrowserBookmarkReadResult = Schema.Struct({
+  roots: Schema.Array(BrowserBookmarkTreeNode),
+});
+export type BrowserBookmarkReadResult = typeof BrowserBookmarkReadResult.Type;

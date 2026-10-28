@@ -18,7 +18,6 @@ import { type SetStateAction } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toastManager } from "../ui/toast";
 import { resolveAppModelSelectionForInstance } from "../../modelSelection";
-import { resolveNewDraftStartFromOrigin } from "../../lib/chatThreadActions";
 import { type DraftThreadEnvMode, useComposerDraftStore } from "../../composerDraftStore";
 import {
   getStartedThreadModelChangeBlockReason,
@@ -31,9 +30,6 @@ interface ComposerSelectionInput {
   readonly draftThread: DraftSessionState | null;
   readonly activeThread: EnvironmentThreadShell | undefined;
   readonly activeRuntime: ReturnType<typeof deriveThreadStructureRuntime>;
-  readonly activeProjectSettings: {
-    readonly settings: { readonly newWorktreesStartFromOrigin: boolean };
-  };
   readonly settings: UnifiedSettings;
   readonly providerStatuses: ReadonlyArray<ServerProvider>;
   readonly lockedProvider: ReturnType<typeof deriveLockedProvider>;
@@ -47,15 +43,12 @@ interface ComposerSelectionInput {
   readonly setPendingServerThreadEnvModeEntry: Dispatch<
     SetStateAction<{ readonly threadId: ThreadId; readonly mode: DraftThreadEnvMode } | null>
   >;
-  readonly setPendingServerThreadStartFromOriginByThreadId: Dispatch<
-    SetStateAction<Record<string, boolean>>
-  >;
   readonly scheduleComposerFocus: () => void;
 }
 
 /**
  * The composer's choices for the next turn: provider and model, runtime and interaction mode,
- * and where a new thread runs (local or a new worktree, from the remote's tip or not).
+ * and where a new thread runs (local or a new worktree).
  */
 export function useComposerSelection(input: ComposerSelectionInput) {
   const {
@@ -64,7 +57,6 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     draftThread,
     activeThread,
     activeRuntime,
-    activeProjectSettings,
     settings,
     providerStatuses,
     lockedProvider,
@@ -76,7 +68,6 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     isLocalDraftThread,
     canOverrideServerThreadEnvMode,
     setPendingServerThreadEnvModeEntry,
-    setPendingServerThreadStartFromOriginByThreadId,
     scheduleComposerFocus,
   } = input;
   const navigate = useNavigate();
@@ -226,10 +217,6 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     if (isLocalDraftThread) {
       setDraftThreadContext(composerDraftTarget, {
         envMode: mode,
-        startFromOrigin: resolveNewDraftStartFromOrigin({
-          envMode: mode,
-          newWorktreesStartFromOrigin: activeProjectSettings.settings.newWorktreesStartFromOrigin,
-        }),
         ...(mode === "worktree" && draftThread?.worktreePath ? { worktreePath: null } : {}),
       });
     }
@@ -237,24 +224,6 @@ export function useComposerSelection(input: ComposerSelectionInput) {
   };
   const onEnvModeChangeStable = useStableCallback(onEnvModeChange);
 
-  // Reads only the id: the shell changes on every streamed event, and a new handler
-  // re-renders the branch toolbar and thread details panel with it.
-  const activeThreadId = activeThread?.id;
-  const onStartFromOriginChange = (nextStartFromOrigin: boolean) => {
-    if (canOverrideServerThreadEnvMode && activeThreadId !== undefined) {
-      setPendingServerThreadStartFromOriginByThreadId((current) =>
-        current[activeThreadId] === nextStartFromOrigin
-          ? current
-          : { ...current, [activeThreadId]: nextStartFromOrigin },
-      );
-      return;
-    }
-    if (isLocalDraftThread) {
-      setDraftThreadContext(composerDraftTarget, {
-        startFromOrigin: nextStartFromOrigin,
-      });
-    }
-  };
   return {
     getModelDisabledReason,
     handleInteractionModeChange,
@@ -262,7 +231,6 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     handleRuntimeModeChangeStable,
     onEnvModeChangeStable,
     onProviderModelSelectStable,
-    onStartFromOriginChange,
     openProviderSetupStable,
     toggleInteractionModeStable,
   };

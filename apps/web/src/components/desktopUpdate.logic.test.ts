@@ -6,6 +6,7 @@ import {
   getDesktopUpdateButtonTooltip,
   getDesktopUpdateReleaseHistoryUrl,
   getDesktopUpdateReleaseUrl,
+  isDesktopAppUpdateEnabled,
   resolveDesktopUpdateButtonAction,
 } from "./desktopUpdate.logic";
 
@@ -88,5 +89,19 @@ describe("canCheckForUpdate", () => {
         downloadedVersion: "1.1.0",
       }),
     ).toBe(true);
+  });
+});
+
+describe("isDesktopAppUpdateEnabled", () => {
+  it("should return false when the updater has not reported or the build has no update feed", () => {
+    expect(isDesktopAppUpdateEnabled(null)).toBe(false);
+    expect(isDesktopAppUpdateEnabled({ ...baseState, enabled: false, status: "disabled" })).toBe(
+      false,
+    );
+    expect(isDesktopAppUpdateEnabled({ ...baseState, status: "disabled" })).toBe(false);
+  });
+
+  it("should return true when the updater can check for updates", () => {
+    expect(isDesktopAppUpdateEnabled(baseState)).toBe(true);
   });
 });

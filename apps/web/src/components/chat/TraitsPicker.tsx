@@ -45,6 +45,7 @@ import {
   ComposerControlIcon,
   type ComposerControlSize,
 } from "./ComposerControl";
+import { useT } from "~/i18n";
 import { useComposerMenuProps } from "./composerEventScope";
 import { useComposerMenuState } from "./useComposerMenuState";
 
@@ -108,9 +109,10 @@ type TraitsPersistence =
     };
 
 function DefaultBadge() {
+  const t = useT();
   return (
     <Badge variant="outline" size="sm" className="min-w-0">
-      Default
+      {t("composer.traits.default")}
     </Badge>
   );
 }
@@ -337,6 +339,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   planModeEnabled,
   ...persistence
 }: TraitsMenuContentProps & TraitsPersistence) {
+  const t = useT();
   const modelSelection =
     instanceId && model ? { instanceId, model, options: modelOptions ?? [] } : null;
   const setProviderModelOptions = useComposerDraftStore((store) => store.setProviderModelOptions);
@@ -438,8 +441,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
               </div>
               {ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id ? (
                 <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
-                  Your prompt contains &quot;ultrathink&quot; in the text. Remove it to change this
-                  option.
+                  {t("composer.traits.ultrathinkInPrompt")}
                 </div>
               ) : null}
               <MenuRadioGroup
@@ -493,7 +495,9 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
                 {(["on", "off"] as const).map((value) => (
                   <MenuRadioItem key={value} value={value} hideIndicator closeOnClick>
                     <span className="flex w-full min-w-0 items-center justify-between gap-3">
-                      <span>{value === "on" ? "On" : "Off"}</span>
+                      <span>
+                        {value === "on" ? t("composer.traits.on") : t("composer.traits.off")}
+                      </span>
                     </span>
                   </MenuRadioItem>
                 ))}

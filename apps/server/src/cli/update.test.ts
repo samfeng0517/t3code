@@ -1,16 +1,44 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import { APP_SELF_UPDATE_DISABLED_MESSAGE } from "@t3tools/shared/appSelfUpdate";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as NetService from "@t3tools/shared/Net";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
+import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import { Command } from "effect/cli";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { afterEach, vi } from "vite-plus/test";
 
-import { repointLauncher, resolveLauncherPath, resolveNewestVersion } from "./update.ts";
+import {
+  CliUpdateError,
+  repointLauncher,
+  resolveLauncherPath,
+  resolveNewestVersion,
+  updateCommand,
+} from "./update.ts";
 
 afterEach(() => vi.restoreAllMocks());
+
+it.effect("refuses to update a fork build before contacting any release source", () =>
+  Effect.gen(function* () {
+    const error = yield* Command.runWith(updateCommand, { version: "0.0.0" })([]).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          NodeServices.layer,
+          NetService.layer,
+          ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+        ),
+      ),
+      Effect.flip,
+    );
+    assert.instanceOf(error, CliUpdateError);
+    assert.equal(error.message, APP_SELF_UPDATE_DISABLED_MESSAGE);
+  }),
+);
 
 it.effect("authenticates each release page until the requested channel is found", () =>
   Effect.gen(function* () {

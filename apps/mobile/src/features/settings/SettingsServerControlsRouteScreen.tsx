@@ -62,7 +62,6 @@ const PAGE_PROJECT_KEYS: Record<SettingsPage, readonly ProjectScopedServerSettin
   ],
   "source-control": ["defaultAutoPull", "removeAgentCreditsOnMerge"],
   worktrees: [
-    "newWorktreesStartFromOrigin",
     "worktreeSubmodules",
     "branchNamingMode",
     "branchNamePrefix",
@@ -420,16 +419,6 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
 
               {props.page === "worktrees" ? (
                 <>
-                  <SettingsSection title="New worktrees">
-                    <SettingsSwitchRow
-                      icon="arrow.triangle.branch"
-                      label="Start from remote"
-                      subtitle="Uses the latest commit of the base branch’s tracked remote branch, even if its name differs. Otherwise uses the same-named branch on origin. Uses your local branch if that remote branch is missing."
-                      value={uniform("newWorktreesStartFromOrigin")}
-                      disabled={disabledFor("newWorktreesStartFromOrigin")}
-                      onValueChange={(value) => write({ newWorktreesStartFromOrigin: value })}
-                    />
-                  </SettingsSection>
                   <SettingsSection
                     title="Worktree submodules"
                     trailing={

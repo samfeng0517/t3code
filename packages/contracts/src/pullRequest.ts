@@ -69,6 +69,8 @@ export const PullRequestAction = Schema.Literals([
   "disable-auto-merge",
   "revert",
   "approve-workflows",
+  /** Withdraws the reader's own approval, for a host that lets a reviewer take one back. */
+  "unapprove",
 ]);
 export type PullRequestAction = typeof PullRequestAction.Type;
 

@@ -18,7 +18,10 @@ import {
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
+
+import { PreviewBookmarkButton } from "./PreviewBookmarkButton";
 
 interface Props {
   url: string;
@@ -33,6 +36,8 @@ interface Props {
   onForward: () => void;
   onRefresh: () => void;
   onSubmit: (url: string) => void;
+  /** The loaded page, which the star bookmarks; absent while nothing has loaded. */
+  bookmark?: { readonly url: string; readonly title: string } | undefined;
   onOpenInBrowser?: (() => void) | undefined;
   onCapture?: ((record: boolean) => void) | undefined;
   captureDisabled?: boolean | undefined;
@@ -44,6 +49,8 @@ interface Props {
   pickActive?: boolean | undefined;
   pickDisabled?: boolean | undefined;
   pickDisabledReason?: string | undefined;
+  /** Chrome extension buttons, shown right after the address field. */
+  extensionActions?: ReactNode;
   trailingActions?: ReactNode;
   leadingActions?: ReactNode;
 }
@@ -62,6 +69,7 @@ export function PreviewChromeRow({
   onForward,
   onRefresh,
   onSubmit,
+  bookmark,
   onOpenInBrowser,
   onCapture,
   captureDisabled,
@@ -73,9 +81,11 @@ export function PreviewChromeRow({
   pickActive,
   pickDisabled,
   pickDisabledReason,
+  extensionActions,
   trailingActions,
   leadingActions,
 }: Props) {
+  const t = useT();
   const [draft, setDraft] = useState(url);
   const [inputFocused, setInputFocused] = useState(false);
 
@@ -94,7 +104,11 @@ export function PreviewChromeRow({
         className="flex h-10 min-h-10 shrink-0 items-center gap-1 border-b border-border/60 bg-background px-2 in-data-[preview-panel-mode=inline]:mb-3 in-data-[preview-panel-mode=inline]:h-7 in-data-[preview-panel-mode=inline]:min-h-7 in-data-[preview-panel-mode=inline]:border-b-transparent"
         data-surface-subheader
       >
-        <div className="flex items-center gap-0.5" role="group" aria-label="Navigation">
+        <div
+          className="flex items-center gap-0.5"
+          role="group"
+          aria-label={t("workspace.preview.navigation")}
+        >
           <Tooltip>
             <TooltipTrigger
               render={
@@ -103,14 +117,14 @@ export function PreviewChromeRow({
                   size="icon-xs"
                   onClick={canGoBack ? onBack : NOOP}
                   disabled={!canGoBack}
-                  aria-label="Back"
+                  aria-label={t("common.back")}
                   type="button"
                 />
               }
             >
               <ArrowLeft />
             </TooltipTrigger>
-            <TooltipPopup>Back</TooltipPopup>
+            <TooltipPopup>{t("common.back")}</TooltipPopup>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger
@@ -120,14 +134,14 @@ export function PreviewChromeRow({
                   size="icon-xs"
                   onClick={canGoForward ? onForward : NOOP}
                   disabled={!canGoForward}
-                  aria-label="Forward"
+                  aria-label={t("workspace.preview.forward")}
                   type="button"
                 />
               }
             >
               <ArrowRight />
             </TooltipTrigger>
-            <TooltipPopup>Forward</TooltipPopup>
+            <TooltipPopup>{t("workspace.preview.forward")}</TooltipPopup>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger
@@ -137,20 +151,22 @@ export function PreviewChromeRow({
                   size="icon-xs"
                   onClick={refreshDisabled ? NOOP : onRefresh}
                   disabled={refreshDisabled}
-                  aria-label={loading ? "Stop" : "Refresh"}
+                  aria-label={t(loading ? "workspace.preview.stop" : "workspace.preview.refresh")}
                   type="button"
                 />
               }
             >
               <RefreshIcon refreshing={loading} />
             </TooltipTrigger>
-            <TooltipPopup>{loading ? "Loading…" : "Refresh"}</TooltipPopup>
+            <TooltipPopup>
+              {t(loading ? "workspace.preview.loading" : "workspace.preview.refresh")}
+            </TooltipPopup>
           </Tooltip>
         </div>
 
         {leadingActions}
 
-        <InputGroup variant="ghost" className="group/address h-7 flex-1">
+        <InputGroup variant="ghost" className="group/address h-7 flex-1" data-preview-address-field>
           <Tooltip>
             <TooltipTrigger
               render={
@@ -174,7 +190,7 @@ export function PreviewChromeRow({
                       inputRef.current?.blur();
                     }
                   }}
-                  placeholder="Search or enter URL"
+                  placeholder={t("workspace.preview.addressPlaceholder")}
                   spellCheck={false}
                   disabled={inputDisabled}
                   data-preview-url-input
@@ -194,19 +210,26 @@ export function PreviewChromeRow({
                         variant="ghost"
                         size="icon-xs"
                         onClick={onOpenInBrowser}
-                        aria-label="Open in system browser"
+                        aria-label={t("workspace.preview.openInSystemBrowser")}
                         type="button"
                       />
                     }
                   >
                     <ExternalLink />
                   </TooltipTrigger>
-                  <TooltipPopup>Open in system browser</TooltipPopup>
+                  <TooltipPopup>{t("workspace.preview.openInSystemBrowser")}</TooltipPopup>
                 </Tooltip>
               </span>
             </InputGroupAddon>
           ) : null}
+          {bookmark && !inputFocused ? (
+            <InputGroupAddon align="inline-end">
+              <PreviewBookmarkButton url={bookmark.url} title={bookmark.title} />
+            </InputGroupAddon>
+          ) : null}
         </InputGroup>
+
+        {extensionActions}
 
         {onPickElement ? (
           <Tooltip>
@@ -217,7 +240,11 @@ export function PreviewChromeRow({
                   size="icon-xs"
                   onClick={onPickElement}
                   disabled={pickDisabled}
-                  aria-label={pickActive ? "Cancel annotation" : "Annotate preview"}
+                  aria-label={t(
+                    pickActive
+                      ? "workspace.preview.cancelAnnotation"
+                      : "workspace.preview.annotate",
+                  )}
                   aria-pressed={pickActive ? "true" : "false"}
                   type="button"
                 />
@@ -229,8 +256,8 @@ export function PreviewChromeRow({
               {pickDisabled && pickDisabledReason
                 ? pickDisabledReason
                 : pickActive
-                  ? "Cancel annotation (Esc)"
-                  : "Annotate elements, regions, and drawings"}
+                  ? t("workspace.preview.cancelAnnotationHint")
+                  : t("workspace.preview.annotateHint")}
             </TooltipPopup>
           </Tooltip>
         ) : null}
@@ -242,7 +269,11 @@ export function PreviewChromeRow({
                   variant={recording ? "secondary" : "ghost"}
                   size="icon-xs"
                   onClick={(event) => onCapture(event.shiftKey)}
-                  aria-label={recording ? "Stop recording" : "Capture screenshot"}
+                  aria-label={t(
+                    recording
+                      ? "workspace.preview.stopRecording"
+                      : "workspace.preview.captureScreenshot",
+                  )}
                   type="button"
                   className="relative"
                   disabled={captureDisabled}
@@ -255,7 +286,7 @@ export function PreviewChromeRow({
               ) : null}
             </TooltipTrigger>
             <TooltipPopup>
-              {recording ? "Stop recording" : "Screenshot · Shift-click to record"}
+              {t(recording ? "workspace.preview.stopRecording" : "workspace.preview.captureHint")}
             </TooltipPopup>
           </Tooltip>
         ) : null}
@@ -267,9 +298,11 @@ export function PreviewChromeRow({
                   variant={pictureInPicture ? "secondary" : "ghost"}
                   size="icon-xs"
                   onClick={onPictureInPicture}
-                  aria-label={
-                    pictureInPicture ? "Close floating preview" : "Float preview over chat"
-                  }
+                  aria-label={t(
+                    pictureInPicture
+                      ? "workspace.preview.closeFloating"
+                      : "workspace.preview.floatOverChat",
+                  )}
                   aria-pressed={pictureInPicture ? "true" : "false"}
                   type="button"
                   disabled={pictureInPictureDisabled}
@@ -279,7 +312,11 @@ export function PreviewChromeRow({
               <PictureInPicture2 className={cn(pictureInPicture && "text-primary")} />
             </TooltipTrigger>
             <TooltipPopup>
-              {pictureInPicture ? "Close floating preview" : "Float preview over chat"}
+              {t(
+                pictureInPicture
+                  ? "workspace.preview.closeFloating"
+                  : "workspace.preview.floatOverChat",
+              )}
             </TooltipPopup>
           </Tooltip>
         ) : null}

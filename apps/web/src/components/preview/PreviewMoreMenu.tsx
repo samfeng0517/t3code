@@ -17,14 +17,15 @@ import {
   MenuTrigger,
 } from "~/components/ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+import { useT, type MessageKey } from "~/i18n";
 
 const COLOR_SCHEME_OPTIONS: ReadonlyArray<{
   value: DesktopPreviewColorScheme;
-  label: string;
+  labelKey: MessageKey;
 }> = [
-  { value: "system", label: "System" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
+  { value: "system", labelKey: "workspace.preview.menu.colorScheme.system" },
+  { value: "light", labelKey: "workspace.preview.menu.colorScheme.light" },
+  { value: "dark", labelKey: "workspace.preview.menu.colorScheme.dark" },
 ];
 
 export interface PreviewMoreMenuActions {
@@ -49,22 +50,34 @@ interface Props {
   nativePictureInPicture: boolean;
   profileName: string | undefined;
   move?: { readonly label: string; readonly onMove: () => void };
+  /** Moves the tab between the browser workspace and a thread's panel. */
+  transfer?: { readonly label: string; readonly disabled: boolean; readonly onSelect: () => void };
 }
 
-const MenuTriggerButton = () => (
-  <Tooltip>
-    <TooltipTrigger
-      render={
-        <MenuTrigger
-          render={<Button variant="ghost" size="icon-xs" type="button" aria-label="Preview menu" />}
-        />
-      }
-    >
-      <MoreVertical />
-    </TooltipTrigger>
-    <TooltipPopup>More</TooltipPopup>
-  </Tooltip>
-);
+function MenuTriggerButton() {
+  const t = useT();
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <MenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                type="button"
+                aria-label={t("workspace.preview.menu.label")}
+              />
+            }
+          />
+        }
+      >
+        <MoreVertical />
+      </TooltipTrigger>
+      <TooltipPopup>{t("workspace.preview.menu.more")}</TooltipPopup>
+    </Tooltip>
+  );
+}
 
 export function PreviewMoreMenu({
   enabled,
@@ -76,7 +89,9 @@ export function PreviewMoreMenu({
   nativePictureInPicture,
   profileName,
   move,
+  transfer,
 }: Props) {
+  const t = useT();
   const zoomLabel = `${Math.round(zoomFactor * 100)}%`;
   const disabled = !enabled;
   return (
@@ -84,26 +99,39 @@ export function PreviewMoreMenu({
       <MenuTriggerButton />
       <MenuPopup align="end" sideOffset={6}>
         <MenuItem onClick={actions.hardReload} disabled={disabled}>
-          Hard reload
+          {t("workspace.preview.menu.hardReload")}
         </MenuItem>
         {actions.openDevTools ? (
           <MenuItem onClick={actions.openDevTools} disabled={disabled}>
-            Open DevTools
+            {t("workspace.preview.menu.openDevTools")}
           </MenuItem>
         ) : null}
         {actions.toggleNativePictureInPicture ? (
           <MenuItem onClick={actions.toggleNativePictureInPicture} disabled={disabled}>
-            {nativePictureInPicture
-              ? "Close separate preview window"
-              : "Open separate preview window"}
+            {t(
+              nativePictureInPicture
+                ? "workspace.preview.menu.closeSeparateWindow"
+                : "workspace.preview.menu.openSeparateWindow",
+            )}
           </MenuItem>
         ) : null}
         {move ? <MenuItem onClick={move.onMove}>{move.label}</MenuItem> : null}
+        {transfer ? (
+          <MenuItem onClick={transfer.onSelect} disabled={transfer.disabled}>
+            {transfer.label}
+          </MenuItem>
+        ) : null}
         <MenuItem onClick={onToggleDeviceToolbar} disabled={disabled}>
-          {deviceToolbarVisible ? "Hide device toolbar" : "Show device toolbar"}
+          {t(
+            deviceToolbarVisible
+              ? "workspace.preview.menu.hideDeviceToolbar"
+              : "workspace.preview.menu.showDeviceToolbar",
+          )}
         </MenuItem>
         <MenuSub>
-          <MenuSubTrigger disabled={disabled}>Appearance</MenuSubTrigger>
+          <MenuSubTrigger disabled={disabled}>
+            {t("workspace.preview.menu.appearance")}
+          </MenuSubTrigger>
           <MenuSubPopup>
             <MenuRadioGroup
               value={colorScheme}
@@ -111,7 +139,7 @@ export function PreviewMoreMenu({
             >
               {COLOR_SCHEME_OPTIONS.map((option) => (
                 <MenuRadioItem key={option.value} value={option.value}>
-                  {option.label}
+                  {t(option.labelKey)}
                 </MenuRadioItem>
               ))}
             </MenuRadioGroup>
@@ -124,14 +152,14 @@ export function PreviewMoreMenu({
           className="justify-between"
           disabled={disabled}
         >
-          <span>Zoom</span>
+          <span>{t("workspace.preview.menu.zoom")}</span>
           <span className="flex items-center gap-1">
             <Button
               variant="outline"
               size="icon-xs"
               type="button"
               onClick={actions.zoomOut}
-              aria-label="Zoom out"
+              aria-label={t("workspace.preview.menu.zoomOut")}
               disabled={disabled}
             >
               <Minus />
@@ -144,7 +172,7 @@ export function PreviewMoreMenu({
               size="icon-xs"
               type="button"
               onClick={actions.zoomIn}
-              aria-label="Zoom in"
+              aria-label={t("workspace.preview.menu.zoomIn")}
               disabled={disabled}
             >
               <PlusIcon />
@@ -154,7 +182,7 @@ export function PreviewMoreMenu({
               size="icon-xs"
               type="button"
               onClick={actions.resetZoom}
-              aria-label="Reset zoom"
+              aria-label={t("workspace.preview.menu.resetZoom")}
               disabled={disabled}
             >
               <RotateCcw />
@@ -165,11 +193,15 @@ export function PreviewMoreMenu({
         <MenuGroup>
           {profileName ? (
             <MenuGroupLabel className="max-w-64">
-              <span className="block truncate">Profile: {profileName}</span>
+              <span className="block truncate">
+                {t("workspace.preview.menu.profile", { profile: profileName })}
+              </span>
             </MenuGroupLabel>
           ) : null}
-          <MenuItem onClick={actions.clearCookies}>Clear cookies</MenuItem>
-          <MenuItem onClick={actions.clearCache}>Clear cache</MenuItem>
+          <MenuItem onClick={actions.clearCookies}>
+            {t("workspace.preview.menu.clearCookies")}
+          </MenuItem>
+          <MenuItem onClick={actions.clearCache}>{t("workspace.preview.menu.clearCache")}</MenuItem>
         </MenuGroup>
       </MenuPopup>
     </Menu>

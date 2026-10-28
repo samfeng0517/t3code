@@ -11,7 +11,6 @@ import { EnvironmentToolkit } from "./tools.ts";
 export function preferences(settings: ServerSettings) {
   const {
     defaultThreadEnvMode,
-    newWorktreesStartFromOrigin,
     enableProviderUpdateChecks,
     backgroundActivity,
     sourceControlWritingStyle,
@@ -19,7 +18,6 @@ export function preferences(settings: ServerSettings) {
   const characters = Array.from(sourceControlWritingStyle.customInstructions);
   return {
     defaultThreadEnvMode,
-    newWorktreesStartFromOrigin,
     enableProviderUpdateChecks,
     backgroundActivity: { profile: backgroundActivity.profile },
     sourceControlWritingStyle: {

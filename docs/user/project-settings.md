@@ -168,6 +168,61 @@ itself, or **Skip** to leave them for a setup script. It resolves in the same or
 workspace default: a `"worktreeSubmodules"` value in the `t3.json` of the branch being checked out
 applies when the project and environment are both on **Inherit**.
 
+## Superset and Orca project files
+
+A repository already set up for Superset or Orca works without a `t3.json`. When a checkout has no
+`t3.json`, the **Import scripts** menu in the project's **Actions** settings and the scripts menu in
+the thread panel offer the scripts declared in `orca.yaml`, or, if it declares none, in
+`.superset/config.json`. A `t3.json`, even an invalid one, takes precedence over both. Nothing from
+these files runs until you import it; importing adds it to the project's actions as follows.
+
+| File                                | Becomes                                                                                                                                     |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Superset `setup`                    | **Superset setup**, run when a worktree is created; the agent starts right away                                                             |
+| Superset `run`                      | **Superset run**, an action you start yourself                                                                                              |
+| Superset `teardown`                 | **Superset teardown**, run in the thread's worktree before it is removed                                                                    |
+| Superset `cwd`                      | The folder the commands above run in. A file whose `cwd` is absolute or leaves the repository is ignored                                    |
+| Orca `scripts.setup`                | **Orca setup**, run through `bash` with `set -e` when a worktree is created; with `setupAgentStartupPolicy: wait-for-setup` the agent waits |
+| Orca `defaultTabs` with a `command` | An action named after the tab's `title`                                                                                                     |
+| Orca `scripts.archive`              | **Orca archive**, run in the thread's worktree before it is removed                                                                         |
+
+Superset commands for one key run in order, each only if the previous one succeeded. A key that is
+missing falls back to `.superset/setup.sh`, `.superset/run.sh` or `.superset/teardown.sh`; an empty
+list means nothing runs. `.superset/config.local.json` is merged in: a list replaces that key's
+commands, and `{ "before": [...], "after": [...] }` wraps them.
+
+Any action, including one in `t3.json` with `"runOnWorktreeRemove": true`, can run before a
+worktree is removed: turn on **Run in the thread's worktree before it is removed** in the action's
+editor. It runs when you delete a thread together with its worktree and when storage cleanup
+removes one, never in the main checkout. It gets one minute, and a failure is logged without
+stopping the removal. Delete the action, or turn the switch off, to stop it.
+
+Every thread terminal, including the ones actions run in, can read `SUPERSET_ROOT_PATH`,
+`SUPERSET_WORKSPACE_PATH`, `SUPERSET_WORKSPACE_NAME`, `ORCA_ROOT_PATH`, `ORCA_WORKTREE_PATH`,
+`ORCA_WORKSPACE_NAME`, `CONDUCTOR_ROOT_PATH` and `GHOSTX_ROOT_PATH`. Root paths point to the main
+checkout, workspace paths to the thread's worktree (or the main checkout for a local thread), and
+the name is the worktree folder's name.
+
+New worktrees also receive gitignored files from the main checkout, whichever file supplies the
+scripts and even alongside a `t3.json`:
+
+- Paths listed in `.worktreeinclude`, one per line, are copied. Comments (`#`), globs and `!`
+  lines are skipped. Copies are private and existing files are kept. Each entry is checked against
+  what is left of a 2 GiB and 50,000-file budget; one that does not fit is skipped, and later,
+  smaller entries are still copied.
+- Folders listed under `worktree.sharedDirectories` in `orca.yaml` are linked, so every worktree
+  shares the main checkout's copy. Git does not treat a link as an ignored folder, so T3 Code adds
+  each linked path to the repository's `.git/info/exclude` to keep worktrees clean. Those lines are
+  never removed; delete them yourself if you stop sharing a folder.
+
+Only paths that exist and are gitignored in the main checkout qualify. Paths behind a symlink or
+inside a submodule are skipped, and nothing is written through a folder that the checked-out branch
+turns into a symlink. Skipped entries appear as a warning on the **Check out files** step of the
+worktree setup card.
+
+T3 Code does not read Superset's per-user overrides under `~/.superset`, Orca's `issueCommand` or
+`environmentRecipes`, or `defaultTabs` colors.
+
 ## Worktree location
 
 New worktrees go in the `worktrees` folder of the T3 home directory. To put them somewhere else,

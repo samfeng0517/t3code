@@ -4,7 +4,12 @@ import { X } from "lucide-react";
 import { isValidHistoryTimestamp, type BrowserHistoryEntry } from "~/browserHistoryStore";
 import { RelativeTime } from "~/components/RelativeTime";
 
-import { PreviewFaviconIcon } from "./PreviewFaviconIcon";
+import { useFaviconForUrlInAnyProject } from "~/browserFaviconStore";
+import { faviconUrlForOrigin } from "~/lib/favicon";
+
+import { BrowserMockup } from "./BrowserMockup";
+import { FaviconImage } from "./PreviewFaviconIcon";
+import { useT } from "~/i18n";
 
 interface Props {
   threadRef: ScopedThreadRef;
@@ -14,6 +19,8 @@ interface Props {
 }
 
 export function PreviewRecentUrlCard({ threadRef, entry, onOpen, onRemove }: Props) {
+  const t = useT();
+  const capturedFavicon = useFaviconForUrlInAnyProject(threadRef, entry.url);
   const parsed = new URL(entry.url);
   const path = parsed.pathname === "/" ? "" : parsed.pathname;
   const label = `${parsed.host}${path}${parsed.search}${parsed.hash}`;
@@ -27,7 +34,11 @@ export function PreviewRecentUrlCard({ threadRef, entry, onOpen, onRemove }: Pro
         onClick={onOpen}
         className="flex w-full items-center gap-3 px-3 py-3 pr-10 text-left hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
-        <PreviewFaviconIcon threadRef={threadRef} url={entry.url} />
+        <FaviconImage
+          sources={[capturedFavicon, faviconUrlForOrigin(entry.url, 32)]}
+          fallback={<BrowserMockup className="size-7 shrink-0" />}
+          className="size-7 shrink-0 rounded object-contain"
+        />
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-sm font-medium text-foreground">
             {entry.title ?? label}
@@ -40,7 +51,7 @@ export function PreviewRecentUrlCard({ threadRef, entry, onOpen, onRemove }: Pro
       </button>
       <button
         type="button"
-        aria-label={`Remove ${label} from history`}
+        aria-label={t("workspace.preview.empty.removeRecent", { url: label })}
         onClick={onRemove}
         className="absolute right-3 rounded p-1 text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring group-hover:opacity-100"
       >

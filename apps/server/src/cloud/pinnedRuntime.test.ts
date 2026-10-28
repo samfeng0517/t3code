@@ -5,20 +5,24 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
+import { AppSelfUpdateEnabled } from "@t3tools/shared/appSelfUpdate";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
 import * as ProcessRunner from "../processRunner.ts";
 import {
   ensurePinnedRuntimeInstalled,
+  FORK_RELEASE_BASE_URL_REQUIRED_MESSAGE,
   pinnedRuntimeCommand,
   pinnedRuntimePaths,
   PinnedRuntimeInstallError,
+  PinnedRuntimePreflightBlockedError,
   type PinnedRuntimeProgress,
   prunePinnedRuntimes,
 } from "./pinnedRuntime.ts";
@@ -66,241 +70,351 @@ const extractingRunner = (fs: FileSystem.FileSystem, path: Path.Path, commands: 
       }),
   });
 
-it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
-  it.effect("installs the verified release archive as the runtime executable", () =>
+it.layer(Layer.merge(NodeServices.layer, Layer.succeed(AppSelfUpdateEnabled, true)))(
+  "ensurePinnedRuntimeInstalled",
+  (it) => {
+    it.effect("installs the verified release archive as the runtime executable", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-archive-" });
+        const requests: string[] = [];
+        const commands: string[] = [];
+        const paths = yield* ensurePinnedRuntimeInstalled({
+          baseDir,
+          version,
+          fs,
+          path,
+          platform: "linux",
+          arch: "x64",
+          httpClient: releaseHttpClient(yield* validChecksums, requests),
+          releaseBaseUrl: "https://releases.example/download",
+          runner: extractingRunner(fs, path, commands),
+          validate: (staging) =>
+            fs.exists(staging.entryPath).pipe(
+              Effect.flatMap((exists) => (exists ? Effect.void : Effect.die("missing runtime"))),
+              Effect.orDie,
+            ),
+        });
+        assert.equal(paths.entryPath, path.join(paths.versionDir, "t3"));
+        assert.deepEqual(pinnedRuntimeCommand(paths), { command: paths.entryPath, args: [] });
+        assert.deepEqual(requests, [
+          `https://releases.example/download/v${version}/SHA256SUMS`,
+          `https://releases.example/download/v${version}/${archiveName}`,
+        ]);
+        assert.deepEqual(commands, ["tar"]);
+        assert.equal(yield* fs.readFileString(paths.sentinelPath), `${version}\n`);
+        assert.isFalse(yield* fs.exists(path.join(paths.versionDir, "t3-runtime-archive")));
+      }),
+    );
+
+    it.effect(
+      "cleans up an interrupted download without reporting verification or extraction",
+      () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const baseDir = yield* fs.makeTempDirectoryScoped({
+            prefix: "t3-pinned-progress-failed-",
+          });
+          const checksums = yield* validChecksums;
+          const progress: PinnedRuntimeProgress[] = [];
+          let cancelled = false;
+          const client = HttpClient.make((request) =>
+            Effect.succeed(
+              HttpClientResponse.fromWeb(
+                request,
+                request.url.endsWith("/SHA256SUMS")
+                  ? new Response(checksums)
+                  : new Response(
+                      new ReadableStream({
+                        start(controller) {
+                          controller.enqueue(archiveBytes.slice(0, 4));
+                        },
+                        cancel() {
+                          cancelled = true;
+                        },
+                      }),
+                    ),
+              ),
+            ),
+          );
+          const firstChunk = yield* Deferred.make<void>();
+          const install = yield* ensurePinnedRuntimeInstalled({
+            baseDir,
+            version,
+            fs,
+            path,
+            platform: "linux",
+            arch: "x64",
+            httpClient: client,
+            runner: extractingRunner(fs, path),
+            validate: () => Effect.die("must not validate an interrupted archive"),
+            onProgress: (event) => {
+              progress.push(event);
+              if (event.stage === "download" && event.received === 4)
+                Deferred.doneUnsafe(firstChunk, Effect.void);
+            },
+          }).pipe(Effect.forkScoped);
+          yield* Deferred.await(firstChunk);
+          yield* Fiber.interrupt(install);
+          assert.deepEqual(progress.at(-1), { stage: "download", received: 4, total: undefined });
+          assert.isTrue(progress.every((event) => event.stage === "download"));
+          assert.isTrue(cancelled);
+          assert.deepEqual(yield* fs.readDirectory(path.join(baseDir, "runtime", "versions")), []);
+        }),
+    );
+
+    it.effect("refuses an archive whose checksum does not match the release", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-archive-bad-" });
+        const commands: string[] = [];
+        const error = yield* ensurePinnedRuntimeInstalled({
+          baseDir,
+          version,
+          fs,
+          path,
+          platform: "linux",
+          arch: "x64",
+          httpClient: releaseHttpClient(`${"0".repeat(64)}  ${archiveName}\n`),
+          runner: extractingRunner(fs, path, commands),
+          validate: () => Effect.die("must not validate an unverified archive"),
+        }).pipe(Effect.flip);
+        assert.instanceOf(error, PinnedRuntimeInstallError);
+        assert.equal(error.step, "verifying the t3 release archive checksum");
+        assert.deepEqual(commands, []);
+        assert.deepEqual(yield* fs.readDirectory(path.join(baseDir, "runtime", "versions")), []);
+      }),
+    );
+
+    it.effect("validates a staging tree before atomically publishing it", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-runtime-test-" });
+        const finalPaths = pinnedRuntimePaths(path, baseDir, version, "linux");
+        let validatedDirectory = "";
+
+        const installed = yield* ensurePinnedRuntimeInstalled({
+          baseDir,
+          version,
+          fs,
+          path,
+          platform: "linux",
+          arch: "x64",
+          httpClient: releaseHttpClient(yield* validChecksums),
+          runner: extractingRunner(fs, path),
+          validate: (staging) =>
+            Effect.gen(function* () {
+              validatedDirectory = staging.versionDir;
+              assert.isFalse(yield* fs.exists(finalPaths.versionDir));
+              assert.isTrue(yield* fs.exists(staging.entryPath));
+            }).pipe(Effect.orDie),
+        });
+
+        assert.notEqual(validatedDirectory, finalPaths.versionDir);
+        assert.deepEqual(installed, finalPaths);
+        assert.isTrue(yield* fs.exists(finalPaths.entryPath));
+        assert.equal(yield* fs.readFileString(finalPaths.sentinelPath), `${version}\n`);
+      }),
+    );
+
+    it.effect("removes staging and leaves no final runtime when validation fails", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-runtime-test-" });
+        const finalPaths = pinnedRuntimePaths(path, baseDir, version, "linux");
+
+        yield* ensurePinnedRuntimeInstalled({
+          baseDir,
+          version,
+          fs,
+          path,
+          platform: "linux",
+          arch: "x64",
+          httpClient: releaseHttpClient(yield* validChecksums),
+          runner: extractingRunner(fs, path),
+          validate: () =>
+            Effect.fail(new PinnedRuntimeInstallError({ step: "validating the staged runtime" })),
+        }).pipe(Effect.flip);
+
+        assert.isFalse(yield* fs.exists(finalPaths.versionDir));
+        assert.deepEqual(
+          (yield* fs.readDirectory(path.dirname(finalPaths.versionDir))).filter((entry) =>
+            entry.startsWith(".staging-"),
+          ),
+          [],
+        );
+      }),
+    );
+
+    it.effect("replaces an incomplete pinned runtime", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-runtime-repair-" });
+        const finalPaths = pinnedRuntimePaths(path, baseDir, version, "linux");
+        yield* fs.makeDirectory(finalPaths.versionDir, { recursive: true });
+        yield* fs.writeFileString(path.join(finalPaths.versionDir, "partial"), "incomplete\n");
+
+        yield* ensurePinnedRuntimeInstalled({
+          baseDir,
+          version,
+          fs,
+          path,
+          platform: "linux",
+          arch: "x64",
+          httpClient: releaseHttpClient(yield* validChecksums),
+          runner: extractingRunner(fs, path),
+          validate: () => Effect.void,
+        });
+
+        assert.isFalse(yield* fs.exists(path.join(finalPaths.versionDir, "partial")));
+        assert.isTrue(yield* fs.exists(finalPaths.entryPath));
+      }),
+    );
+
+    it.effect("preserves a completed runtime when validation fails", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-runtime-repair-" });
+        const finalPaths = pinnedRuntimePaths(path, baseDir, version, "linux");
+        yield* fs.makeDirectory(path.dirname(finalPaths.entryPath), { recursive: true });
+        yield* fs.writeFileString(finalPaths.entryPath, "broken\n");
+        yield* fs.writeFileString(finalPaths.sentinelPath, `${version}\n`);
+
+        let validations = 0;
+        const requests: string[] = [];
+        yield* ensurePinnedRuntimeInstalled({
+          baseDir,
+          version,
+          fs,
+          path,
+          platform: "linux",
+          arch: "x64",
+          httpClient: releaseHttpClient(yield* validChecksums, requests),
+          runner: extractingRunner(fs, path),
+          validate: (paths) =>
+            Effect.gen(function* () {
+              validations += 1;
+              const source = yield* fs.readFileString(paths.entryPath).pipe(Effect.orDie);
+              if (source === "broken\n") {
+                return yield* new PinnedRuntimeInstallError({ step: "validating the runtime" });
+              }
+            }),
+        }).pipe(Effect.flip);
+
+        assert.equal(validations, 1);
+        assert.deepEqual(requests, []);
+        assert.equal(yield* fs.readFileString(finalPaths.entryPath), "broken\n");
+      }),
+    );
+  },
+);
+
+const forkInstall = (
+  fs: FileSystem.FileSystem,
+  path: Path.Path,
+  baseDir: string,
+  checksums: string,
+  requests: string[],
+  releaseBaseUrl?: string,
+) =>
+  ensurePinnedRuntimeInstalled({
+    baseDir,
+    version,
+    fs,
+    path,
+    platform: "linux",
+    arch: "x64",
+    httpClient: releaseHttpClient(checksums, requests),
+    ...(releaseBaseUrl === undefined ? {} : { releaseBaseUrl }),
+    runner: extractingRunner(fs, path),
+    validate: () => Effect.void,
+  });
+
+it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled on a fork build", (it) => {
+  it.effect.each([undefined, "", "  "])(
+    "refuses the upstream archive before any download when the base URL is %j",
+    (releaseBaseUrl) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-fork-" });
+        const requests: string[] = [];
+        const error = yield* forkInstall(
+          fs,
+          path,
+          baseDir,
+          yield* validChecksums,
+          requests,
+          releaseBaseUrl,
+        ).pipe(Effect.provideService(AppSelfUpdateEnabled, false), Effect.flip);
+        assert.instanceOf(error, PinnedRuntimePreflightBlockedError);
+        assert.equal(error.reason, FORK_RELEASE_BASE_URL_REQUIRED_MESSAGE);
+        assert.equal(error.kind, "fork-release-url-required");
+        assert.include(error.message, "T3CODE_RELEASE_BASE_URL");
+        assert.deepEqual(requests, []);
+        assert.isFalse(yield* fs.exists(path.join(baseDir, "runtime")));
+      }),
+  );
+
+  it.effect("downloads from the configured base URL", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-archive-" });
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-fork-url-" });
       const requests: string[] = [];
-      const commands: string[] = [];
-      const paths = yield* ensurePinnedRuntimeInstalled({
-        baseDir,
-        version,
+      yield* forkInstall(
         fs,
         path,
-        platform: "linux",
-        arch: "x64",
-        httpClient: releaseHttpClient(yield* validChecksums, requests),
-        releaseBaseUrl: "https://releases.example/download",
-        runner: extractingRunner(fs, path, commands),
-        validate: (staging) =>
-          fs.exists(staging.entryPath).pipe(
-            Effect.flatMap((exists) => (exists ? Effect.void : Effect.die("missing runtime"))),
-            Effect.orDie,
-          ),
-      });
-      assert.equal(paths.entryPath, path.join(paths.versionDir, "t3"));
-      assert.deepEqual(pinnedRuntimeCommand(paths), { command: paths.entryPath, args: [] });
+        baseDir,
+        yield* validChecksums,
+        requests,
+        "https://releases.example/fork",
+      ).pipe(Effect.provideService(AppSelfUpdateEnabled, false));
       assert.deepEqual(requests, [
-        `https://releases.example/download/v${version}/SHA256SUMS`,
-        `https://releases.example/download/v${version}/${archiveName}`,
+        `https://releases.example/fork/v${version}/SHA256SUMS`,
+        `https://releases.example/fork/v${version}/${archiveName}`,
       ]);
-      assert.deepEqual(commands, ["tar"]);
-      assert.equal(yield* fs.readFileString(paths.sentinelPath), `${version}\n`);
-      assert.isFalse(yield* fs.exists(path.join(paths.versionDir, "t3-runtime-archive")));
     }),
   );
 
-  it.effect("cleans up an interrupted download without reporting verification or extraction", () =>
+  it.effect("still reuses a completed runtime without a base URL", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-progress-failed-" });
-      const checksums = yield* validChecksums;
-      const progress: PinnedRuntimeProgress[] = [];
-      let cancelled = false;
-      const client = HttpClient.make((request) =>
-        Effect.succeed(
-          HttpClientResponse.fromWeb(
-            request,
-            request.url.endsWith("/SHA256SUMS")
-              ? new Response(checksums)
-              : new Response(
-                  new ReadableStream({
-                    start(controller) {
-                      controller.enqueue(archiveBytes.slice(0, 4));
-                    },
-                    cancel() {
-                      cancelled = true;
-                    },
-                  }),
-                ),
-          ),
-        ),
-      );
-      const firstChunk = yield* Deferred.make<void>();
-      const install = yield* ensurePinnedRuntimeInstalled({
-        baseDir,
-        version,
-        fs,
-        path,
-        platform: "linux",
-        arch: "x64",
-        httpClient: client,
-        runner: extractingRunner(fs, path),
-        validate: () => Effect.die("must not validate an interrupted archive"),
-        onProgress: (event) => {
-          progress.push(event);
-          if (event.stage === "download" && event.received === 4)
-            Deferred.doneUnsafe(firstChunk, Effect.void);
-        },
-      }).pipe(Effect.forkScoped);
-      yield* Deferred.await(firstChunk);
-      yield* Fiber.interrupt(install);
-      assert.deepEqual(progress.at(-1), { stage: "download", received: 4, total: undefined });
-      assert.isTrue(progress.every((event) => event.stage === "download"));
-      assert.isTrue(cancelled);
-      assert.deepEqual(yield* fs.readDirectory(path.join(baseDir, "runtime", "versions")), []);
-    }),
-  );
-
-  it.effect("refuses an archive whose checksum does not match the release", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-archive-bad-" });
-      const commands: string[] = [];
-      const error = yield* ensurePinnedRuntimeInstalled({
-        baseDir,
-        version,
-        fs,
-        path,
-        platform: "linux",
-        arch: "x64",
-        httpClient: releaseHttpClient(`${"0".repeat(64)}  ${archiveName}\n`),
-        runner: extractingRunner(fs, path, commands),
-        validate: () => Effect.die("must not validate an unverified archive"),
-      }).pipe(Effect.flip);
-      assert.instanceOf(error, PinnedRuntimeInstallError);
-      assert.equal(error.step, "verifying the t3 release archive checksum");
-      assert.deepEqual(commands, []);
-      assert.deepEqual(yield* fs.readDirectory(path.join(baseDir, "runtime", "versions")), []);
-    }),
-  );
-
-  it.effect("validates a staging tree before atomically publishing it", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-runtime-test-" });
-      const finalPaths = pinnedRuntimePaths(path, baseDir, version, "linux");
-      let validatedDirectory = "";
-
-      const installed = yield* ensurePinnedRuntimeInstalled({
-        baseDir,
-        version,
-        fs,
-        path,
-        platform: "linux",
-        arch: "x64",
-        httpClient: releaseHttpClient(yield* validChecksums),
-        runner: extractingRunner(fs, path),
-        validate: (staging) =>
-          Effect.gen(function* () {
-            validatedDirectory = staging.versionDir;
-            assert.isFalse(yield* fs.exists(finalPaths.versionDir));
-            assert.isTrue(yield* fs.exists(staging.entryPath));
-          }).pipe(Effect.orDie),
-      });
-
-      assert.notEqual(validatedDirectory, finalPaths.versionDir);
-      assert.deepEqual(installed, finalPaths);
-      assert.isTrue(yield* fs.exists(finalPaths.entryPath));
-      assert.equal(yield* fs.readFileString(finalPaths.sentinelPath), `${version}\n`);
-    }),
-  );
-
-  it.effect("removes staging and leaves no final runtime when validation fails", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-runtime-test-" });
-      const finalPaths = pinnedRuntimePaths(path, baseDir, version, "linux");
-
-      yield* ensurePinnedRuntimeInstalled({
-        baseDir,
-        version,
-        fs,
-        path,
-        platform: "linux",
-        arch: "x64",
-        httpClient: releaseHttpClient(yield* validChecksums),
-        runner: extractingRunner(fs, path),
-        validate: () =>
-          Effect.fail(new PinnedRuntimeInstallError({ step: "validating the staged runtime" })),
-      }).pipe(Effect.flip);
-
-      assert.isFalse(yield* fs.exists(finalPaths.versionDir));
-      assert.deepEqual(
-        (yield* fs.readDirectory(path.dirname(finalPaths.versionDir))).filter((entry) =>
-          entry.startsWith(".staging-"),
-        ),
-        [],
-      );
-    }),
-  );
-
-  it.effect("replaces an incomplete pinned runtime", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-runtime-repair-" });
-      const finalPaths = pinnedRuntimePaths(path, baseDir, version, "linux");
-      yield* fs.makeDirectory(finalPaths.versionDir, { recursive: true });
-      yield* fs.writeFileString(path.join(finalPaths.versionDir, "partial"), "incomplete\n");
-
-      yield* ensurePinnedRuntimeInstalled({
-        baseDir,
-        version,
-        fs,
-        path,
-        platform: "linux",
-        arch: "x64",
-        httpClient: releaseHttpClient(yield* validChecksums),
-        runner: extractingRunner(fs, path),
-        validate: () => Effect.void,
-      });
-
-      assert.isFalse(yield* fs.exists(path.join(finalPaths.versionDir, "partial")));
-      assert.isTrue(yield* fs.exists(finalPaths.entryPath));
-    }),
-  );
-
-  it.effect("preserves a completed runtime when validation fails", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-runtime-repair-" });
-      const finalPaths = pinnedRuntimePaths(path, baseDir, version, "linux");
-      yield* fs.makeDirectory(path.dirname(finalPaths.entryPath), { recursive: true });
-      yield* fs.writeFileString(finalPaths.entryPath, "broken\n");
-      yield* fs.writeFileString(finalPaths.sentinelPath, `${version}\n`);
-
-      let validations = 0;
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-fork-cached-" });
+      const paths = pinnedRuntimePaths(path, baseDir, version, "linux");
+      yield* fs.makeDirectory(paths.versionDir, { recursive: true });
+      yield* fs.writeFileString(paths.entryPath, "#!/bin/sh\n");
+      yield* fs.writeFileString(paths.sentinelPath, `${version}\n`);
       const requests: string[] = [];
-      yield* ensurePinnedRuntimeInstalled({
-        baseDir,
-        version,
-        fs,
-        path,
-        platform: "linux",
-        arch: "x64",
-        httpClient: releaseHttpClient(yield* validChecksums, requests),
-        runner: extractingRunner(fs, path),
-        validate: (paths) =>
-          Effect.gen(function* () {
-            validations += 1;
-            const source = yield* fs.readFileString(paths.entryPath).pipe(Effect.orDie);
-            if (source === "broken\n") {
-              return yield* new PinnedRuntimeInstallError({ step: "validating the runtime" });
-            }
-          }),
-      }).pipe(Effect.flip);
-
-      assert.equal(validations, 1);
+      const installed = yield* forkInstall(fs, path, baseDir, "", requests).pipe(
+        Effect.provideService(AppSelfUpdateEnabled, false),
+      );
+      assert.equal(installed.entryPath, paths.entryPath);
       assert.deepEqual(requests, []);
-      assert.equal(yield* fs.readFileString(finalPaths.entryPath), "broken\n");
+    }),
+  );
+
+  it.effect("keeps the upstream default when self-update is enabled", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-upstream-" });
+      const requests: string[] = [];
+      yield* forkInstall(fs, path, baseDir, yield* validChecksums, requests).pipe(
+        Effect.provideService(AppSelfUpdateEnabled, true),
+      );
+      assert.deepEqual(requests, [
+        `https://github.com/pingdotgg/t3code/releases/download/v${version}/SHA256SUMS`,
+        `https://github.com/pingdotgg/t3code/releases/download/v${version}/${archiveName}`,
+      ]);
     }),
   );
 });

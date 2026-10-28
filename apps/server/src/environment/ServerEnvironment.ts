@@ -4,6 +4,7 @@ import {
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   type ExecutionEnvironmentDescriptor,
 } from "@t3tools/contracts";
+import { AppSelfUpdateEnabled } from "@t3tools/shared/appSelfUpdate";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -193,11 +194,17 @@ export const make = Effect.gen(function* () {
   const label = yield* resolveServerEnvironmentLabel({ cwdBaseName });
   const machine = yield* detectServerEnvironmentMachineKind();
   const launcher = yield* resolveServiceLauncherMode();
-  const serverSelfUpdate = resolveServerSelfUpdateCapability({
-    desktopManaged: serverConfig.mode === "desktop",
-    launcherManaged: launcher.managed,
-  });
-  const serverInstallation = serverSelfUpdate === null ? yield* resolveServerInstallation : null;
+  // A fork build advertises no update method, so clients offer neither a remote update nor a
+  // manual npm command that would install upstream.
+  const appSelfUpdateEnabled = yield* AppSelfUpdateEnabled;
+  const serverSelfUpdate = appSelfUpdateEnabled
+    ? resolveServerSelfUpdateCapability({
+        desktopManaged: serverConfig.mode === "desktop",
+        launcherManaged: launcher.managed,
+      })
+    : null;
+  const serverInstallation =
+    appSelfUpdateEnabled && serverSelfUpdate === null ? yield* resolveServerInstallation : null;
   // Desktop and server ship together; a control fd guarantees requestDesktopUpdate support.
 
   const desktopAppUpdate =
@@ -233,8 +240,10 @@ export const make = Effect.gen(function* () {
       settledWorktreeCleanup: true,
       worktreesDirectory: true,
       threadAutoSettlementScope: true,
+      threadAutoCleanup: true,
       threadRestartContinuation: true,
       projectSettingsOverrides: true,
+      compatProjectFiles: true,
       projectProviderInstanceOverrides: true,
       threadSnooze: true,
       environmentThemes: true,
@@ -248,6 +257,7 @@ export const make = Effect.gen(function* () {
       threadAutoSettleOptOut: true,
       threadTitleRegeneration: true,
       commandOutputStreaming: true,
+      modSurfaces: true,
       threadVisitedTracking: true,
       threadPullRequests: true,
       threadPullRequestWatch: true,

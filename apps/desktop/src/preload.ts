@@ -8,6 +8,7 @@ import type {
   DesktopSnapShotEvent,
 } from "@t3tools/contracts";
 import { exposeClerkBridge } from "@clerk/electron/preload";
+import { injectBrowserAction } from "electron-chrome-extensions/browser-action";
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 
 import * as IpcChannels from "./ipc/channels.ts";
@@ -31,6 +32,7 @@ function isSnapShotEvent(value: unknown): value is DesktopSnapShotEvent {
 }
 
 exposeClerkBridge({ passkeys: true });
+injectBrowserAction();
 
 // Runs before any app script reads localStorage. See DesktopLegacyLocalStorage.
 try {
@@ -350,6 +352,22 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     listBrowserImportSources: () => ipcRenderer.invoke(IpcChannels.PREVIEW_IMPORT_SOURCES_CHANNEL),
     importBrowserCookies: (input) =>
       ipcRenderer.invoke(IpcChannels.PREVIEW_IMPORT_COOKIES_CHANNEL, input),
+    listBrowserBookmarkSources: () =>
+      ipcRenderer.invoke(IpcChannels.PREVIEW_BOOKMARK_SOURCES_CHANNEL),
+    readBrowserBookmarks: (input) =>
+      ipcRenderer.invoke(IpcChannels.PREVIEW_READ_BOOKMARKS_CHANNEL, input),
+    extensions: {
+      list: () => ipcRenderer.invoke(IpcChannels.BROWSER_EXTENSIONS_LIST_CHANNEL),
+      add: (path) => ipcRenderer.invoke(IpcChannels.BROWSER_EXTENSIONS_ADD_CHANNEL, { path }),
+      setEnabled: (path, enabled) =>
+        ipcRenderer.invoke(IpcChannels.BROWSER_EXTENSIONS_SET_ENABLED_CHANNEL, { path, enabled }),
+      remove: (path) => ipcRenderer.invoke(IpcChannels.BROWSER_EXTENSIONS_REMOVE_CHANNEL, { path }),
+      listSources: () => ipcRenderer.invoke(IpcChannels.BROWSER_EXTENSIONS_LIST_SOURCES_CHANNEL),
+      addFromSource: (input) =>
+        ipcRenderer.invoke(IpcChannels.BROWSER_EXTENSIONS_ADD_FROM_SOURCE_CHANNEL, input),
+      updateFromSources: () =>
+        ipcRenderer.invoke(IpcChannels.BROWSER_EXTENSIONS_UPDATE_FROM_SOURCES_CHANNEL),
+    },
     clearCookies: (environmentId, profileId) =>
       ipcRenderer.invoke(IpcChannels.PREVIEW_CLEAR_COOKIES_CHANNEL, { environmentId, profileId }),
     clearCache: (environmentId, profileId) =>

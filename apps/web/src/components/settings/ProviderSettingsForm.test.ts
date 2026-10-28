@@ -41,6 +41,23 @@ describe("ProviderSettingsForm helpers", () => {
     expect(next).toEqual({ forkOwned: 1 });
   });
 
+  it("should refuse a value its schema rejects when a text field is committed", () => {
+    const claude = providerClients.get(ProviderDriverKind.make("claudeAgent"));
+    expect(claude).toBeDefined();
+    const autoCompact = deriveProviderSettingsFields(claude!).find(
+      (field) => field.key === "autoCompactWindow",
+    );
+    expect(autoCompact).toBeDefined();
+
+    expect(autoCompact!.accepts("50")).toBe(false);
+    expect(autoCompact!.accepts("1001")).toBe(false);
+    expect(autoCompact!.accepts("400")).toBe(true);
+    expect(autoCompact!.accepts(" 400 ")).toBe(true);
+    // Empty leaves the threshold to Claude, and a full token count from older settings still decodes.
+    expect(autoCompact!.accepts("")).toBe(true);
+    expect(autoCompact!.accepts("300000")).toBe(true);
+  });
+
   it("stores false boolean fields when true is the default", () => {
     const next = nextProviderConfigWithFieldValue(
       undefined,
@@ -50,6 +67,7 @@ describe("ProviderSettingsForm helpers", () => {
         label: "Experimental",
         clearWhenEmpty: "omit",
         defaultBooleanValue: true,
+        accepts: () => true,
       },
       false,
     );

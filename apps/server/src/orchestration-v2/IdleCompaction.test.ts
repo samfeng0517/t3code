@@ -153,4 +153,16 @@ describe("idleCompactionWindow", () => {
     archived.thread = { ...archived.thread, archivedAt: at() };
     expect(idleCompactionWindow(archived, NOW_MS)).toBeNull();
   });
+
+  it("should open the window two minutes before expiry when the cache outlives a real break", () => {
+    expect(idleCompactionWindow(records({ cacheExpiresInMs: 60 * MINUTE_MS }), NOW_MS)).toEqual({
+      runId,
+      startMs: NOW_MS + 58 * MINUTE_MS,
+      endMs: NOW_MS + 60 * MINUTE_MS,
+    });
+  });
+
+  it("should skip compaction when a five-minute cache would compact moments after the turn", () => {
+    expect(idleCompactionWindow(records({ cacheExpiresInMs: 5 * MINUTE_MS }), NOW_MS)).toBeNull();
+  });
 });

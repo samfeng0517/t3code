@@ -19,9 +19,11 @@ export type ClosedView =
       threadRef: ScopedThreadRef;
       surface: Exclude<RightPanelSurface, { kind: "terminal" }>;
     }
-  | { kind: "browser"; threadRef: ScopedThreadRef; snapshot: PreviewSessionSnapshot };
+  | { kind: "browser"; threadRef: ScopedThreadRef; snapshot: PreviewSessionSnapshot }
+  | { kind: "git-tab"; threadRef: ScopedThreadRef; environmentId: string; projectId: string };
 
-export type ClosedViewEntry = ClosedView & { id: string };
+/** `closedAt` is missing on entries saved before it was recorded. */
+export type ClosedViewEntry = ClosedView & { id: string; closedAt?: number };
 
 interface ClosedViewStoreState {
   entries: ClosedViewEntry[];
@@ -42,6 +44,12 @@ const sameTarget = (entry: ClosedViewEntry, view: ClosedView): boolean => {
       return view.kind === "panel-tab" && entry.surface.id === view.surface.id;
     case "browser":
       return view.kind === "browser" && entry.snapshot.tabId === view.snapshot.tabId;
+    case "git-tab":
+      return (
+        view.kind === "git-tab" &&
+        entry.environmentId === view.environmentId &&
+        entry.projectId === view.projectId
+      );
   }
 };
 
@@ -55,7 +63,10 @@ const isAttachment = Schema.is(ChatFileAttachment);
 const isClosedViewEntry = (entry: unknown): entry is ClosedViewEntry => {
   const view = entry as ClosedViewEntry | null;
   if (!view || typeof view.id !== "string" || !isThreadRef(view.threadRef)) return false;
+  if (view.closedAt !== undefined && !Number.isFinite(view.closedAt)) return false;
   if (view.kind === "browser") return isSnapshot(view.snapshot);
+  if (view.kind === "git-tab")
+    return typeof view.environmentId === "string" && typeof view.projectId === "string";
   if (view.kind !== "panel-tab") return false;
   const surface = view.surface;
   if (!surface || typeof surface.id !== "string") return false;
@@ -63,6 +74,7 @@ const isClosedViewEntry = (entry: unknown): entry is ClosedViewEntry => {
     case "diff":
     case "files":
     case "pull-requests":
+    case "mods":
       return surface.id === surface.kind;
     case "preview":
       return surface.resourceId === null || typeof surface.resourceId === "string";
@@ -106,7 +118,7 @@ export const useClosedViewStore = create<ClosedViewStoreState>()(
         const id = randomUUID();
         set((state) => ({
           entries: [
-            { ...view, id },
+            { ...view, id, closedAt: Date.now() },
             ...state.entries.filter((entry) => !sameTarget(entry, view)),
           ].slice(0, 20),
         }));

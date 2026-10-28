@@ -3,6 +3,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { isWindowsAbsolutePath } from "@t3tools/shared/path";
 import { useState } from "react";
 
+import { useT, type Translate } from "~/i18n";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { useTheme } from "~/hooks/useTheme";
 import { getLocalFileManagerName, isWindowsPlatform } from "~/lib/utils";
@@ -19,10 +20,20 @@ import { CommandDialog, CommandDialogPopup, CommandFooterAction } from "../ui/co
 import { toastManager } from "../ui/toast";
 import { ProjectFaviconThumbnail } from "./ProjectFaviconThumbnail";
 
-function emptyMessage(query: string, error: string | null, isPending: boolean): string {
+function emptyMessage(
+  t: Translate,
+  query: string,
+  error: string | null,
+  isPending: boolean,
+): string {
   if (error) return error;
-  if (isPending) return query.trim() ? "Searching project files…" : "Indexing project files…";
-  return query.trim() ? "No matching image files." : "No image files found.";
+  if (isPending)
+    return query.trim()
+      ? t("settingsPages.projectFavicon.searching")
+      : t("settingsPages.projectFavicon.indexing");
+  return query.trim()
+    ? t("settingsPages.projectFavicon.noMatches")
+    : t("settingsPages.projectFavicon.noImages");
 }
 export function canPickExternalProjectFavicon(cwd: string, platform: string): boolean {
   return !isWindowsPlatform(platform) || isWindowsAbsolutePath(cwd);
@@ -37,6 +48,7 @@ export function ProjectFaviconPickerDialog(props: {
   readonly open: boolean;
   readonly projectName: string;
 }) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const [highlightedItemValue, setHighlightedItemValue] = useState<string | null>(null);
   const [isPickingExternal, setIsPickingExternal] = useState(false);
@@ -77,15 +89,15 @@ export function ProjectFaviconPickerDialog(props: {
     <CommandDialog open={props.open} onOpenChange={props.onOpenChange}>
       {props.open ? (
         <CommandDialogPopup
-          aria-label="Choose project icon"
+          aria-label={t("settingsPages.projectIcon.title")}
           className="overflow-hidden"
           onBackdropPointerDown={() => props.onOpenChange(false)}
         >
           <CommandPaletteContent
-            aria-label="Choose project icon"
+            aria-label={t("settingsPages.projectIcon.title")}
             autoHighlight="always"
-            escapeLabel="Close"
-            footerActionLabel="Select icon"
+            escapeLabel={t("common.close")}
+            footerActionLabel={t("settingsPages.projectFavicon.selectIcon")}
             footerTrailing={
               pickExternal ? (
                 <CommandFooterAction
@@ -101,19 +113,19 @@ export function ProjectFaviconPickerDialog(props: {
                       .catch((error: unknown) => {
                         toastManager.add({
                           type: "error",
-                          title: "Could not open image picker",
+                          title: t("settingsPages.projectFavicon.pickerFailed"),
                           description:
-                            error instanceof Error ? error.message : "An error occurred.",
+                            error instanceof Error ? error.message : t("common.errorOccurred"),
                         });
                       })
                       .finally(() => setIsPickingExternal(false));
                   }}
                 >
-                  {`Open in ${fileManagerName}`}
+                  {t("settingsPages.projectFavicon.openIn", { app: fileManagerName })}
                 </CommandFooterAction>
               ) : null
             }
-            inputProps={{ placeholder: "Search image files…" }}
+            inputProps={{ placeholder: t("settingsPages.projectFavicon.searchPlaceholder") }}
             mode="none"
             onItemHighlighted={(value) => {
               setHighlightedItemValue(typeof value === "string" ? value : null);
@@ -140,7 +152,7 @@ export function ProjectFaviconPickerDialog(props: {
                 props.onOpenChange(false);
                 void item.run();
               }}
-              emptyStateMessage={emptyMessage(query, result.error, result.isPending)}
+              emptyStateMessage={emptyMessage(t, query, result.error, result.isPending)}
             />
           </CommandPaletteContent>
         </CommandDialogPopup>

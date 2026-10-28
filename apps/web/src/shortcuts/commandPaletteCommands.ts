@@ -10,6 +10,7 @@ import { APPEARANCE_OPTIONS, notifyThemeSaveFailure } from "../components/Comman
 import { toggleThemeEditorForTheme } from "../components/settings/themeEditorStore";
 import { toastManager } from "../components/ui/toast";
 import { getThemeSnapshot, setAppearanceMode } from "../hooks/useTheme";
+import { t } from "../i18n";
 import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { type CommandHandler, type CommandScopeOptions, registerCommands } from "./dispatcher";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
@@ -73,7 +74,9 @@ export function installCommandPaletteCommands(
         }
         toastManager.add({
           id: "appearance-cycle",
-          title: `Appearance: ${APPEARANCE_OPTIONS.find((option) => option.mode === nextMode)?.label}`,
+          title: t("commandPalette.appearance.toast", {
+            mode: t(APPEARANCE_OPTIONS.find((option) => option.mode === nextMode)!.labelKey),
+          }),
           timeout: 1500,
         });
       },

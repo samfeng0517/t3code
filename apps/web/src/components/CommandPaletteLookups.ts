@@ -7,6 +7,7 @@ import {
 
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useClientSettings } from "../hooks/useSettings";
+import { useT } from "../i18n";
 import { getProjectOrderKey } from "../logicalProject";
 import { useProjects, useThreadShells } from "../state/entities";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
@@ -18,6 +19,7 @@ import { orderItemsByPreferredIds, sortLogicalProjectsForSidebar } from "./Sideb
 // source. Taking the source as an argument instead leaves the helper hook-free, and the
 // compiler then treats it as a plain function and caches nothing.
 export function useEnvironmentLookups() {
+  const t = useT();
   const { environments } = useEnvironments();
   const environmentLabelById = new Map(
     environments.map((environment) => [environment.environmentId, environment.label] as const),
@@ -30,7 +32,11 @@ export function useEnvironmentLookups() {
         environment.environmentId,
         {
           kind: isLocal ? "local" : "remote",
-          label: isPrimary ? "Local" : isLocal ? `${environment.label} (Local)` : environment.label,
+          label: isPrimary
+            ? t("commandPalette.environment.local")
+            : isLocal
+              ? t("commandPalette.environment.localNamed", { environment: environment.label })
+              : environment.label,
           machine: resolveEnvironmentMachineKind(environment.serverConfig),
         },
       ] as const;

@@ -17,6 +17,11 @@ const testState = vi.hoisted(() => ({
   sessionAtom: null as unknown,
 }));
 
+// These cover the upstream update actions that a fork build gates off.
+vi.mock(import("@t3tools/shared/appSelfUpdate"), async (original) => ({
+  ...(await original()),
+  APP_SELF_UPDATE_ENABLED: true,
+}));
 vi.mock(import("~/hooks/useCopyToClipboard"), async (original) => ({
   ...(await original()),
   useCopyToClipboard: ((options: { onCopy: (context: { command: string }) => void }) => ({

@@ -138,6 +138,32 @@ describe("custom model settings", () => {
   });
 });
 
+describe("ClaudeSettings auto-compact window", () => {
+  it("should leave the threshold to Claude when nothing is saved", () => {
+    expect(decodeClaudeSettings({}).autoCompactWindow).toBe("");
+    expect(decodeClaudeSettings({ autoCompactWindow: "" }).autoCompactWindow).toBe("");
+  });
+
+  it("should convert a full token count to thousands when it was saved before the K unit", () => {
+    expect(decodeClaudeSettings({ autoCompactWindow: "300000" }).autoCompactWindow).toBe("300");
+    expect(decodeClaudeSettings({ autoCompactWindow: "1000000" }).autoCompactWindow).toBe("1000");
+  });
+
+  it("should reject a value outside 100 to 1000 when it is entered in thousands", () => {
+    expect(() => decodeClaudeSettings({ autoCompactWindow: "99" })).toThrow();
+    expect(() => decodeClaudeSettings({ autoCompactWindow: "1001" })).toThrow();
+  });
+});
+
+describe("ClientSettings new worktree branch", () => {
+  it("keeps creating a new branch for settings saved before the toggle existed", () => {
+    expect(decodeClientSettings({}).newWorktreeCreatesBranch).toBe(true);
+    expect(decodeClientSettings({ newWorktreeCreatesBranch: false }).newWorktreeCreatesBranch).toBe(
+      false,
+    );
+  });
+});
+
 describe("resolveIdleCompaction", () => {
   it("lets a Claude instance override the global default", () => {
     const settings = decodeServerSettings({
@@ -158,8 +184,14 @@ describe("resolveIdleCompaction", () => {
     expect(globalIdleCompaction(decodeServerSettings({ compactIdleThreads: true }))).toBe(
       "beforeCacheExpires",
     );
+    expect(globalIdleCompaction(decodeServerSettings({ compactIdleThreads: false }))).toBe(
+      "onReturn",
+    );
     expect(globalIdleCompaction(decodeServerSettings({ compactIdleThreads: "off" }))).toBe("off");
-    expect(globalIdleCompaction(decodeServerSettings({}))).toBe("onReturn");
+  });
+
+  it("should compact before the cache expires when the setting is unset", () => {
+    expect(globalIdleCompaction(decodeServerSettings({}))).toBe("beforeCacheExpires");
   });
 
   it("keeps the legacy switch a boolean, as shipped clients decode it", () => {
@@ -186,6 +218,23 @@ describe("resolveIdleCompaction", () => {
     expect(idleCompactionPatch({ compactIdleThreads: false }, "beforeCacheExpires")).toEqual({
       compactIdleThreads: true,
     });
+  });
+});
+
+describe("thread auto cleanup settings", () => {
+  it("should archive and delete after 30 days when the settings are unset", () => {
+    const settings = decodeServerSettings({});
+    expect(settings.sidebarAutoArchiveSettledAfterDays).toBe(30);
+    expect(settings.sidebarAutoDeleteArchivedAfterDays).toBe(30);
+  });
+
+  it("should reject day counts outside 1 to 365 when decoding a patch", () => {
+    expect(
+      decodeServerSettingsPatch({ sidebarAutoDeleteArchivedAfterDays: 365 })
+        .sidebarAutoDeleteArchivedAfterDays,
+    ).toBe(365);
+    expect(() => decodeServerSettingsPatch({ sidebarAutoArchiveSettledAfterDays: 0 })).toThrow();
+    expect(() => decodeServerSettingsPatch({ sidebarAutoDeleteArchivedAfterDays: 366 })).toThrow();
   });
 });
 

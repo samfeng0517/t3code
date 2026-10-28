@@ -14,6 +14,7 @@ import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 function SortableSidebarMarker(props: {
   marker: SidebarListMarker;
   className?: string;
+  inert?: boolean;
   children?: ReactNode;
   "data-testid"?: string;
 }) {
@@ -28,6 +29,7 @@ function SortableSidebarMarker(props: {
       data-thread-selection-safe
       data-testid={props["data-testid"]}
       className={cn("list-none", props.className)}
+      inert={props.inert}
       style={{
         transform: CSS.Translate.toString(transform),
         transition: props.marker.endsWith("-placeholder") ? "none" : transition,
@@ -108,6 +110,7 @@ export function SidebarSectionHeader(props: {
   className?: string;
   dragging?: boolean;
   isDropTarget?: boolean;
+  concealed?: boolean;
   toggle: { expanded: boolean; onToggle: () => void };
   /** The first shelf at the bottom of the list hosts the undo notice just above itself. */
   hostsUndoNotice?: boolean;
@@ -122,7 +125,8 @@ export function SidebarSectionHeader(props: {
     <SortableSidebarMarker
       marker={props.marker}
       data-testid={`sidebar-${props.marker}`}
-      className={cn("relative mx-0.5 h-8", props.className)}
+      className={cn("relative mx-0.5 h-8", props.className, props.concealed && "invisible")}
+      inert={props.concealed === true}
     >
       {props.hostsUndoNotice ? (
         <SidebarThreadUndoNotice className="absolute inset-x-0 bottom-full bg-sidebar surface-grain" />

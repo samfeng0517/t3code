@@ -801,13 +801,11 @@ export function resolveAdjacentThreadId<T>(input: {
     return null;
   }
 
-  if (currentThreadId === null) {
-    return direction === "previous" ? (threadIds.at(-1) ?? null) : (threadIds[0] ?? null);
-  }
-
-  const currentIndex = threadIds.indexOf(currentThreadId);
+  // A current thread missing from the list (e.g. inside the collapsed settled shelf) steps in
+  // from the ends, like having no current thread.
+  const currentIndex = currentThreadId === null ? -1 : threadIds.indexOf(currentThreadId);
   if (currentIndex === -1) {
-    return null;
+    return direction === "previous" ? (threadIds.at(-1) ?? null) : (threadIds[0] ?? null);
   }
 
   if (direction === "previous") {
@@ -1169,7 +1167,8 @@ export function resolveProjectStatusIndicator(
 }
 
 export function getFallbackThreadIdAfterDelete<
-  T extends Pick<Thread, "id" | "projectId" | "createdAt" | "updatedAt"> & ThreadSortInput,
+  T extends Pick<Thread, "id" | "projectId" | "createdAt" | "updatedAt" | "settledOverride"> &
+    ThreadSortInput,
 >(input: {
   threads: readonly T[];
   deletedThreadId: T["id"];
@@ -1188,7 +1187,10 @@ export function getFallbackThreadIdAfterDelete<
         (thread) =>
           thread.projectId === deletedThread.projectId &&
           thread.id !== deletedThreadId &&
-          !deletedThreadIds?.has(thread.id),
+          !deletedThreadIds?.has(thread.id) &&
+          // A settled thread stays hidden while its shelf is collapsed, so landing on it after a
+          // delete would leave the open thread missing from the sidebar.
+          thread.settledOverride !== "settled",
       ),
       sortOrder,
     )[0]?.id ?? null

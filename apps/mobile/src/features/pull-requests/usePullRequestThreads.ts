@@ -111,7 +111,6 @@ export function usePullRequestThreads(
             mode: "worktree",
             branch: pr.headBranch,
             worktreePath: null,
-            startFromOrigin: false,
             pullRequestReference: pr.url,
           },
         });

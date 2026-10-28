@@ -86,7 +86,7 @@ function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrationInpu
     "default-src 'self'",
     `script-src ${scriptSources.join(" ")}`,
     `connect-src ${connectSources.join(" ")}`,
-    `img-src 'self' ${input.scheme}: blob: data: http: https:`,
+    `img-src 'self' ${input.scheme}: crx: blob: data: http: https:`,
     `media-src 'self' ${input.scheme}: blob: http: https:`,
     "style-src 'self' 'unsafe-inline'",
     `font-src 'self' ${input.scheme}: data:`,
@@ -132,6 +132,10 @@ function registerDesktopSchemePrivilegesSync(): void {
         stream: true,
       },
     },
+    // Browser extension toolbar icons. electron-chrome-extensions registers this
+    // scheme itself only when loaded before `ready`, but it loads lazily after it,
+    // and Electron honors a single registration call per process.
+    { scheme: "crx", privileges: { secure: true } },
   ]);
 }
 

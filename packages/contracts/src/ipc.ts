@@ -1,13 +1,23 @@
 import * as Schema from "effect/Schema";
 import type { PreviewCaptureFailureEncoded } from "./previewCapture.ts";
+import type {
+  BrowserExtensionAddFromSourceInput,
+  BrowserExtensionMutationResult,
+  BrowserExtensionSourceBrowser,
+  BrowserExtensionStatus,
+  BrowserExtensionUpdateResult,
+} from "./browserExtension.ts";
 
 import { SnapShotSource } from "./chatAttachment.ts";
 import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { BrowserProfileId } from "./browserProfile.ts";
 import type {
+  BrowserBookmarkReadResult,
+  BrowserBookmarkSource,
   BrowserImportResult,
   BrowserImportSource,
   BrowserImportSourceId,
+  DesktopPreviewReadBookmarksInput,
 } from "./browserImport.ts";
 import { AuthAccessTokenResult, AuthSessionState, AuthWebSocketTicketResult } from "./auth.ts";
 import { AdvertisedEndpoint } from "./remoteAccess.ts";
@@ -78,7 +88,8 @@ export type DesktopUpdateStatus =
 export type DesktopRuntimeArch = "arm64" | "x64" | "other";
 export type DesktopTheme = "light" | "dark" | "system";
 export type DesktopUpdateChannel = "latest" | "nightly";
-export type DesktopAppStageLabel = "Alpha" | "Beta" | "Dev" | "Nightly";
+// Stable builds carry no stage label and show the bare product name.
+export type DesktopAppStageLabel = "Dev" | "Nightly";
 
 export const DesktopUpdateStatusSchema = Schema.Literals([
   "disabled",
@@ -93,17 +104,17 @@ export const DesktopUpdateStatusSchema = Schema.Literals([
 export const DesktopRuntimeArchSchema = Schema.Literals(["arm64", "x64", "other"]);
 export const DesktopThemeSchema = Schema.Literals(["light", "dark", "system"]);
 export const DesktopUpdateChannelSchema = Schema.Literals(["latest", "nightly"]);
-export const DesktopAppStageLabelSchema = Schema.Literals(["Alpha", "Beta", "Dev", "Nightly"]);
+export const DesktopAppStageLabelSchema = Schema.Literals(["Dev", "Nightly"]);
 
 export interface DesktopAppBranding {
   baseName: string;
-  stageLabel: DesktopAppStageLabel;
+  stageLabel: DesktopAppStageLabel | null;
   displayName: string;
 }
 
 export const DesktopAppBrandingSchema = Schema.Struct({
   baseName: Schema.String,
-  stageLabel: DesktopAppStageLabelSchema,
+  stageLabel: Schema.NullOr(DesktopAppStageLabelSchema),
   displayName: Schema.String,
 });
 
@@ -1158,6 +1169,25 @@ export interface DesktopPreviewBridge {
     readonly sourceProfileDirectory: string;
     readonly targetProfileId: string;
   }) => Promise<BrowserImportResult>;
+  /** Chromium-based browsers with at least one profile holding a bookmarks file. */
+  listBrowserBookmarkSources: () => Promise<ReadonlyArray<BrowserBookmarkSource>>;
+  readBrowserBookmarks: (
+    input: DesktopPreviewReadBookmarksInput,
+  ) => Promise<BrowserBookmarkReadResult>;
+  /** Unpacked Chrome extensions loaded into every persistent preview session. */
+  extensions?: {
+    list: () => Promise<ReadonlyArray<BrowserExtensionStatus>>;
+    add: (path: string) => Promise<BrowserExtensionMutationResult>;
+    setEnabled: (path: string, enabled: boolean) => Promise<BrowserExtensionMutationResult>;
+    remove: (path: string) => Promise<BrowserExtensionMutationResult>;
+    /** Chromium-based browsers' profiles with installed extensions to copy. */
+    listSources: () => Promise<ReadonlyArray<BrowserExtensionSourceBrowser>>;
+    addFromSource: (
+      input: BrowserExtensionAddFromSourceInput,
+    ) => Promise<BrowserExtensionMutationResult>;
+    /** Re-copies every copied extension whose browser now has a newer version, live. */
+    updateFromSources: () => Promise<BrowserExtensionUpdateResult>;
+  };
   setAnnotationTheme: (theme: DesktopPreviewAnnotationTheme) => Promise<void>;
   setAnnotationSendEnabled: (tabId: string, enabled: boolean) => Promise<void>;
   /** Resolves with the annotation and attach/send intent, or null on cancellation. Rejects if activation fails. */

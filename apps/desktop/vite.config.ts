@@ -108,8 +108,12 @@ export default defineConfig({
       define: publicConfigDefine,
       entry: ["src/preload.ts"],
       deps: {
-        // Sandboxed preloads cannot resolve imports inside ASAR; bundle Clerk's bridge.
-        alwaysBundle: (id) => id === "@clerk/electron" || id.startsWith("@clerk/electron/"),
+        // Sandboxed preloads cannot resolve imports inside ASAR; bundle Clerk's bridge
+        // and the extension toolbar element.
+        alwaysBundle: (id) =>
+          id === "@clerk/electron" ||
+          id.startsWith("@clerk/electron/") ||
+          id === "electron-chrome-extensions/browser-action",
       },
     },
     {
@@ -132,6 +136,14 @@ export default defineConfig({
       entry: ["src/preview-pip-preload.ts"],
     },
     {
+      format: "cjs",
+      outDir: "dist-electron",
+      dts: false,
+      sourcemap: true,
+      outExtensions: () => ({ js: ".cjs" }),
+      entry: ["src/browser-extension-alias-preload.ts"],
+    },
+    {
       // Sandboxed preloads must be self-contained, without shared runtime chunks.
       format: "cjs",
       outDir: "dist-electron",
@@ -146,6 +158,13 @@ export default defineConfig({
     // The Windows lane runs workspace suites concurrently; filesystem-heavy
     // desktop integration tests can exceed Vitest's 5 second default there.
     testTimeout: 15_000,
+    server: {
+      deps: {
+        // Externalized dependencies load through Node and get the real
+        // `electron` module; inlining lets `vi.mock("electron")` reach its ESM build.
+        inline: ["electron-chrome-extensions"],
+      },
+    },
     setupFiles: [
       "../../packages/shared/src/testing/longTempDir.ts",
       "../../packages/shared/src/testing/providerEnv.ts",

@@ -25,6 +25,7 @@ import { primaryServerConfigAtom, primaryServerWelcomeAtom } from "../../state/s
 import { environmentShell } from "../../state/shell";
 import { environmentThreadShells } from "../../state/threads";
 import { Button } from "../ui/button";
+import { useT } from "../../i18n";
 
 /** Pending blocks all rendering, including EventRouter welcome navigation. */
 
@@ -184,17 +185,20 @@ function FirstRunRecovery({
   readonly reason: "settings" | "connection";
   readonly retrying?: boolean;
 }) {
+  const t = useT();
   const settingsReadFailed = reason === "settings";
   return (
     <main className="flex h-dvh min-h-0 items-center justify-center bg-background px-6 text-foreground">
       <div className="flex max-w-sm flex-col items-center text-center">
         <h1 className="text-lg font-semibold">
-          {settingsReadFailed ? "Could not read settings" : "Still connecting"}
+          {settingsReadFailed
+            ? t("onboarding.recovery.settingsTitle")
+            : t("onboarding.recovery.connectingTitle")}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {settingsReadFailed
-            ? "Your saved settings could not be loaded."
-            : "T3 Code could not confirm this workspace."}
+            ? t("onboarding.recovery.settingsDescription")
+            : t("onboarding.recovery.connectingDescription")}
         </p>
         <Button
           className="mt-5"
@@ -210,7 +214,7 @@ function FirstRunRecovery({
           }}
         >
           <RefreshIcon refreshing={retrying} />
-          {settingsReadFailed ? "Retry" : "Reload"}
+          {settingsReadFailed ? t("onboarding.retry") : t("onboarding.recovery.reload")}
         </Button>
       </div>
     </main>

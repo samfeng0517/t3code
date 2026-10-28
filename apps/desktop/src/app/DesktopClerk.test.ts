@@ -28,6 +28,14 @@ vi.mock("@clerk/electron", () => ({
 vi.mock("@clerk/electron/storage", () => ({
   storage: storageMock,
 }));
+
+const { extensionWindows } = vi.hoisted(() => ({ extensionWindows: new WeakSet<object>() }));
+
+vi.mock("../preview/ChromeExtensions.ts", () => ({
+  isExtensionWindow: (window: object) => extensionWindows.has(window),
+}));
+
+import * as Option from "effect/Option";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as ElectronApp from "../electron/ElectronApp.ts";
@@ -190,6 +198,52 @@ describe("DesktopClerk", () => {
         assert.equal(quit.mock.calls.length, 0);
         if (entry === "after configure") listeners.get("second-instance")!({}, ["t3"]);
         assert.strictEqual(yield* Effect.promise(() => revealed.promise), window);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(layerDesktopClerk(true, [], "darwin", undefined, undefined, listeners)),
+        Effect.provideService(ElectronApp.ElectronApp, electronApp),
+        Effect.provideService(ElectronWindow.ElectronWindow, electronWindow),
+        Effect.provideService(DesktopWebLinks.DesktopWebLinks, ignoreWebLinks),
+      );
+    },
+  );
+
+  it.effect(
+    "second-instance should not reveal a window when only an extension window is left",
+    () => {
+      storageMock.mockReturnValue(storageAdapter);
+      createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });
+      const listeners = new Map<string, (...args: unknown[]) => void>();
+      const extensionWindow = { id: 2 };
+      extensionWindows.add(extensionWindow);
+      const mainWindow = { id: 3 };
+      // Each launch reads the lookup once, in launch order.
+      const firstWindows = [extensionWindow, mainWindow];
+      const revealedMain = Promise.withResolvers<void>();
+      const revealed: unknown[] = [];
+      const electronApp = {
+        on: (name: string, listener: (...args: unknown[]) => void) =>
+          Effect.sync(() => {
+            listeners.set(name, listener);
+          }),
+      } as unknown as ElectronApp.ElectronApp["Service"];
+      const electronWindow = {
+        currentMainOrFirst: Effect.sync(() => Option.fromNullishOr(firstWindows.shift())),
+        reveal: (value: unknown) =>
+          Effect.sync(() => {
+            revealed.push(value);
+            if (value === mainWindow) revealedMain.resolve();
+          }),
+      } as unknown as ElectronWindow.ElectronWindow["Service"];
+
+      return Effect.gen(function* () {
+        const clerk = yield* DesktopClerk.DesktopClerk;
+        yield* clerk.configure;
+        listeners.get("second-instance")!({}, ["t3"]);
+        listeners.get("second-instance")!({}, ["t3"]);
+        yield* Effect.promise(() => revealedMain.promise);
+
+        assert.deepStrictEqual(revealed, [mainWindow]);
       }).pipe(
         Effect.scoped,
         Effect.provide(layerDesktopClerk(true, [], "darwin", undefined, undefined, listeners)),

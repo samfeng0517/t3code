@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 const state = vi.hoisted(() => ({
   scopes: new Map<string, Set<string>>(),
   requests: [] as { action: string; environmentId: string | null }[],
+  statusInputs: [] as unknown[],
 }));
 
 vi.mock("react", () => ({ useCallback: (callback: unknown) => callback }));
@@ -38,7 +39,14 @@ vi.mock("./use-atom-command", () => ({
     },
 }));
 vi.mock("./vcs", () => ({
-  vcsEnvironment: { init: { action: "init" }, pull: { action: "pull" }, status: () => "status" },
+  vcsEnvironment: {
+    init: { action: "init" },
+    pull: { action: "pull" },
+    status: (target: { input: unknown }) => {
+      state.statusInputs.push(target.input);
+      return "status";
+    },
+  },
   vcsActionManager: {
     stateAtom: () => "state",
     resetError: () => {},
@@ -126,6 +134,7 @@ beforeEach(() => {
     [secondary, new Set<string>()],
   ]);
   state.requests = [];
+  state.statusInputs = [];
 });
 
 describe("source control callback grants", () => {
@@ -197,4 +206,28 @@ describe("pull request worktree attachment permission", () => {
     expect(result._tag).toBe("Failure");
     expect(state.requests).toEqual([]);
   });
+});
+
+describe("pull and push status subscription", () => {
+  it.each([
+    ["pull", () => useVcsPullAction(scope, { includeRemote: false })],
+    ["stack", () => useGitStackedAction(scope, { includeRemote: false })],
+  ] as const)(
+    "%s should subscribe without remote status when includeRemote is false",
+    (_name, create) => {
+      create();
+      expect(state.statusInputs).toEqual([{ cwd: "/repo", includeRemote: false }]);
+    },
+  );
+
+  it.each([
+    ["pull", () => useVcsPullAction(scope)],
+    ["stack", () => useGitStackedAction(scope)],
+  ] as const)(
+    "%s should keep the default status input when no option is given",
+    (_name, create) => {
+      create();
+      expect(state.statusInputs).toEqual([{ cwd: "/repo" }]);
+    },
+  );
 });

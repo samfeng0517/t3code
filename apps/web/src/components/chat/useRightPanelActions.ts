@@ -27,6 +27,7 @@ import { floatDeviceSurface } from "../preview/agentOpenedPreviews";
 import { browserMiniPlayerSource, usePreviewMiniPlayerStore } from "../../previewMiniPlayerStore";
 import type { threadPullRequestPanelTarget } from "../pullRequest/pullRequestDetail.logic";
 import type { useDeviceState } from "../../state/device";
+import { useT } from "~/i18n";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { openDeviceSetupDialog } from "./ChatOverlayHosts";
 import { previewEnvironment } from "../../state/preview";
@@ -91,6 +92,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     onDiffPanelOpen,
   } = input;
 
+  const t = useT();
   const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
   const onToggleDiff = () => {
     if (!isServerThread) {
@@ -117,7 +119,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Unable to open browser",
+            title: t("browser.sidebar.openFailed"),
             description: error.message,
           }),
         );
@@ -293,8 +295,9 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     () =>
       subscribePreviewAction((action) => {
         if (action === "toggle-panel") togglePreviewPanelStable();
+        else if (action === "new-tab") createBrowserSurfaceStable();
       }),
-    [togglePreviewPanelStable],
+    [togglePreviewPanelStable, createBrowserSurfaceStable],
   );
 
   const shortcuts = {
@@ -308,6 +311,10 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
       if (!event.repeat) closeRightPanelSurface(activeRightPanelSurface);
     },
     "diff.toggle": () => onToggleDiff(),
+    "modsPanel.toggle": () => {
+      if (!isServerThread || activeThreadRef === null) return false;
+      useRightPanelStore.getState().toggle(activeThreadRef, "mods");
+    },
   } satisfies ChatShortcutCommands;
 
   return {

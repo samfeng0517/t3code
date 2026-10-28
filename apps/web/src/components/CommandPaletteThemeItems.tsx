@@ -4,6 +4,7 @@ import { MonitorIcon, MoonIcon, PaletteIcon, SunIcon } from "lucide-react";
 import { useCustomThemes } from "../hooks/useCustomThemes";
 import { useEnvironmentThemeDefinitions } from "../hooks/useEnvironmentTheme";
 import { useTheme } from "../hooks/useTheme";
+import { t as translateNow, useT } from "../i18n";
 import { getThemeDefinition } from "../themePalette";
 import {
   ADDON_ICON_CLASS,
@@ -20,17 +21,22 @@ import {
 import { stackedThreadToast, toastManager } from "./ui/toast";
 
 export const APPEARANCE_OPTIONS = [
-  { mode: "system", label: "System", icon: MonitorIcon },
-  { mode: "light", label: "Light", icon: SunIcon },
-  { mode: "dark", label: "Dark", icon: MoonIcon },
+  {
+    mode: "system",
+    label: "System",
+    labelKey: "commandPalette.appearance.system",
+    icon: MonitorIcon,
+  },
+  { mode: "light", label: "Light", labelKey: "commandPalette.appearance.light", icon: SunIcon },
+  { mode: "dark", label: "Dark", labelKey: "commandPalette.appearance.dark", icon: MoonIcon },
 ] as const;
 
 export function notifyThemeSaveFailure(): void {
   toastManager.add(
     stackedThreadToast({
       type: "error",
-      title: "Couldn't save theme selection",
-      description: "Try again.",
+      title: translateNow("commandPalette.theme.saveFailed"),
+      description: translateNow("common.tryAgain"),
     }),
   );
 }
@@ -54,6 +60,7 @@ function useThemeCards() {
 }
 
 export function useCommandPaletteThemeItems() {
+  const t = useT();
   const {
     theme,
     themeHalves,
@@ -69,25 +76,32 @@ export function useCommandPaletteThemeItems() {
     kind: "submenu",
     value: "action:change-theme",
     searchTerms: ["change theme", "appearance", "colors", "palette"],
-    title: "Change theme",
+    title: t("commandPalette.action.changeTheme"),
     icon: <PaletteIcon className={ITEM_ICON_CLASS} />,
     addonIcon: <PaletteIcon className={ADDON_ICON_CLASS} />,
     shortcutCommand: "theme.select",
     groups: [
       {
         value: "themes",
-        label: "Change theme",
+        label: t("commandPalette.action.changeTheme"),
         items: themeCards.map(({ id, label, previews }) => ({
           kind: "action",
           value: id === null ? "theme:standard" : `theme:palette:${id}`,
           title: label,
-          description: previews.length === 1 ? `For ${previews[0]!.mode} mode` : undefined,
+          description:
+            previews.length === 1
+              ? t(
+                  previews[0]!.mode === "light"
+                    ? "commandPalette.theme.forLightMode"
+                    : "commandPalette.theme.forDarkMode",
+                )
+              : undefined,
           searchTerms: [label, "theme", "appearance"],
           icon: <PaletteIcon className={ITEM_ICON_CLASS} />,
           titleTrailingContent: (
             <span className="flex shrink-0 items-center gap-2">
               {(themeHalves?.[resolvedTheme] ?? getThemeDefinition(theme)?.id ?? null) === id ? (
-                <span className="text-xs text-muted-foreground/70">Current</span>
+                <span className="text-xs text-muted-foreground/70">{t("common.current")}</span>
               ) : null}
               <span className="flex items-center gap-1" aria-hidden>
                 {previews.map((preview) => (
@@ -117,23 +131,23 @@ export function useCommandPaletteThemeItems() {
     kind: "submenu",
     value: "action:change-appearance",
     searchTerms: ["change appearance", "light", "dark", "system", "mode", "toggle"],
-    title: "Change appearance",
+    title: t("commandPalette.action.changeAppearance"),
     icon: <MonitorIcon className={ITEM_ICON_CLASS} />,
     addonIcon: <MonitorIcon className={ADDON_ICON_CLASS} />,
     shortcutCommand: "appearance.cycle",
     groups: [
       {
         value: "appearance",
-        label: "Change appearance",
-        items: APPEARANCE_OPTIONS.map(({ mode, label, icon: Icon }) => ({
+        label: t("commandPalette.action.changeAppearance"),
+        items: APPEARANCE_OPTIONS.map(({ mode, label, labelKey, icon: Icon }) => ({
           kind: "action",
           value: `appearance:${mode}`,
-          title: label,
-          searchTerms: [label, "appearance", "mode"],
+          title: t(labelKey),
+          searchTerms: [label, t(labelKey), "appearance", "mode"],
           icon: <Icon className={ITEM_ICON_CLASS} />,
           titleTrailingContent:
             appearanceMode === mode ? (
-              <span className="text-xs text-muted-foreground/70">Current</span>
+              <span className="text-xs text-muted-foreground/70">{t("common.current")}</span>
             ) : undefined,
           run: async () => {
             if (!setAppearanceMode(mode)) notifyThemeSaveFailure();
@@ -147,7 +161,7 @@ export function useCommandPaletteThemeItems() {
     kind: "action",
     value: "action:theme-editor",
     searchTerms: ["theme", "appearance", "colors", "palette", "customize"],
-    title: "Toggle theme editor",
+    title: t("commandPalette.action.toggleThemeEditor"),
     icon: <PaletteIcon className={ITEM_ICON_CLASS} />,
     shortcutCommand: "themeEditor.toggle",
     run: async () => {

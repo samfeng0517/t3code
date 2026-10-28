@@ -2,9 +2,15 @@ import { AuthPreviewOperateScope, type EnvironmentId } from "@t3tools/contracts"
 import type { AnyRouter } from "@tanstack/react-router";
 
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
+import { addBrowserWorkspaceTab } from "../browser/browserWorkspaceActions";
 import { isPreviewAvailableFor } from "../browser/previewRuntime";
+import {
+  selectBrowserWorkspaceEnvironmentId,
+  useBrowserWorkspaceStore,
+} from "../browserWorkspaceStore";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { useComposerDraftStore } from "../composerDraftStore";
+import { t } from "../i18n";
 import { dispatchPreviewAction, type PreviewAction } from "../components/preview/previewActionBus";
 import { isAppModalPage } from "../components/sidebar/mainAppLocation";
 import { createNewThreadHandler, resolveDefaultProjectRef } from "../hooks/useHandleNewThread";
@@ -84,6 +90,12 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
     }).length;
   const canOperatePreview = (environmentId: EnvironmentId) =>
     readEnvironmentScope(environmentId, AuthPreviewOperateScope);
+  const readBrowserWorkspaceEnvironmentId = () =>
+    selectBrowserWorkspaceEnvironmentId(useBrowserWorkspaceStore.getState());
+  // The workspace page's browser takes the page-level preview shortcuts (refresh, zoom, ...).
+  const readPreviewEnvironmentId = () =>
+    readRouteThreadRef()?.environmentId ??
+    (router.state.location.pathname === "/browser" ? readBrowserWorkspaceEnvironmentId() : null);
 
   const claim = (event: KeyboardEvent) => {
     event.preventDefault();
@@ -99,8 +111,40 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
     (action: PreviewAction): CommandHandler =>
     (event) => {
       claim(event);
+      const environmentId = readPreviewEnvironmentId();
+      if (environmentId && canOperatePreview(environmentId)) dispatchPreviewAction(action);
+    };
+
+  const togglePreview =
+    (newTab: boolean): CommandHandler =>
+    (event) => {
+      claim(event);
+      // Without a thread on screen a new tab has no panel to open in, so it opens in the workspace.
+      if (newTab && readRouteTarget() === null) {
+        const workspaceEnvironmentId = readBrowserWorkspaceEnvironmentId();
+        if (workspaceEnvironmentId !== null && canOperatePreview(workspaceEnvironmentId)) {
+          if (addBrowserWorkspaceTab()) void router.navigate({ to: "/browser" });
+        }
+        return;
+      }
       const threadRef = readRouteThreadRef();
-      if (threadRef && canOperatePreview(threadRef.environmentId)) dispatchPreviewAction(action);
+      if (
+        !threadRef ||
+        (!canOperatePreview(threadRef.environmentId) && (newTab || !readPreviewOpen()))
+      ) {
+        return;
+      }
+      if (!isPreviewAvailableFor(threadRef.environmentId)) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "info",
+            title: t("onboarding.route.previewDesktopOnly.title"),
+            description: t("onboarding.route.previewDesktopOnly.description"),
+          }),
+        );
+        return;
+      }
+      dispatchPreviewAction(newTab ? "new-tab" : "toggle-panel");
     };
 
   return registerCommands(
@@ -126,24 +170,8 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
         }
         startNewLocal(event);
       },
-      "preview.toggle": (event) => {
-        claim(event);
-        const threadRef = readRouteThreadRef();
-        if (!threadRef || (!canOperatePreview(threadRef.environmentId) && !readPreviewOpen())) {
-          return;
-        }
-        if (!isPreviewAvailableFor(threadRef.environmentId)) {
-          toastManager.add(
-            stackedThreadToast({
-              type: "info",
-              title: "Preview is desktop-only",
-              description: "Open T3 Code in the desktop app to use the in-app preview.",
-            }),
-          );
-          return;
-        }
-        dispatchPreviewAction("toggle-panel");
-      },
+      "preview.toggle": togglePreview(false),
+      "preview.newTab": togglePreview(true),
       "preview.refresh": previewCommand("refresh"),
       "preview.focusUrl": previewCommand("focus-url"),
       "preview.zoomIn": previewCommand("zoom-in"),

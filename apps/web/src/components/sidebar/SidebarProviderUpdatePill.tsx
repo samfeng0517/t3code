@@ -5,6 +5,7 @@ import type { ServerProvider } from "@t3tools/contracts";
 import { CircleCheckIcon, DownloadIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useState, type CSSProperties } from "react";
 
+import { useT } from "../../i18n";
 import { primaryServerProvidersAtom } from "../../state/server";
 import {
   getProviderUpdateSidebarPillView,
@@ -43,6 +44,7 @@ function latestProviderCheckedAt(
 }
 
 export function SidebarProviderUpdatePill() {
+  const t = useT();
   const navigate = useNavigate();
   const providers = useAtomValue(primaryServerProvidersAtom);
   const [dismissedKeys, setDismissedKeys] = useState<ReadonlySet<string>>(() => new Set());
@@ -192,7 +194,7 @@ export function SidebarProviderUpdatePill() {
             render={
               <button
                 type="button"
-                aria-label="Dismiss provider update notice"
+                aria-label={t("sidebar.providerUpdate.dismiss")}
                 className="relative z-[1] mr-1 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md opacity-70 outline-none hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 onClick={() => startExit(displayedView.key, null, displayedView.key)}
               >
@@ -200,7 +202,7 @@ export function SidebarProviderUpdatePill() {
               </button>
             }
           />
-          <TooltipPopup side="top">Dismiss until provider status changes</TooltipPopup>
+          <TooltipPopup side="top">{t("sidebar.providerUpdate.dismissTooltip")}</TooltipPopup>
         </Tooltip>
       )}
     </div>

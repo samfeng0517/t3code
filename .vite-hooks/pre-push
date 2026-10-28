@@ -1,0 +1,48 @@
+# Blocks pushing commits whose author, committer, message, paths or added lines match
+# the local-only denylist: one case-insensitive extended regex per line in
+# <git common dir>/info/push-denylist. The list stays untracked so it never ships.
+denylist="$(git rev-parse --git-common-dir)/info/push-denylist"
+[ -f "$denylist" ] || exit 0
+
+patterns=$(mktemp)
+trap 'rm -f "$patterns"' EXIT
+tr -d '\r' <"$denylist" | sed -e 's/[[:space:]]*$//' -e '/^[[:space:]]*#/d' -e '/^$/d' >"$patterns"
+[ -s "$patterns" ] || exit 0
+# grep exits 2 on an invalid pattern; fail closed instead of silently matching nothing.
+if grep -i -E -f "$patterns" </dev/null >/dev/null 2>&1 || [ $? -ne 1 ]; then
+  echo "pre-push: $denylist has an invalid pattern." >&2
+  exit 1
+fi
+
+# Commits already on the destination remote or on upstream (public anyway) are skipped.
+# Pushing to a URL instead of a named remote checks everything not on upstream.
+remote="$1"
+found=0
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  case "$local_sha" in *[!0]*) ;; *) continue ;; esac
+  base=""
+  if case "$remote_sha" in *[!0]*) git cat-file -e "$remote_sha^{commit}" 2>/dev/null ;; *) false ;; esac; then
+    base="^$remote_sha"
+  fi
+  commits=$(git rev-list "$local_sha" $base --not --remotes="$remote" --remotes=upstream)
+  for commit in $commits; do
+    hits=$(
+      {
+        git log -1 --format='%an <%ae>%n%cn <%ce>%n%B' "$commit"
+        git show --format= --no-renames --name-only "$commit"
+        git show --format= --no-renames --no-color --unified=0 "$commit" |
+          grep '^+' | grep -v -E '^\+\+\+ (b/|/dev/null)' || true
+      } | grep -i -E -f "$patterns" || true
+    )
+    if [ -n "$hits" ]; then
+      found=1
+      echo "pre-push: $(git log -1 --format='%h %s' "$commit") matches the push denylist:" >&2
+      printf '%s\n' "$hits" | cut -c1-160 | sed 's/^/  /' >&2
+    fi
+  done
+done
+
+[ "$found" = 0 ] || {
+  echo "pre-push: remove the matches above, or edit $denylist." >&2
+  exit 1
+}

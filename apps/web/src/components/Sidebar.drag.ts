@@ -162,7 +162,13 @@ export function createSidebarSortingStrategy(input: {
       ? settledOrder.slice(0, input.settledVisibleCount ?? settledOrder.length)
       : [];
     const routeKey = input.routeThreadKey;
-    if (routeKey && settledOrder.includes(routeKey) && !visible.includes(routeKey)) {
+    // A collapsed shelf stays hidden even around the open thread; only the footer toggle opens it.
+    if (
+      input.settledExpanded &&
+      routeKey &&
+      settledOrder.includes(routeKey) &&
+      !visible.includes(routeKey)
+    ) {
       visible.push(routeKey);
     }
     groups.settled = visible.map((key) => ({ kind: "thread", key, section: "settled" }));

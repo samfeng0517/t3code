@@ -189,6 +189,47 @@ export type ProjectionThreadPullRequests = Pick<
   "id" | "projectId" | "lineage" | "settledOverride" | "settledAt" | "pullRequests"
 >;
 
+/** `updatedAt` is the snapshot the cleanup command re-checks against. */
+export interface ProjectionThreadCleanupCandidate {
+  readonly threadId: ThreadId;
+  readonly updatedAt: DateTime.Utc;
+}
+
+const IN_FLIGHT_RUN_STATUSES: ReadonlySet<
+  OrchestrationV2ThreadProjection["runs"][number]["status"]
+> = new Set(["preparing", "queued", "starting", "running", "waiting"]);
+
+function isAutoArchiveCandidate(
+  projection: Pick<OrchestrationV2ThreadProjection, "thread" | "runs" | "runtimeRequests">,
+  settledBefore: DateTime.Utc,
+): boolean {
+  const { thread } = projection;
+  return (
+    thread.deletedAt === null &&
+    thread.lineage.relationshipToParent !== "subagent" &&
+    thread.archivedAt === null &&
+    thread.settledOverride === "settled" &&
+    thread.pinnedAt == null &&
+    DateTime.isLessThan(thread.updatedAt, settledBefore) &&
+    (thread.settledAt === null || DateTime.isLessThan(thread.settledAt, settledBefore)) &&
+    !projection.runs.some((run) => IN_FLIGHT_RUN_STATUSES.has(run.status)) &&
+    !projection.runtimeRequests.some((request) => request.status === "pending")
+  );
+}
+
+function isAutoDeleteCandidate(
+  thread: Pick<OrchestrationV2AppThread, "deletedAt" | "lineage" | "archivedAt" | "archivedBy">,
+  archivedBefore: DateTime.Utc,
+): boolean {
+  return (
+    thread.deletedAt === null &&
+    thread.lineage.relationshipToParent !== "subagent" &&
+    thread.archivedBy === "auto" &&
+    thread.archivedAt !== null &&
+    DateTime.isLessThan(thread.archivedAt, archivedBefore)
+  );
+}
+
 export type ProjectionSettlementCandidate = Pick<
   OrchestrationV2ThreadShell,
   | "id"
@@ -516,6 +557,33 @@ export interface ProjectionStoreV2Shape {
     readonly includeArchived?: boolean;
   }) => Effect.Effect<
     ReadonlyArray<{ readonly threadId: ThreadId; readonly worktreePath: string }>,
+    ProjectionStoreV2Error
+  >;
+  /**
+   * Settled, unpinned, unarchived threads untouched since before `settledBefore`, with no run in flight
+   * and no pending request. Age counts from `updatedAt`: auto-settle backdates `settledAt` to the last
+   * activity while the settle itself bumps `updatedAt`, and any later change restarts the wait.
+   */
+  readonly getAutoArchiveCandidates: (options: {
+    readonly settledBefore: DateTime.Utc;
+  }) => Effect.Effect<ReadonlyArray<ProjectionThreadCleanupCandidate>, ProjectionStoreV2Error>;
+  /** Threads the server archived itself before `archivedBefore`. */
+  readonly getAutoDeleteCandidates: (options: {
+    readonly archivedBefore: DateTime.Utc;
+  }) => Effect.Effect<ReadonlyArray<ProjectionThreadCleanupCandidate>, ProjectionStoreV2Error>;
+  /**
+   * Whether a scheduled task, automation, or webhook runs in this thread.
+   * Archiving such a thread breaks the automation and deleting it deletes the
+   * task, so automatic cleanup skips it.
+   */
+  readonly isBoundToScheduledTask: (
+    threadId: ThreadId,
+  ) => Effect.Effect<boolean, ProjectionStoreV2Error>;
+  /** Active threads whose latest run completed after `completedAfter`. */
+  readonly getIdleCompactionCandidates: (options: {
+    readonly completedAfter: DateTime.Utc;
+  }) => Effect.Effect<
+    ReadonlyArray<{ readonly threadId: ThreadId; readonly runId: RunId }>,
     ProjectionStoreV2Error
   >;
   readonly getTurnStartContext: (
@@ -1701,6 +1769,7 @@ export function threadShellFromProjection(
     createdAt: projection.thread.createdAt,
     updatedAt: projection.thread.updatedAt,
     archivedAt: projection.thread.archivedAt,
+    archivedBy: projection.thread.archivedBy ?? null,
     settledOverride: projection.thread.settledOverride,
     settledAt: projection.thread.settledAt,
     unsettledAt: projection.thread.unsettledAt ?? null,
@@ -1961,6 +2030,7 @@ function shellFromState(input: {
     createdAt: input.state.thread.createdAt,
     updatedAt: input.state.updatedAt,
     archivedAt: input.state.thread.archivedAt,
+    archivedBy: input.state.thread.archivedBy ?? null,
     settledOverride: input.state.thread.settledOverride,
     settledAt: input.state.thread.settledAt,
     unsettledAt: input.state.thread.unsettledAt ?? null,
@@ -6306,6 +6376,128 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })),
       );
 
+    const getAutoArchiveCandidates: ProjectionStoreV2Shape["getAutoArchiveCandidates"] = Effect.fn(
+      "ProjectionStore.getAutoArchiveCandidates",
+    )(
+      function* (options) {
+        const settledBefore = DateTime.formatIso(options.settledBefore);
+        const rows = yield* sql<PayloadRow>`
+          SELECT t.payload_json
+          FROM orchestration_v2_projection_threads t
+          WHERE t.deleted_at IS NULL
+            AND json_extract(t.payload_json, '$.archivedAt') IS NULL
+            AND json_extract(t.payload_json, '$.settledOverride') = 'settled'
+            AND json_extract(t.payload_json, '$.pinnedAt') IS NULL
+            AND julianday(json_extract(t.payload_json, '$.updatedAt')) < julianday(${settledBefore})
+            AND (
+              json_extract(t.payload_json, '$.settledAt') IS NULL
+              OR julianday(json_extract(t.payload_json, '$.settledAt')) < julianday(${settledBefore})
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM orchestration_v2_projection_runs run
+              WHERE run.thread_id = t.thread_id
+                AND run.status IN ('preparing', 'queued', 'starting', 'running', 'waiting')
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM orchestration_v2_projection_runtime_requests request
+              WHERE request.thread_id = t.thread_id AND request.status = 'pending'
+            )
+            AND json_extract(t.payload_json, '$.lineage.relationshipToParent') IS NOT 'subagent'
+            AND NOT EXISTS (
+              SELECT 1 FROM scheduled_tasks task WHERE task.thread_id = t.thread_id
+            )
+          ORDER BY t.thread_id
+        `;
+        return yield* Effect.forEach(rows, (row) =>
+          decodeThreadPayload(row.payload_json).pipe(
+            Effect.map((thread): ProjectionThreadCleanupCandidate => ({
+              threadId: thread.id,
+              updatedAt: thread.updatedAt,
+            })),
+          ),
+        );
+      },
+      Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })),
+    );
+
+    const getAutoDeleteCandidates: ProjectionStoreV2Shape["getAutoDeleteCandidates"] = Effect.fn(
+      "ProjectionStore.getAutoDeleteCandidates",
+    )(
+      function* (options) {
+        const archivedBefore = DateTime.formatIso(options.archivedBefore);
+        const rows = yield* sql<PayloadRow>`
+          SELECT t.payload_json
+          FROM orchestration_v2_projection_threads t
+          WHERE t.deleted_at IS NULL
+            AND json_extract(t.payload_json, '$.archivedBy') = 'auto'
+            AND json_extract(t.payload_json, '$.archivedAt') IS NOT NULL
+            AND julianday(json_extract(t.payload_json, '$.archivedAt')) < julianday(${archivedBefore})
+            AND json_extract(t.payload_json, '$.lineage.relationshipToParent') IS NOT 'subagent'
+            AND NOT EXISTS (
+              SELECT 1 FROM scheduled_tasks task WHERE task.thread_id = t.thread_id
+            )
+          ORDER BY t.thread_id
+        `;
+        return yield* Effect.forEach(rows, (row) =>
+          decodeThreadPayload(row.payload_json).pipe(
+            Effect.map((thread): ProjectionThreadCleanupCandidate => ({
+              threadId: thread.id,
+              updatedAt: thread.updatedAt,
+            })),
+          ),
+        );
+      },
+      Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })),
+    );
+
+    const isBoundToScheduledTask: ProjectionStoreV2Shape["isBoundToScheduledTask"] = Effect.fn(
+      "ProjectionStore.isBoundToScheduledTask",
+    )(
+      function* (threadId) {
+        const rows = yield* sql<{ readonly bound: number }>`
+          SELECT EXISTS (
+            SELECT 1 FROM scheduled_tasks WHERE thread_id = ${threadId}
+          ) AS bound
+        `;
+        return rows[0]?.bound === 1;
+      },
+      (effect, threadId) =>
+        effect.pipe(Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause }))),
+    );
+
+    const getIdleCompactionCandidates: ProjectionStoreV2Shape["getIdleCompactionCandidates"] =
+      Effect.fn("ProjectionStore.getIdleCompactionCandidates")(
+        function* (options) {
+          const completedAfter = DateTime.formatIso(options.completedAfter);
+          const rows = yield* sql<{ readonly thread_id: string; readonly run_id: string }>`
+            SELECT t.thread_id, r.run_id
+            FROM orchestration_v2_projection_threads t
+            INNER JOIN orchestration_v2_projection_runs r ON r.run_id = (
+              SELECT latest.run_id FROM orchestration_v2_projection_runs latest
+              WHERE latest.thread_id = t.thread_id
+              ORDER BY latest.ordinal DESC, latest.run_id DESC
+              LIMIT 1
+            )
+            WHERE t.deleted_at IS NULL
+              -- Narrow to recently completed threads before the per-thread latest-run lookup.
+              AND t.thread_id IN (
+                SELECT recent.thread_id FROM orchestration_v2_projection_runs recent
+                WHERE recent.status = 'completed'
+                  AND julianday(recent.completed_at) > julianday(${completedAfter})
+              )
+              AND json_extract(t.payload_json, '$.archivedAt') IS NULL
+              AND r.status = 'completed'
+              AND julianday(r.completed_at) > julianday(${completedAfter})
+            ORDER BY t.thread_id
+          `;
+          return rows.map((row) => ({
+            threadId: ThreadId.make(row.thread_id),
+            runId: RunId.make(row.run_id),
+          }));
+        },
+        Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })),
+      );
+
     const shellThreadStateFromRow =
       /* Runs once per shell row; the enclosing snapshot or thread read owns the span. */
       Effect.fnUntraced(function* (input: {
@@ -6781,6 +6973,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getSettlementCandidates: readOnReader(getSettlementCandidates),
       getThreadsWithPullRequests: readOnReader(getThreadsWithPullRequests),
       getThreadWorktreePaths: readOnReader(getThreadWorktreePaths),
+      getAutoArchiveCandidates: readOnReader(getAutoArchiveCandidates),
+      getAutoDeleteCandidates: readOnReader(getAutoDeleteCandidates),
+      isBoundToScheduledTask: readOnReader(isBoundToScheduledTask),
+      getIdleCompactionCandidates: readOnReader(getIdleCompactionCandidates),
       getThreadProjection,
       getTurnStartContext: readOnReader(getTurnStartContext),
       getTurnStartHistory: readOnReader(getTurnStartHistory),
@@ -7031,6 +7227,46 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                 ? [{ threadId: thread.id, worktreePath: thread.worktreePath }]
                 : [],
             ),
+          ),
+        ),
+      getAutoArchiveCandidates: (options) =>
+        Ref.get(replayState).pipe(
+          Effect.map((state) =>
+            [...state.projections.values()]
+              .filter((projection) => isAutoArchiveCandidate(projection, options.settledBefore))
+              .map(({ thread }) => ({ threadId: thread.id, updatedAt: thread.updatedAt }))
+              .toSorted((left, right) => left.threadId.localeCompare(right.threadId)),
+          ),
+        ),
+      getAutoDeleteCandidates: (options) =>
+        Ref.get(replayState).pipe(
+          Effect.map((state) =>
+            [...state.projections.values()]
+              .filter(({ thread }) => isAutoDeleteCandidate(thread, options.archivedBefore))
+              .map(({ thread }) => ({ threadId: thread.id, updatedAt: thread.updatedAt }))
+              .toSorted((left, right) => left.threadId.localeCompare(right.threadId)),
+          ),
+        ),
+      // The in-memory store keeps no scheduled tasks, so no thread can be bound to one.
+      isBoundToScheduledTask: () => Effect.succeed(false),
+      getIdleCompactionCandidates: (options) =>
+        Ref.get(replayState).pipe(
+          Effect.map((state) =>
+            [...state.projections.values()]
+              .flatMap(({ thread, runs }) => {
+                if (thread.deletedAt !== null || thread.archivedAt !== null) return [];
+                const latest = runs.reduce<(typeof runs)[number] | undefined>(
+                  (current, run) =>
+                    current === undefined || run.ordinal > current.ordinal ? run : current,
+                  undefined,
+                );
+                return latest?.status === "completed" &&
+                  latest.completedAt !== null &&
+                  DateTime.isGreaterThan(latest.completedAt, options.completedAfter)
+                  ? [{ threadId: thread.id, runId: latest.id }]
+                  : [];
+              })
+              .toSorted((left, right) => left.threadId.localeCompare(right.threadId)),
           ),
         ),
       getThreadsWithPullRequests: (threadId) =>

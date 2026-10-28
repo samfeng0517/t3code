@@ -99,22 +99,22 @@ describe("approvalRedirectNotice", () => {
 
   it("says the decline went through when the draft changed after it", () => {
     expect(approvalRedirectNotice({ ...settled, draftChanged: true })).toBe(
-      "Approval declined. Your message changed, so it wasn't sent.",
+      "composer.toast.approvalRedirect.declinedDraftChanged",
     );
     expect(approvalRedirectNotice({ ...settled, draftChanged: true, declined: false })).toBe(
-      "Your message changed, so it wasn't sent.",
+      "composer.toast.approvalRedirect.draftChanged",
     );
   });
 
   it("explains an approval already being answered", () => {
-    expect(
-      approvalRedirectNotice({ ...settled, declined: false, approvalResponding: true }),
-    ).toMatch(/already being answered/);
+    expect(approvalRedirectNotice({ ...settled, declined: false, approvalResponding: true })).toBe(
+      "composer.toast.approvalRedirect.approvalResponding",
+    );
   });
 
   it("explains an approval that arrived during the decline", () => {
-    expect(approvalRedirectNotice({ ...settled, approvalArrived: true })).toMatch(
-      /Another approval arrived/,
+    expect(approvalRedirectNotice({ ...settled, approvalArrived: true })).toBe(
+      "composer.toast.approvalRedirect.approvalArrived",
     );
   });
 

@@ -21,6 +21,7 @@ import { cn } from "~/lib/utils";
 import { Button, InlineButton } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { useT } from "~/i18n";
 
 export interface EditQueuedRunRequest {
   readonly runId: RunId;
@@ -80,6 +81,7 @@ export function QueuedRunsControl({
   const promote = useAtomCommand(threadEnvironment.promoteQueuedRun);
   const resume = useAtomCommand(threadEnvironment.resumeThreadQueue);
   const cancel = useAtomCommand(threadEnvironment.cancelQueuedRun);
+  const t = useT();
   const [showAll, setShowAll] = useState(false);
   const queueListId = useId();
   const [busyRunId, setBusyRunId] = useState<RunId | null>(null);
@@ -211,12 +213,16 @@ export function QueuedRunsControl({
 
   return (
     <section
-      aria-label={`${items.length} queued message${items.length === 1 ? "" : "s"}`}
+      aria-label={
+        items.length === 1
+          ? t("composer.queue.regionOne")
+          : t("composer.queue.regionMany", { count: items.length })
+      }
       data-thread-queue="true"
       className="mx-auto flex w-full max-w-(--chat-content-max-width) flex-col gap-2 pb-4"
     >
       <span className="sr-only" aria-live="polite">
-        {items.length} queued
+        {t("composer.queue.count", { count: items.length })}
       </span>
       <ol className="flex flex-col items-end gap-3" id={queueListId}>
         {visibleItems.map((item, position) => {
@@ -229,7 +235,10 @@ export function QueuedRunsControl({
           return (
             <li
               key={item.key}
-              aria-label={`Queued message ${position + 1} of ${items.length}, not sent`}
+              aria-label={t("composer.queue.itemLabel", {
+                position: position + 1,
+                count: items.length,
+              })}
               aria-posinset={position + 1}
               aria-setsize={items.length}
               aria-current={isEditing ? "true" : undefined}
@@ -293,11 +302,24 @@ export function QueuedRunsControl({
                           }}
                         >
                           <ArrowUpIcon />
-                          Send now
+                          {t("composer.queue.sendNow")}
                         </Button>
                       </TooltipTrigger>
                       <TooltipPopup>
-                        {`${workflow?.canSendNow ? "Start a turn with this message" : workflow?.promoteSkipsCompaction ? "Skip compaction and send this message" : "Send into the current turn"}${item.serverIndex === 0 && props.steerShortcutLabel ? ` (${props.steerShortcutLabel})` : ""}`}
+                        {!workflow?.canSendNow && workflow?.promoteSkipsCompaction
+                          ? `Skip compaction and send this message${item.serverIndex === 0 && props.steerShortcutLabel ? ` (${props.steerShortcutLabel})` : ""}`
+                          : item.serverIndex === 0 && props.steerShortcutLabel
+                            ? t(
+                                workflow?.canSendNow
+                                  ? "composer.queue.startTurnWithShortcut"
+                                  : "composer.queue.sendAsSteerWithShortcut",
+                                { shortcut: props.steerShortcutLabel },
+                              )
+                            : t(
+                                workflow?.canSendNow
+                                  ? "composer.queue.startTurn"
+                                  : "composer.queue.sendAsSteer",
+                              )}
                       </TooltipPopup>
                     </Tooltip>
                     <Separator orientation="vertical" className="mx-2 h-4" />
@@ -306,19 +328,21 @@ export function QueuedRunsControl({
                 {item.pending ? (
                   <span className="flex items-center gap-1 px-1">
                     <Clock3Icon aria-hidden className="size-3" />
-                    Saving
+                    {t("composer.queue.saving")}
                   </span>
                 ) : null}
                 {isEditing ? (
                   <>
-                    <span className="px-1 text-foreground">Editing in the composer</span>
+                    <span className="px-1 text-foreground">
+                      {t("composer.queue.editingInComposer")}
+                    </span>
                     <Button
                       size="xs"
                       variant="ghost"
-                      aria-label="Cancel editing queued message"
+                      aria-label={t("composer.queue.cancelEditAriaLabel")}
                       onClick={props.onCancelEdit}
                     >
-                      Cancel
+                      {t("composer.queue.cancel")}
                     </Button>
                   </>
                 ) : (
@@ -329,7 +353,7 @@ export function QueuedRunsControl({
                         <Button
                           size="icon-xs"
                           variant="ghost-muted"
-                          aria-label="Edit queued message"
+                          aria-label={t("composer.queue.edit")}
                           disabled={
                             item.runId === null ||
                             !item.editable ||
@@ -352,7 +376,11 @@ export function QueuedRunsControl({
                       </TooltipTrigger>
                       <TooltipPopup>
                         {props.editBlockedReason ??
-                          `Edit in the composer${item.serverIndex === queued.length - 1 && props.editShortcutLabel ? ` (${props.editShortcutLabel})` : ""}`}
+                          (item.serverIndex === queued.length - 1 && props.editShortcutLabel
+                            ? t("composer.queue.editInComposerWithShortcut", {
+                                shortcut: props.editShortcutLabel,
+                              })
+                            : t("composer.queue.editInComposer"))}
                       </TooltipPopup>
                     </Tooltip>
                     <Tooltip>
@@ -361,7 +389,7 @@ export function QueuedRunsControl({
                           <Button
                             size="icon-xs"
                             variant="ghost-muted"
-                            aria-label="Remove queued message"
+                            aria-label={t("composer.queue.remove")}
                             disabled={item.runId === null || busyRunId !== null}
                             onClick={() => {
                               if (item.runId !== null) void remove(item.runId);
@@ -371,7 +399,7 @@ export function QueuedRunsControl({
                       >
                         <XIcon />
                       </TooltipTrigger>
-                      <TooltipPopup>Remove from queue</TooltipPopup>
+                      <TooltipPopup>{t("composer.queue.removeTooltip")}</TooltipPopup>
                     </Tooltip>
                   </>
                 )}
@@ -390,7 +418,9 @@ export function QueuedRunsControl({
             onPointerDown={(event) => event.preventDefault()}
             onClick={() => setShowAll((value) => !value)}
           >
-            {showAll ? "Show fewer" : `Show all ${items.length} queued`}
+            {showAll
+              ? t("composer.queue.showFewer")
+              : t("composer.queue.showAll", { count: items.length })}
             <ChevronDownIcon
               aria-hidden
               className={cn(

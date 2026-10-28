@@ -12,6 +12,12 @@ import { useAssetUrlRefresh } from "~/assets/assetUrls";
 import { useLongLivedAssetUrl } from "~/assets/longLivedAssetUrls";
 
 import { HtmlRenderDocument } from "../files/BrowserDocumentFrame";
+import {
+  HtmlRenderCommentOverlay,
+  useFrameCommentPlacements,
+} from "../pageComments/HtmlRenderCommentOverlay";
+import { PageCommentPanel, PageCommentToggle } from "../pageComments/PageCommentControls";
+import { usePageCommentSession } from "../pageComments/usePageCommentSession";
 import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -38,6 +44,10 @@ export function HtmlRenderFrame(props: {
   const [contentHeight, setContentHeight] = useState<number>();
   const height = htmlRenderFrameHeight(props.htmlRender, width, contentHeight);
   const fileName = htmlRenderFileName(title);
+  const commentTarget = { kind: "html-render" as const, id: attachmentId, title };
+  const comments = usePageCommentSession(props.threadRef, commentTarget);
+  const [frame, setFrame] = useState<HTMLIFrameElement | null>(null);
+  const { view, placements } = useFrameCommentPlacements(comments, frame);
   const resource = {
     _tag: "attachment" as const,
     attachmentId,
@@ -66,60 +76,79 @@ export function HtmlRenderFrame(props: {
   }, [expanded, onFullscreenChange]);
 
   return (
-    <div ref={observeBox} className="group/html-render relative" style={{ height }}>
-      {src !== null ? (
-        <>
-          <HtmlRenderDocument
-            src={src}
-            title={title}
-            threadRef={props.threadRef}
-            className="block size-full"
-            onContentHeight={setContentHeight}
-            onFullscreenChange={onFullscreenChange}
-          />
-          <div className="absolute end-2 top-2 flex gap-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover/html-render:opacity-100 pointer-coarse:opacity-100">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    aria-label="Open full screen"
-                    size="icon-xs"
-                    variant="glass"
-                    onClick={async () => {
-                      const url =
-                        loaded !== null && loaded.expiresAt - Date.now() > MIN_URL_LIFE_MS
-                          ? src
-                          : await refresh().catch(() => null);
-                      if (url !== null) setExpandedSrc(url);
-                      else
-                        toastManager.add({
-                          type: "error",
-                          title: "Page unavailable",
-                          description: "Reconnect to the environment and try again.",
-                        });
-                    }}
-                  />
-                }
-              >
-                <Maximize2Icon className="size-3.5" />
-              </TooltipTrigger>
-              <TooltipPopup side="left">Open full screen</TooltipPopup>
-            </Tooltip>
-          </div>
-          {expandedSrc !== null ? (
-            <HtmlRenderDialog
-              src={expandedSrc}
+    <>
+      <div ref={observeBox} className="group/html-render relative" style={{ height }}>
+        {src !== null ? (
+          <>
+            <HtmlRenderDocument
+              src={src}
               title={title}
               threadRef={props.threadRef}
-              onClose={() => setExpandedSrc(null)}
+              className="block size-full"
+              onContentHeight={setContentHeight}
+              onFullscreenChange={onFullscreenChange}
+              onFrameChange={setFrame}
             />
-          ) : null}
-        </>
-      ) : failed ? (
-        <p className="flex size-full items-center justify-center text-muted-foreground text-xs">
-          Unable to load {title}
-        </p>
+            {comments ? (
+              <HtmlRenderCommentOverlay
+                session={comments}
+                frame={frame}
+                view={view}
+                placements={placements}
+                showsWholePage={(contentHeight ?? height) <= height + 1}
+              />
+            ) : null}
+            <div className="absolute end-2 top-2 z-20 flex gap-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover/html-render:opacity-100 pointer-coarse:opacity-100">
+              {comments ? <PageCommentToggle session={comments} /> : null}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      aria-label="Open full screen"
+                      size="icon-xs"
+                      variant="glass"
+                      onClick={async () => {
+                        const url =
+                          loaded !== null && loaded.expiresAt - Date.now() > MIN_URL_LIFE_MS
+                            ? src
+                            : await refresh().catch(() => null);
+                        if (url !== null) setExpandedSrc(url);
+                        else
+                          toastManager.add({
+                            type: "error",
+                            title: "Page unavailable",
+                            description: "Reconnect to the environment and try again.",
+                          });
+                      }}
+                    />
+                  }
+                >
+                  <Maximize2Icon className="size-3.5" />
+                </TooltipTrigger>
+                <TooltipPopup side="left">Open full screen</TooltipPopup>
+              </Tooltip>
+            </div>
+            {expandedSrc !== null ? (
+              <HtmlRenderDialog
+                src={expandedSrc}
+                title={title}
+                threadRef={props.threadRef}
+                commentTarget={commentTarget}
+                onClose={() => setExpandedSrc(null)}
+              />
+            ) : null}
+          </>
+        ) : failed ? (
+          <p className="flex size-full items-center justify-center text-muted-foreground text-xs">
+            Unable to load {title}
+          </p>
+        ) : null}
+      </div>
+      {comments && src !== null ? (
+        <div className="mt-2">
+          <PageCommentPanel session={comments} placements={placements} hint="frame" />
+        </div>
       ) : null}
-    </div>
+    </>
   );
 }

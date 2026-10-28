@@ -207,3 +207,4 @@ Architecture and its constraints: `docs/internals/overview.md`. Glossary: `docs/
 
 - Don't verify with browsers or computer use unless the user explicitly agrees or requests it.
 - Security is important, but should not be over-indexed on, especially for dev mode/maintainer-only features.
+- This fork is public. Tests, fixtures, docs and commits use reserved example names (`example.com`, `gitlab.example.com`, `user@example.com`), never a real employer, client, internal host or work email. A local denylist checked by `.vite-hooks/pre-push` backs this up.

@@ -69,4 +69,21 @@ describe("closePreviewSession", () => {
     ]);
     expect(closePreview).toHaveBeenCalledWith({ threadId: "thread-1", tabId: "tab-1" });
   });
+
+  it("should close the session without a closed-tab entry when the tab moves elsewhere", async () => {
+    applyPreviewServerSnapshot(threadRef, snapshot);
+    const closePreview = vi.fn(async (_input: PreviewCloseInput) => AsyncResult.success(undefined));
+
+    await closePreviewSession({
+      closePreview: ({ input }) => closePreview(input),
+      snapshot,
+      tabId: snapshot.tabId,
+      threadRef,
+      remember: false,
+    });
+
+    expect(closePreview).toHaveBeenCalledWith({ threadId: "thread-1", tabId: "tab-1" });
+    expect(readThreadPreviewState(threadRef).sessions).toEqual({});
+    expect(useClosedViewStore.getState().entries).toEqual([]);
+  });
 });

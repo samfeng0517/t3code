@@ -98,6 +98,7 @@ vi.mock(import("~/previewStateStore"), async (original) => ({
     desktopByTabId: {
       "tab-1": {
         hasWebContents: true,
+        webContentsId: 1,
         canGoBack: false,
         canGoForward: false,
         loading: mocks.loading,

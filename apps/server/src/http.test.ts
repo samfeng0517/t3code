@@ -23,6 +23,7 @@ import {
   MCP_APP_MAX_HTML_BYTES,
 } from "@t3tools/shared/mcpApp";
 import { ORCHESTRATION_PROTOCOL_HEADER } from "@t3tools/contracts";
+import { injectHtmlFileCommentBootstrap } from "@t3tools/shared/htmlRender";
 
 import * as ServerConfig from "./config.ts";
 
@@ -89,6 +90,107 @@ describe("MCP app asset responses", () => {
       yield* fs.writeFileString(file, "x".repeat(MCP_APP_MAX_HTML_BYTES + 128 * 1024 + 1));
       const response = yield* assetFileResponse({ path: file, renderIntent: "mcp-app" });
       expect(response.status).toBe(413);
+    }).pipe(Effect.provide(layerFileResponse)),
+  );
+});
+
+describe("workspace HTML for page comments", () => {
+  it.effect("adds the comment-anchor script only when asked, and only to HTML", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-page-comments-" });
+      const page = path.join(directory, "index.html");
+      const html = "<html><head><title>☃</title></head><body><p>x</p></body></html>";
+      yield* fs.writeFileString(page, html);
+      const expected = injectHtmlFileCommentBootstrap(html);
+
+      for (const method of ["GET", "HEAD"] as const) {
+        const response = HttpServerResponse.toWeb(
+          yield* assetFileResponse(
+            { path: page, commentAnchors: true },
+            undefined,
+            undefined,
+            method,
+          ),
+        );
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-length")).toBe(
+          String(new TextEncoder().encode(expected).byteLength),
+        );
+        // The page keeps the server's sandbox, so the script cannot reach the app.
+        expect(response.headers.get("content-security-policy")).toBe(
+          "sandbox allow-scripts allow-forms allow-popups allow-downloads",
+        );
+        expect(yield* Effect.promise(() => response.text())).toBe(
+          method === "HEAD" ? "" : expected,
+        );
+      }
+
+      const plain = HttpServerResponse.toWeb(yield* assetFileResponse({ path: page }));
+      expect(yield* Effect.promise(() => plain.text())).toBe(html);
+      const download = HttpServerResponse.toWeb(
+        yield* assetFileResponse({ path: page, commentAnchors: true, download: true }),
+      );
+      expect(yield* Effect.promise(() => download.text())).toBe(html);
+
+      const style = path.join(directory, "site.css");
+      yield* fs.writeFileString(style, "p { color: red }");
+      const css = HttpServerResponse.toWeb(
+        yield* assetFileResponse({ path: style, commentAnchors: true }),
+      );
+      expect(yield* Effect.promise(() => css.text())).toBe("p { color: red }");
+    }).pipe(Effect.provide(layerFileResponse)),
+  );
+
+  it.effect("keeps a file without a doctype in quirks mode", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-page-comments-quirks-" });
+      const page = path.join(directory, "legacy.htm");
+      yield* fs.writeFileString(page, "<p>legacy</p>");
+      const response = HttpServerResponse.toWeb(
+        yield* assetFileResponse({ path: page, commentAnchors: true }),
+      );
+      const body = yield* Effect.promise(() => response.text());
+      expect(body.startsWith("<head><script>")).toBe(true);
+      expect(body).not.toMatch(/<!doctype/i);
+    }).pipe(Effect.provide(layerFileResponse)),
+  );
+
+  it.effect("serves a UTF-16 page as written", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-page-comments-utf16-" });
+      for (const [name, bom] of [
+        ["le.html", [0xff, 0xfe]],
+        ["be.html", [0xfe, 0xff]],
+      ] as const) {
+        const page = path.join(directory, name);
+        const bytes = new Uint8Array([...bom, 0x3c, 0x00, 0x70, 0x00, 0x3e, 0x00]);
+        yield* fs.writeFile(page, bytes);
+        const response = HttpServerResponse.toWeb(
+          yield* assetFileResponse({ path: page, commentAnchors: true }),
+        );
+        expect(new Uint8Array(yield* Effect.promise(() => response.arrayBuffer()))).toEqual(bytes);
+      }
+    }).pipe(Effect.provide(layerFileResponse)),
+  );
+
+  it.effect("serves an oversized page as written", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-page-comments-size-" });
+      const page = path.join(directory, "big.html");
+      const html = `<p>${"x".repeat(5 * 1024 * 1024)}</p>`;
+      yield* fs.writeFileString(page, html);
+      const response = HttpServerResponse.toWeb(
+        yield* assetFileResponse({ path: page, commentAnchors: true }),
+      );
+      expect((yield* Effect.promise(() => response.text())).length).toBe(html.length);
     }).pipe(Effect.provide(layerFileResponse)),
   );
 });

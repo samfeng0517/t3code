@@ -17,7 +17,11 @@ interface ClosePreviewSessionInput<E> {
   readonly snapshot: PreviewSessionSnapshot | null;
   readonly tabId: string;
   readonly threadRef: ScopedThreadRef;
+  /** `false` when the tab lives on elsewhere, so "reopen closed tab" must not bring it back. */
+  readonly remember?: boolean;
 }
+
+export type ClosePreviewMutation<E = unknown> = ClosePreviewSessionInput<E>["closePreview"];
 
 export async function closePreviewSession<E>(
   input: ClosePreviewSessionInput<E>,
@@ -29,7 +33,7 @@ export async function closePreviewSession<E>(
   });
   if (result._tag === "Failure") {
     cancelPreviewSessionClose(input.threadRef, input.snapshot, input.tabId);
-  } else if (input.snapshot) {
+  } else if (input.snapshot && input.remember !== false) {
     useClosedViewStore.getState().remember({
       kind: "browser",
       threadRef: input.threadRef,

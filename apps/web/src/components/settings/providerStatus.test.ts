@@ -35,6 +35,23 @@ describe("getProviderSummary", () => {
     });
   });
 
+  it("should report an unavailable instance with its reason instead of disabled when its config cannot be used", () => {
+    const unavailable: ServerProvider = {
+      ...provider,
+      enabled: true,
+      installed: false,
+      status: "disabled",
+      availability: "unavailable",
+      unavailableReason: "Invalid config for instance 'claude': autoCompactWindow",
+    };
+
+    expect(getProviderSummary(unavailable)).toEqual({
+      headline: "Unavailable",
+      detail: "Invalid config for instance 'claude': autoCompactWindow",
+    });
+    expect(getProviderStatusKey(unavailable)).toBe("error");
+  });
+
   it("keeps authentication failures actionable when their provider status is error", () => {
     expect(
       getProviderSummary({

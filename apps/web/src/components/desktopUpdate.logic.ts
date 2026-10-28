@@ -152,6 +152,13 @@ export function getDesktopUpdateDisabledReason(
   return state.message?.trim() || "Automatic updates are not available in this build.";
 }
 
+/** False until the updater reports in, so update controls never flash on a build that cannot update. */
+export function isDesktopAppUpdateEnabled(
+  state: Pick<DesktopUpdateState, "enabled" | "status"> | null,
+): boolean {
+  return state !== null && state.enabled && state.status !== "disabled";
+}
+
 export function getDesktopUpdateIdleTooltip(
   state: Pick<DesktopUpdateState, "enabled" | "status" | "message"> | null,
 ) {

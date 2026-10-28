@@ -15,6 +15,10 @@ const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
 const GitFilePath = Schema.String.check(Schema.isNonEmpty());
 const GIT_LIST_BRANCHES_MAX_LIMIT = 200;
 
+/** A full SHA-1 (40) or SHA-256 (64) object name. */
+export const GitObjectHash = Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}([0-9a-f]{24})?$/));
+export type GitObjectHash = typeof GitObjectHash.Type;
+
 export const GitStackedAction = Schema.Literals([
   "commit",
   "push",
@@ -123,6 +127,11 @@ export const VcsPullInput = Schema.Struct({
 });
 export type VcsPullInput = typeof VcsPullInput.Type;
 
+export const VcsFetchInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+});
+export type VcsFetchInput = typeof VcsFetchInput.Type;
+
 export const GitRunStackedActionInput = Schema.Struct({
   actionId: TrimmedNonEmptyStringSchema,
   cwd: TrimmedNonEmptyStringSchema,
@@ -182,6 +191,7 @@ export const VcsCreateRefInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
   refName: TrimmedNonEmptyStringSchema,
   switchRef: Schema.optional(Schema.Boolean),
+  startPoint: Schema.optional(GitObjectHash),
 });
 export type VcsCreateRefInput = typeof VcsCreateRefInput.Type;
 
@@ -189,6 +199,45 @@ export const VcsCreateRefResult = Schema.Struct({
   refName: TrimmedNonEmptyStringSchema,
 });
 export type VcsCreateRefResult = typeof VcsCreateRefResult.Type;
+
+export const VcsRenameBranchInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  oldName: TrimmedNonEmptyStringSchema,
+  newName: TrimmedNonEmptyStringSchema,
+});
+export type VcsRenameBranchInput = typeof VcsRenameBranchInput.Type;
+
+export const VcsRenameBranchResult = Schema.Struct({
+  refName: TrimmedNonEmptyStringSchema,
+});
+export type VcsRenameBranchResult = typeof VcsRenameBranchResult.Type;
+
+export const VcsDeleteBranchInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  refName: TrimmedNonEmptyStringSchema,
+  force: Schema.optional(Schema.Boolean),
+});
+export type VcsDeleteBranchInput = typeof VcsDeleteBranchInput.Type;
+
+export const GitCreateTagInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  tagName: TrimmedNonEmptyStringSchema,
+  target: GitObjectHash,
+});
+export type GitCreateTagInput = typeof GitCreateTagInput.Type;
+
+export const GitDeleteTagInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  tagName: TrimmedNonEmptyStringSchema,
+});
+export type GitDeleteTagInput = typeof GitDeleteTagInput.Type;
+
+export const GitPushTagInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  tagName: TrimmedNonEmptyStringSchema,
+  remoteName: TrimmedNonEmptyStringSchema,
+});
+export type GitPushTagInput = typeof GitPushTagInput.Type;
 
 export const VcsSwitchRefInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
@@ -344,8 +393,14 @@ export const VcsPullResult = Schema.Struct({
   status: Schema.Literals(["pulled", "skipped_up_to_date"]),
   refName: TrimmedNonEmptyStringSchema,
   upstreamRef: TrimmedNonEmptyStringSchema.pipe(Schema.NullOr),
+  pulledCommitCount: Schema.optional(NonNegativeInt),
 });
 export type VcsPullResult = typeof VcsPullResult.Type;
+
+export const VcsFetchResult = Schema.Struct({
+  remoteName: TrimmedNonEmptyStringSchema,
+});
+export type VcsFetchResult = typeof VcsFetchResult.Type;
 
 // Git stderr can echo credentials from argv and remote URLs. Only a fixed
 // reason reaches the error and its diagnostic suffix; newer, unknown reasons
@@ -354,6 +409,8 @@ export const GitCommandFailureReason = Schema.Literals([
   "authentication_failed",
   "branch_already_exists",
   "branch_checked_out_in_worktree",
+  "branch_not_fully_merged",
+  "checkout_would_overwrite_local_changes",
   "host_key_unverified",
   "not_a_repository",
   "path_already_exists",
@@ -381,6 +438,18 @@ export class GitCommandError extends Schema.TaggedError<GitCommandError>()("GitC
   override get message(): string {
     const reason = this.reason === undefined ? "" : ` (${this.reason})`;
     return `Git command failed in ${this.operation} (${this.cwd}): ${this.detail}${reason}`;
+  }
+}
+
+export class GitBranchNotFullyMergedError extends Schema.TaggedError<GitBranchNotFullyMergedError>()(
+  "GitBranchNotFullyMergedError",
+  {
+    cwd: Schema.String,
+    branch: Schema.String,
+  },
+) {
+  override get message(): string {
+    return "The branch has commits that are not fully merged.";
   }
 }
 

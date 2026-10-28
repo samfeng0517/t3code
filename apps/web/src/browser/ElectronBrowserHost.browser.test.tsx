@@ -1,5 +1,6 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
+  DEFAULT_BROWSER_PROFILE_ID,
   DEFAULT_CLIENT_SETTINGS,
   EnvironmentId,
   ThreadId,
@@ -54,10 +55,13 @@ vi.mock(import("~/components/preview/usePreviewBridge"), async (original) => ({
 import {
   __resetClientSettingsPersistenceForTests,
   ensureClientSettingsHydrated,
+  updateClientSettings,
 } from "~/hooks/useSettings";
 import { reconcilePreviewServerSessions, resetPreviewStateForTests } from "~/previewStateStore";
 import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
+import { useBrowserTabProfileStore } from "./browserTabProfileStore";
 import { ElectronBrowserHost } from "./ElectronBrowserHost";
+import { previewRuntimeTabId } from "./previewRuntimeTabId";
 
 const threadRef = scopeThreadRef(
   EnvironmentId.make("host-webview-order"),
@@ -159,5 +163,27 @@ describe("ElectronBrowserHost", () => {
     const after = webviews();
     expect(after).toHaveLength(2);
     expect(after.every((node, index) => node.isSameNode(before[index]!))).toBe(true);
+  });
+
+  it("should keep publishing the profile a tab attached with when the default profile changes", async () => {
+    using _state = setup();
+    reconcilePreviewServerSessions(threadRef, {
+      sessions: [snapshot("tab_9", "2026-01-01T00:00:01.000Z")],
+      serverEpoch: "server-a",
+      revision: 1,
+    });
+    const runtimeTabId = previewRuntimeTabId(threadRef, "server-a", "tab_9");
+    const published = () => useBrowserTabProfileStore.getState().byTabId[runtimeTabId];
+    await using _screen = await renderHost();
+    expect(published()).toBe(DEFAULT_BROWSER_PROFILE_ID);
+
+    await act(() =>
+      updateClientSettings({
+        browserProfiles: [{ id: "profile-work", name: "Work", kind: "persistent" }],
+        browserDefaultProfileId: "profile-work",
+      }),
+    );
+
+    expect(published()).toBe(DEFAULT_BROWSER_PROFILE_ID);
   });
 });

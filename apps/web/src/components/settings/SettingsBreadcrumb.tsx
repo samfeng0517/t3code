@@ -1,34 +1,43 @@
+import { useT, type MessageKey } from "../../i18n";
 import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
-import { SETTINGS_SECTION_LABELS } from "./settingsSearch";
+import {
+  SETTINGS_SECTION_LABELS,
+  settingsSectionMessageKey,
+  type SettingsPath,
+} from "./settingsSearch";
 
-const SETTINGS_BREADCRUMB_LABELS: Readonly<Record<string, string>> = {
-  ...SETTINGS_SECTION_LABELS,
-  "/settings/diagnostics": "Diagnostics",
-  "/settings/open-source-licenses": "Open source licenses",
-};
+function isSettingsSectionPath(pathname: string): pathname is SettingsPath {
+  return Object.hasOwn(SETTINGS_SECTION_LABELS, pathname);
+}
 
-function settingsBreadcrumbLabel(pathname: string): string | null {
+function settingsBreadcrumbMessageKey(pathname: string): MessageKey | null {
   const normalizedPathname = pathname.replace(/\/+$/, "") || "/";
-  return SETTINGS_BREADCRUMB_LABELS[normalizedPathname] ?? null;
+  if (normalizedPathname === "/settings/open-source-licenses") {
+    return "settings.breadcrumb.openSourceLicenses";
+  }
+  return isSettingsSectionPath(normalizedPathname)
+    ? settingsSectionMessageKey(normalizedPathname)
+    : null;
 }
 
 export function SettingsBreadcrumb({ pathname }: { pathname: string }) {
-  const sectionLabel = settingsBreadcrumbLabel(pathname);
+  const t = useT();
+  const sectionKey = settingsBreadcrumbMessageKey(pathname);
 
   return (
-    <WorkspaceBreadcrumb ariaLabel="Settings breadcrumb">
-      {sectionLabel ? (
+    <WorkspaceBreadcrumb ariaLabel={t("settings.breadcrumb.ariaLabel")}>
+      {sectionKey ? (
         <>
-          <WorkspaceBreadcrumbItem>Settings</WorkspaceBreadcrumbItem>
+          <WorkspaceBreadcrumbItem>{t("common.settings")}</WorkspaceBreadcrumbItem>
           <WorkspaceBreadcrumbSeparator />
         </>
       ) : null}
       <WorkspaceBreadcrumbItem current className="truncate">
-        {sectionLabel ?? "Settings"}
+        {sectionKey ? t(sectionKey) : t("common.settings")}
       </WorkspaceBreadcrumbItem>
     </WorkspaceBreadcrumb>
   );

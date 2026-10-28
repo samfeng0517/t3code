@@ -699,6 +699,9 @@ export const layer: Layer.Layer<
             case "command_output.delta":
               // Live output is routed to the command output hub before ingestion.
               return [];
+            case "mod_surface.updated":
+              // Mod drawings are routed to the mod surface hub before ingestion.
+              return [];
             case "turn.terminal":
               const dismissed = yield* dismissNativeUserInputs(input, input.event.providerTurnId);
               if (input.event.status !== "failed") {

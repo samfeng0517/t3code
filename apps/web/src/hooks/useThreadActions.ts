@@ -24,6 +24,7 @@ import { useRouter } from "@tanstack/react-router";
 
 import { getFallbackThreadIdAfterDelete, pinOrderKeyBetween } from "../components/Sidebar.logic";
 import { useComposerDraftStore } from "../composerDraftStore";
+import { t } from "~/i18n";
 import { environmentSession, readEnvironmentScope } from "../state/session";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentServerConfigsAtom } from "../state/server";
@@ -179,8 +180,8 @@ async function requestThreadUnpinConfirmation(input: {
   return settlePromise(() =>
     confirm(
       [
-        `Unpin thread "${input.title}"?`,
-        "This will move the thread out of your pinned section.",
+        t("common.threadConfirm.unpin", { title: input.title }),
+        t("common.threadConfirm.unpinDescription"),
       ].join("\n"),
     ),
   );
@@ -490,10 +491,10 @@ export function useThreadActions() {
       const confirmationResult = await settlePromise(() =>
         localApi.dialogs.confirm(
           [
-            "This thread is the only one linked to this worktree:",
+            t("common.threadConfirm.onlyThreadOnWorktree"),
             displayWorktreePath ?? orphanedWorktreePath,
             "",
-            "Delete the worktree too?",
+            t("common.threadConfirm.deleteWorktree"),
           ].join("\n"),
           { variant: "destructive" },
         ),
@@ -759,7 +760,7 @@ export function useThreadActions() {
     const resolved = resolveThreadTarget(target);
     const confirmationResult = await requestThreadUnpinConfirmation({
       enabled: confirmThreadUnpin,
-      title: resolved?.thread.title ?? "this thread",
+      title: resolved?.thread.title ?? t("common.threadConfirm.thisThread"),
       confirm: localApi ? (message) => localApi.dialogs.confirm(message) : null,
     });
     if (confirmationResult._tag === "Failure") {
@@ -896,12 +897,12 @@ export function useThreadActions() {
     const resolved = resolveThreadTarget(target);
 
     if (confirmThreadDelete && localApi) {
-      const title = resolved?.thread.title ?? "this thread";
+      const title = resolved?.thread.title ?? t("common.threadConfirm.thisThread");
       const confirmationResult = await settlePromise(() =>
         localApi.dialogs.confirm(
           [
-            `Delete thread "${title}"?`,
-            "This permanently clears conversation history for this thread.",
+            t("common.threadConfirm.delete", { title }),
+            t("common.threadConfirm.deleteDescription"),
           ].join("\n"),
           { variant: "destructive" },
         ),

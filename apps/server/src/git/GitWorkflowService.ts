@@ -4,14 +4,23 @@ import * as Layer from "effect/Layer";
 import * as FileSystem from "effect/FileSystem";
 
 import {
+  GitBranchNotFullyMergedError,
   GitManagerError,
   GitCommandError,
+  type GitCreateTagInput,
+  type GitDeleteTagInput,
+  type GitPushTagInput,
+  type VcsDeleteBranchInput,
+  type VcsRenameBranchInput,
+  type VcsRenameBranchResult,
   type VcsSwitchRefInput,
   type VcsSwitchRefResult,
   type VcsCreateRefInput,
   type VcsCreateRefResult,
   type VcsCreateWorktreeInput,
   type VcsCreateWorktreeResult,
+  type VcsFetchInput,
+  type VcsFetchResult,
   type VcsListRefsInput,
   type VcsListRefsResult,
   type GitManagerServiceError,
@@ -30,6 +39,7 @@ import {
 } from "@t3tools/contracts";
 
 import * as GitManager from "./GitManager.ts";
+import * as WorktreeRemoveScripts from "../project/WorktreeRemoveScripts.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
@@ -60,6 +70,8 @@ export class GitWorkflowService extends Context.Service<
     readonly invalidateRemoteStatus: (cwd: string) => Effect.Effect<void, never>;
     readonly invalidateStatus: (cwd: string) => Effect.Effect<void, never>;
     readonly pullCurrentBranch: (cwd: string) => Effect.Effect<VcsPullResult, GitCommandError>;
+    /** Fetches the primary remote and prunes branches deleted there. */
+    readonly fetch: (input: VcsFetchInput) => Effect.Effect<VcsFetchResult, GitCommandError>;
     readonly runStackedAction: (
       input: GitRunStackedActionInput,
       options?: GitManager.GitRunStackedActionOptions,
@@ -108,6 +120,8 @@ export class GitWorkflowService extends Context.Service<
       { readonly commitSha: string; readonly remoteRefName: string } | null,
       GitCommandError
     >;
+    readonly prepareWorktreeBase: GitVcsDriver.GitVcsDriver["Service"]["prepareWorktreeBase"];
+    readonly fastForwardWorktree: GitVcsDriver.GitVcsDriver["Service"]["fastForwardWorktree"];
     readonly removeWorktree: (
       input: VcsRemoveWorktreeInput,
     ) => Effect.Effect<void, GitCommandError>;
@@ -123,6 +137,17 @@ export class GitWorkflowService extends Context.Service<
     readonly switchRef: (
       input: VcsSwitchRefInput,
     ) => Effect.Effect<VcsSwitchRefResult, GitCommandError>;
+    /** Renames to exactly `newName`, failing when that name is taken. */
+    readonly renameLocalBranch: (
+      input: VcsRenameBranchInput,
+    ) => Effect.Effect<VcsRenameBranchResult, GitCommandError>;
+    /** Without `force`, refuses a branch whose commits are not merged. */
+    readonly deleteBranch: (
+      input: VcsDeleteBranchInput,
+    ) => Effect.Effect<void, GitCommandError | GitBranchNotFullyMergedError>;
+    readonly createTag: (input: GitCreateTagInput) => Effect.Effect<void, GitCommandError>;
+    readonly deleteTag: (input: GitDeleteTagInput) => Effect.Effect<void, GitCommandError>;
+    readonly pushTag: (input: GitPushTagInput) => Effect.Effect<void, GitCommandError>;
     readonly renameBranch: (input: {
       readonly exactName?: boolean;
       readonly cwd: string;
@@ -174,6 +199,7 @@ export const make = Effect.gen(function* () {
   const git = yield* GitVcsDriver.GitVcsDriver;
   const gitManager = yield* GitManager.GitManager;
   const fileSystem = yield* FileSystem.FileSystem;
+  const worktreeRemoveScripts = yield* WorktreeRemoveScripts.WorktreeRemoveScripts;
 
   // Nested projects and path aliases must share the checkout's branch-mutation lease.
   const withCheckoutLease = <A, E, R>(rootPath: string, effect: Effect.Effect<A, E, R>) =>
@@ -377,6 +403,12 @@ export const make = Effect.gen(function* () {
         Effect.andThen(git.pullCurrentBranch(cwd)),
       );
     }),
+    fetch: Effect.fn("GitWorkflowService.fetch")(function* (input) {
+      yield* ensureGitCommand("GitWorkflowService.fetch", input.cwd);
+      const remoteName = yield* git.resolvePrimaryRemoteName(input.cwd);
+      yield* git.fetchRemote({ cwd: input.cwd, remoteName, prune: true });
+      return { remoteName };
+    }),
     runStackedAction: Effect.fn("GitWorkflowService.runStackedAction")(function (input, options) {
       return ensureGit("GitWorkflowService.runStackedAction", input.cwd).pipe(
         Effect.flatMap((handle) =>
@@ -460,8 +492,24 @@ export const make = Effect.gen(function* () {
         );
       },
     ),
+    prepareWorktreeBase: Effect.fn("GitWorkflowService.prepareWorktreeBase")(function (input) {
+      return ensureGitCommand("GitWorkflowService.prepareWorktreeBase", input.cwd).pipe(
+        Effect.andThen(git.prepareWorktreeBase(input)),
+      );
+    }),
+    fastForwardWorktree: Effect.fn("GitWorkflowService.fastForwardWorktree")(function (input) {
+      return ensureGitCommand("GitWorkflowService.fastForwardWorktree", input.cwd).pipe(
+        Effect.andThen(git.fastForwardWorktree(input)),
+      );
+    }),
     removeWorktree: Effect.fn("GitWorkflowService.removeWorktree")(function (input) {
       return ensureGitCommand("GitWorkflowService.removeWorktree", input.cwd).pipe(
+        Effect.andThen(
+          worktreeRemoveScripts.runBeforeRemove({
+            projectRoot: input.cwd,
+            worktreePath: input.path,
+          }),
+        ),
         Effect.andThen(git.removeWorktree(input)),
       );
     }),
@@ -489,6 +537,56 @@ export const make = Effect.gen(function* () {
         Effect.flatMap((handle) =>
           withCheckoutLease(handle.repository.rootPath, Effect.scoped(git.switchRef(input))),
         ),
+      );
+    }),
+    renameLocalBranch: Effect.fn("GitWorkflowService.renameLocalBranch")(function (input) {
+      return ensureGitCommand("GitWorkflowService.renameLocalBranch", input.cwd).pipe(
+        Effect.flatMap((handle) =>
+          withCheckoutLease(
+            handle.repository.rootPath,
+            git.renameBranch({
+              cwd: input.cwd,
+              oldBranch: input.oldName,
+              newBranch: input.newName,
+              exactName: true,
+            }),
+          ),
+        ),
+        Effect.map(({ branch }) => ({ refName: branch })),
+      );
+    }),
+    deleteBranch: Effect.fn("GitWorkflowService.deleteBranch")(function (input) {
+      return ensureGitCommand("GitWorkflowService.deleteBranch", input.cwd).pipe(
+        Effect.andThen(
+          git.deleteLocalBranch({
+            cwd: input.cwd,
+            refName: input.refName,
+            ...(input.force === undefined ? {} : { force: input.force }),
+          }),
+        ),
+        Effect.catchTags({
+          GitCommandError: (error) =>
+            error.reason === "branch_not_fully_merged"
+              ? Effect.fail(
+                  new GitBranchNotFullyMergedError({ cwd: input.cwd, branch: input.refName }),
+                )
+              : Effect.fail(error),
+        }),
+      );
+    }),
+    createTag: Effect.fn("GitWorkflowService.createTag")(function (input) {
+      return ensureGitCommand("GitWorkflowService.createTag", input.cwd).pipe(
+        Effect.andThen(git.createTag(input)),
+      );
+    }),
+    deleteTag: Effect.fn("GitWorkflowService.deleteTag")(function (input) {
+      return ensureGitCommand("GitWorkflowService.deleteTag", input.cwd).pipe(
+        Effect.andThen(git.deleteTag(input)),
+      );
+    }),
+    pushTag: Effect.fn("GitWorkflowService.pushTag")(function (input) {
+      return ensureGitCommand("GitWorkflowService.pushTag", input.cwd).pipe(
+        Effect.andThen(git.pushTag(input)),
       );
     }),
     renameBranch: Effect.fn("GitWorkflowService.renameBranch")(function (input) {

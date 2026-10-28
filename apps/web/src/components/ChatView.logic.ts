@@ -719,18 +719,15 @@ export { resolveSendEnvMode } from "@t3tools/shared/projectSettings";
 export function resolveBackgroundDraftWorkspaceOptions(input: {
   envMode: DraftThreadEnvMode;
   branch: string | null;
-  startFromOrigin: boolean;
 }): {
   envMode: DraftThreadEnvMode;
   branch: string | null;
   worktreePath: null;
-  startFromOrigin: boolean;
 } {
   return {
     envMode: input.envMode,
     branch: input.branch,
     worktreePath: null,
-    startFromOrigin: input.envMode === "worktree" && input.startFromOrigin,
   };
 }
 

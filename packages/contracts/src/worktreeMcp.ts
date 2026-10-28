@@ -13,7 +13,7 @@ export const WorktreeMcpHandoffInput = Schema.Struct({
   startFromOrigin: Schema.optional(
     Schema.Boolean.annotate({
       description:
-        "True: fetch, start from the remote ref; check `startedFromOrigin`. Default: server setting.",
+        "True: sync with the base's remote first; a behind local base is updated, an ahead or diverged one is used as is. A failed fetch falls back to local refs; check `startedFromOrigin`. Default: true.",
     }),
   ),
   runSetupScript: Schema.optional(
@@ -80,7 +80,7 @@ export const WorktreeMcpStatusResult = Schema.Struct({
   branch: Schema.NullOr(TrimmedNonEmptyString),
   projectWorkspaceRoot: TrimmedNonEmptyString,
   defaultStartFromOrigin: Schema.Boolean.annotate({
-    description: "`startFromOrigin` default for `t3_worktree_handoff`.",
+    description: "`startFromOrigin` default for `t3_worktree_handoff`: always true.",
   }),
 });
 export type WorktreeMcpStatusResult = typeof WorktreeMcpStatusResult.Type;

@@ -2419,6 +2419,31 @@ code {
   }
 }
 
+/* Chrome extension buttons rendered by electron-chrome-extensions in its shadow root. */
+browser-action-list {
+  display: contents;
+  --browser-action-hover-bg: var(--accent);
+  --browser-action-badge-outline: var(--background);
+}
+
+/* PreviewExtensionActions sets `hidden` when the icons would squeeze the address
+   field; the display rule above would otherwise beat the UA `[hidden]` style. */
+browser-action-list[hidden] {
+  display: none;
+}
+
+browser-action-list::part(action) {
+  width: 24px; /* ui-literal-ok */
+  height: 24px; /* ui-literal-ok */
+  flex-shrink: 0;
+  border-radius: var(--control-radius);
+  background-size: 16px; /* ui-literal-ok */
+}
+
+browser-action-list::part(action):focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ring); /* ui-literal-ok */
+}
+
 /* Let the sortable rows open label clearance before painting the dividers.
    This runs once per pickup; rows retain dnd-kit's normal 200ms transitions. */
 .sidebar-drag-boundary-label {

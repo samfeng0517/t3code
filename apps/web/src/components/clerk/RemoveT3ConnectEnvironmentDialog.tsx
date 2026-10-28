@@ -11,6 +11,7 @@ import {
 } from "../ui/alert-dialog";
 import { Button, InlineButton } from "../ui/button";
 import { useT3ConnectAccountPage } from "./T3ConnectAccountPages";
+import { useT } from "../../i18n";
 
 export function RemoveT3ConnectEnvironmentDialog({
   environmentLabel,
@@ -21,6 +22,7 @@ export function RemoveT3ConnectEnvironmentDialog({
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
 }) {
+  const t = useT();
   const accountPage = useT3ConnectAccountPage();
   const [shownLabel, setShownLabel] = useState(environmentLabel);
   if (environmentLabel !== null && environmentLabel !== shownLabel) setShownLabel(environmentLabel);
@@ -36,12 +38,14 @@ export function RemoveT3ConnectEnvironmentDialog({
       >
         <AlertDialogPopup>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove {shownLabel} from this device?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("onboarding.removeEnvironment.title", { environment: shownLabel ?? "" })}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This forgets its pairing, credentials, and cached threads here.
+              {t("onboarding.removeEnvironment.description")}
             </AlertDialogDescription>
             <AlertDialogDescription>
-              It stays on your T3 Connect account and keeps its host space. Deregister it in{" "}
+              {t("onboarding.removeEnvironment.account.before")}
               {openAccountPage ? (
                 <InlineButton
                   onClick={() => {
@@ -49,18 +53,20 @@ export function RemoveT3ConnectEnvironmentDialog({
                     openAccountPage();
                   }}
                 >
-                  T3 Connect settings
+                  {t("onboarding.removeEnvironment.account.link")}
                 </InlineButton>
               ) : (
-                "T3 Connect settings"
-              )}{" "}
-              to free it.
+                t("onboarding.removeEnvironment.account.link")
+              )}
+              {t("onboarding.removeEnvironment.account.after")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="outline" />}>
+              {t("common.cancel")}
+            </AlertDialogClose>
             <Button variant="destructive" onClick={onConfirm}>
-              Remove from this device
+              {t("onboarding.removeEnvironment.confirm")}
             </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>

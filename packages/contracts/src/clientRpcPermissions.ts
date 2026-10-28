@@ -36,12 +36,20 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.projectCloneCancel]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneRetry]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsPull]: AuthSourceControlWriteScope,
+  // Fetching rewrites and prunes remote-tracking refs with the server's Git credentials.
+  [WS_METHODS.vcsFetch]: AuthSourceControlWriteScope,
   [WS_METHODS.gitRunStackedAction]: AuthSourceControlWriteScope,
   [WS_METHODS.gitPreparePullRequestThread]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsCreateWorktree]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsRemoveWorktree]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsCreateRef]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsSwitchRef]: AuthSourceControlWriteScope,
+  [WS_METHODS.vcsRenameBranch]: AuthSourceControlWriteScope,
+  [WS_METHODS.vcsDeleteBranch]: AuthSourceControlWriteScope,
+  [WS_METHODS.gitCreateTag]: AuthSourceControlWriteScope,
+  [WS_METHODS.gitDeleteTag]: AuthSourceControlWriteScope,
+  // Pushing a tag writes to a remote with the server's Git credentials.
+  [WS_METHODS.gitPushTag]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsInit]: AuthSourceControlWriteScope,
 
   [WS_METHODS.scheduledTasksUpsert]: AuthOrchestrationOperateScope,
@@ -50,6 +58,8 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.scheduledTasksRunNow]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksRotateWebhookToken]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.stopWorkflow]: AuthOrchestrationOperateScope,
+  // A mod button can start work in the agent session that drew it.
+  [WS_METHODS.modsAct]: AuthOrchestrationOperateScope,
   // A guest link hands thread access to someone outside, like a pairing link.
   [WS_METHODS.guestShareCreate]: AuthAccessWriteScope,
 } as const;

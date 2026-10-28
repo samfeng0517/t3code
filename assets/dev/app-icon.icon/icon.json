@@ -1,45 +1,69 @@
 {
   "fill": {
-    "solid": "display-p3:0.00000,0.00000,0.00000,1.00000"
+    "automatic-gradient": "display-p3:0.96000,0.97000,0.99000,1.00000"
   },
   "groups": [
     {
       "layers": [
         {
           "glass": true,
-          "image-name": "text.svg",
-          "name": "Text",
+          "image-name": "label.svg",
+          "name": "Label",
           "position": {
-            "scale": 8.5,
-            "translation-in-points": [0, 0]
-          }
-        },
-        {
-          "glass": false,
-          "image-name": "annotations.svg",
-          "name": "Annotations",
-          "position": {
-            "scale": 8.5,
-            "translation-in-points": [0, 0]
-          }
-        },
-        {
-          "glass": true,
-          "image-name": "background.svg",
-          "name": "Background",
-          "position": {
-            "scale": 8.1,
-            "translation-in-points": [0, 0]
+            "scale": 1.5,
+            "translation-in-points": [0, 150]
           }
         }
       ],
       "shadow": {
         "kind": "neutral",
-        "opacity": 0.6
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    },
+    {
+      "layers": [
+        {
+          "glass": false,
+          "image-name": "code.svg",
+          "name": "Code",
+          "position": {
+            "scale": 0.82,
+            "translation-in-points": [0, -62]
+          }
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    },
+    {
+      "layers": [
+        {
+          "glass": true,
+          "image-name": "bubble.svg",
+          "name": "Bubble",
+          "position": {
+            "scale": 0.82,
+            "translation-in-points": [0, -62]
+          }
+        }
+      ],
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.5
       },
       "translucency": {
         "enabled": true,
-        "value": 0.2
+        "value": 0.15
       }
     }
   ],

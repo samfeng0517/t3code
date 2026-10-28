@@ -62,6 +62,8 @@ export function pullRequestActionLabel(
       return "Delete branch";
     case "approve-workflows":
       return "Approve workflows";
+    case "unapprove":
+      return "Revoke approval";
   }
 }
 
@@ -77,6 +79,7 @@ export const PR_ACTION_ICONS = {
   revert: "arrow.uturn.backward",
   "delete-branch": "trash",
   "approve-workflows": "checkmark",
+  unapprove: "arrow.uturn.backward",
 } as const satisfies Record<PullRequestAction, AppSymbolName>;
 
 export const ALL_PR_ACTIONS: readonly PullRequestAction[] = [
@@ -87,6 +90,7 @@ export const ALL_PR_ACTIONS: readonly PullRequestAction[] = [
   "enable-auto-merge",
   "disable-auto-merge",
   "approve-workflows",
+  "unapprove",
   "close",
   "reopen",
   "revert",

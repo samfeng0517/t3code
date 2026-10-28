@@ -92,6 +92,17 @@ export const SidebarAutoSettleAfterDays = Schema.Number.check(
 );
 export type SidebarAutoSettleAfterDays = typeof SidebarAutoSettleAfterDays.Type;
 const DEFAULT_SIDEBAR_AUTO_SETTLE_AFTER_DAYS: SidebarAutoSettleAfterDays = 3;
+export const MIN_THREAD_AUTO_CLEANUP_AFTER_DAYS = 1;
+export const MAX_THREAD_AUTO_CLEANUP_AFTER_DAYS = 365;
+/** Days before settled threads are archived, or auto-archived threads are deleted. */
+export const ThreadAutoCleanupAfterDays = Schema.Int.check(
+  Schema.isBetween({
+    minimum: MIN_THREAD_AUTO_CLEANUP_AFTER_DAYS,
+    maximum: MAX_THREAD_AUTO_CLEANUP_AFTER_DAYS,
+  }),
+);
+export type ThreadAutoCleanupAfterDays = typeof ThreadAutoCleanupAfterDays.Type;
+const DEFAULT_THREAD_AUTO_CLEANUP_AFTER_DAYS: ThreadAutoCleanupAfterDays = 30;
 export const MIN_GLASS_OPACITY = 40;
 export const MAX_GLASS_OPACITY = 100;
 export const GlassOpacity = Schema.Int.check(
@@ -110,6 +121,10 @@ export const AppearanceContrast = Schema.Int.check(
 );
 export type AppearanceContrast = typeof AppearanceContrast.Type;
 const DEFAULT_APPEARANCE_CONTRAST: AppearanceContrast = 100;
+// "system" follows the browser or OS language and falls back to English.
+export const LanguagePreference = Schema.Literals(["system", "en", "zh-TW"]);
+export type LanguagePreference = typeof LanguagePreference.Type;
+const DEFAULT_LANGUAGE_PREFERENCE: LanguagePreference = "system";
 export const MIN_PANEL_ANIMATION_DURATION_MS = 0;
 export const MAX_PANEL_ANIMATION_DURATION_MS = 400;
 export const PanelAnimationDurationMs = Schema.Int.check(
@@ -307,6 +322,9 @@ export type ModelPreferences = {
 };
 
 export const ClientSettingsSchema = Schema.Struct({
+  language: LanguagePreference.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_LANGUAGE_PREFERENCE)),
+  ),
   notificationMode: NotificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
   ),
@@ -411,6 +429,8 @@ export const ClientSettingsSchema = Schema.Struct({
   persistComposerContextStrip: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
+  // Off checks out the selected branch itself in the new worktree.
+  newWorktreeCreatesBranch: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
 
   favorites: ModelFavorites.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   providerModelPreferences: ProviderModelPreferences.pipe(
@@ -632,11 +652,29 @@ export const CodexSettings = makeProviderSettingsSchema(
 );
 export type CodexSettings = typeof CodexSettings.Type;
 
-const CLAUDE_AUTO_COMPACT_WINDOW_PATTERN = /^(?:|[1-9]\d{5}|1000000)$/;
+// Thousands of tokens, 100K to 1,000K: typing 400 is easier to get right than 400000.
+// Empty leaves the threshold to Claude.
+const ClaudeAutoCompactWindowK = TrimmedString.check(Schema.isPattern(/^(?:|[1-9]\d{2}|1000)$/));
+// Settings saved before the K unit hold the full token count.
+const LegacyClaudeAutoCompactWindow = TrimmedString.check(
+  Schema.isPattern(/^(?:[1-9]\d{5}|1000000)$/),
+).pipe(
+  Schema.decodeTo(
+    ClaudeAutoCompactWindowK,
+    SchemaTransformation.transform({
+      decode: (tokens) => String(Math.round(Number(tokens) / 1000)),
+      encode: (thousands) => String(Number(thousands) * 1000),
+    }),
+  ),
+);
+const ClaudeAutoCompactWindow = Schema.Union([
+  ClaudeAutoCompactWindowK,
+  LegacyClaudeAutoCompactWindow,
+]);
 
 export const IDLE_COMPACTION_MODES = [
   { value: "onReturn", label: "When you return" },
-  { value: "beforeCacheExpires", label: "Before the cache expires (beta)" },
+  { value: "beforeCacheExpires", label: "Before the cache expires" },
   { value: "off", label: "Never" },
 ] as const;
 export const IdleCompactionMode = Schema.Literals(IDLE_COMPACTION_MODES.map((mode) => mode.value));
@@ -691,16 +729,14 @@ export const ClaudeSettings = makeProviderSettingsSchema(
         },
       }),
     ),
-    autoCompactWindow: TrimmedString.check(
-      Schema.isPattern(CLAUDE_AUTO_COMPACT_WINDOW_PATTERN),
-    ).pipe(
+    autoCompactWindow: ClaudeAutoCompactWindow.pipe(
       Schema.withDecodingDefault(Effect.succeed("")),
       Schema.annotateKey({
-        title: "Auto-compact after",
+        title: "Auto-compact after (K tokens)",
         description:
-          "Compact after 100,000 to 1,000,000 tokens. Leave empty to use Claude's default.",
+          "Compact after this many thousand tokens, from 100 to 1000. For example, 400 means 400K. Leave empty to use Claude's default.",
         providerSettingsForm: {
-          placeholder: "e.g. 300000",
+          placeholder: "e.g. 300",
           clearWhenEmpty: "omit",
         },
       }),
@@ -1158,8 +1194,16 @@ export const ServerSettings = Schema.Struct({
   sidebarAutoSettleAfterDays: Schema.NullOr(SidebarAutoSettleAfterDays).pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_AUTO_SETTLE_AFTER_DAYS)),
   ),
+  sidebarAutoArchiveSettledAfterDays: Schema.NullOr(ThreadAutoCleanupAfterDays).pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_THREAD_AUTO_CLEANUP_AFTER_DAYS)),
+  ),
+  /** Only threads the server archived itself are deleted; manually archived ones never are. */
+  sidebarAutoDeleteArchivedAfterDays: Schema.NullOr(ThreadAutoCleanupAfterDays).pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_THREAD_AUTO_CLEANUP_AFTER_DAYS)),
+  ),
+  // Defaults on so unset settings compact idle threads before the cache expires.
   compactIdleThreads: LegacyCompactIdleThreads.pipe(
-    Schema.withDecodingDefault(Effect.succeed(false)),
+    Schema.withDecodingDefault(Effect.succeed(true)),
   ),
   idleCompaction: Schema.optionalKey(IdleCompactionMode),
   snoozeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -1504,6 +1548,8 @@ export const ServerSettingsPatch = Schema.Struct({
   deviceHosts: Schema.optionalKey(SshDeviceHostConfigs),
   easDeviceHosts: Schema.optionalKey(EasDeviceHostConfigs),
   sidebarAutoSettleAfterDays: Schema.optionalKey(Schema.NullOr(SidebarAutoSettleAfterDays)),
+  sidebarAutoArchiveSettledAfterDays: Schema.optionalKey(Schema.NullOr(ThreadAutoCleanupAfterDays)),
+  sidebarAutoDeleteArchivedAfterDays: Schema.optionalKey(Schema.NullOr(ThreadAutoCleanupAfterDays)),
   compactIdleThreads: Schema.optionalKey(LegacyCompactIdleThreads),
   idleCompaction: Schema.optionalKey(IdleCompactionMode),
   sidebarAutoSettleKeepPullRequests: Schema.optionalKey(Schema.Boolean),
@@ -1605,6 +1651,7 @@ export function requiredScopesForProjectMutation(
 }
 
 export const ClientSettingsPatch = Schema.Struct({
+  language: Schema.optionalKey(LanguagePreference),
   notificationMode: Schema.optionalKey(NotificationMode),
   inAppNotificationsEnabled: Schema.optionalKey(Schema.Boolean),
   diffColorScheme: Schema.optionalKey(DiffColorScheme),
@@ -1645,6 +1692,7 @@ export const ClientSettingsPatch = Schema.Struct({
   fontFamilyTerminal: Schema.optionalKey(FontFamilyPreference),
   fontSmoothing: Schema.optionalKey(Schema.Boolean),
   persistComposerContextStrip: Schema.optionalKey(Schema.Boolean),
+  newWorktreeCreatesBranch: Schema.optionalKey(Schema.Boolean),
   favorites: Schema.optionalKey(ModelFavorites),
   providerModelPreferences: Schema.optionalKey(ProviderModelPreferences),
   pullRequestMergeMethodOverrides: Schema.optionalKey(

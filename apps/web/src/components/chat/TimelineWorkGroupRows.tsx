@@ -28,6 +28,7 @@ import {
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Spinner } from "../ui/spinner";
 import { WorktreeSetupCard } from "./WorktreeSetupCard";
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import {
@@ -272,20 +273,23 @@ function ExpandedWorkGroupEntries({
 const workEntryKey = (entry: TimelineWorkEntry) => entry.id;
 
 export function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
+  const t = useT();
   const { isCompacting, isPreparingWorktree, backgroundWorktreeSetup } =
     use(TimelineRowActivityCtx);
-  const compacting = row.compacting ?? (isCompacting ? "Compacting…" : undefined);
+  const compacting =
+    row.compacting ?? (isCompacting ? t("composer.timeline.compacting") : undefined);
   const shimmer = isPreparingWorktree || compacting !== undefined;
   const label = isPreparingWorktree ? (
-    "Setting up worktree…"
+    t("composer.timeline.settingUpWorktree")
   ) : compacting !== undefined ? (
     <CompactingLabel label={compacting} />
   ) : row.createdAt ? (
     <>
-      Working for <WorkingTimer createdAt={row.createdAt} />
+      {t("composer.timeline.workingFor")}
+      <WorkingTimer createdAt={row.createdAt} />
     </>
   ) : (
-    "Working..."
+    t("composer.timeline.working")
   );
   return (
     <div className="border-b border-border/60 pb-2 pt-1">
@@ -306,6 +310,7 @@ export function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: 
 }
 
 function BackgroundWorktreeSetupChip({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
+  const t = useT();
   const ctx = use(TimelineRowCtx);
   const terminalId = snapshot.setupScript?.terminalId ?? null;
   const openTerminal = ctx.onOpenWorktreeSetupTerminal;
@@ -319,12 +324,12 @@ function BackgroundWorktreeSetupChip({ snapshot }: { snapshot: WorktreeSetupSnap
             variant="ghost-muted"
             size="micro"
             className="ml-auto min-w-0 shrink-0"
-            aria-label={`Background setup is still running: ${scriptName}. Show setup progress.`}
+            aria-label={t("composer.timeline.backgroundSetupAriaLabel", { script: scriptName })}
           />
         }
       >
         <Spinner className="size-3 shrink-0" />
-        <span className="truncate">Background setup</span>
+        <span className="truncate">{t("composer.timeline.backgroundSetup")}</span>
       </PopoverTrigger>
       <PopoverPopup side="bottom" align="end" width="lg" padding="compact">
         <WorktreeSetupCard
@@ -349,10 +354,13 @@ function CompactingLabel({ label }: { label: string }) {
 }
 
 export function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "thinking" }> }) {
+  const t = useT();
   const ctx = use(TimelineRowCtx);
   const { isCompacting, isPreparingWorktree } = use(TimelineRowActivityCtx);
   if (isPreparingWorktree || isCompacting) return <WorkLogRow label="" />;
-  const activity = <LiveActivityRow label="Thinking" iconName="brain" active shimmer />;
+  const activity = (
+    <LiveActivityRow label={t("composer.timeline.thinking")} iconName="brain" active shimmer />
+  );
   const { groupId } = row;
   if (groupId === undefined) return activity;
   return (

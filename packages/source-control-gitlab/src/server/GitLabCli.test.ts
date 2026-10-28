@@ -1,9 +1,9 @@
-import { assert, it, afterEach, expect, vi } from "@effect/vitest";
+import { assert, it, afterEach, describe, expect, vi } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { ChildProcessSpawner } from "effect/process";
 
-import { VcsProcessExitError } from "@t3tools/contracts";
+import { DEFAULT_SERVER_SETTINGS, VcsProcessExitError } from "@t3tools/contracts";
 
 import type * as SourceControlHost from "@t3tools/source-control-core/server/SourceControlHost";
 import * as TestSourceControlHost from "@t3tools/source-control-testing/TestSourceControlHost";
@@ -228,4 +228,160 @@ layer("GitLabCli.layer", (it) => {
       assert.strictEqual(error.cause, cause);
     }),
   );
+});
+
+const savedRun = vi.fn<SourceControlHost.SourceControlHost["Service"]["process"]["run"]>();
+const savedSettingsLayer = it.layer(
+  GitLabCli.layer.pipe(
+    Layer.provide(
+      TestSourceControlHost.layer({
+        settings: {
+          ...DEFAULT_SERVER_SETTINGS,
+          sourceControlHosts: {
+            gitlab: { host: "https://GitLab.Example.com/", token: "glpat-saved" },
+          },
+        },
+        process: { run: savedRun },
+      }),
+    ),
+  ),
+);
+
+afterEach(() => {
+  savedRun.mockReset();
+});
+
+savedSettingsLayer("GitLabCli.layer with a server and token saved in Settings", (it) => {
+  it.effect("hands glab the saved token, and names the server, for that server alone", () =>
+    Effect.gen(function* () {
+      savedRun.mockReturnValue(Effect.succeed(processOutput("{}")));
+      const glab = yield* GitLabCli.GitLabCli;
+
+      yield* glab.execute({
+        cwd: "/repo",
+        host: "gitlab.example.com",
+        args: ["api", "projects/sam%2Ft3code"],
+      });
+      yield* glab.execute({ cwd: "/repo", host: "gitlab.com", args: ["api", "user"] });
+      yield* glab.execute({ cwd: "/repo", args: ["api", "user"] });
+
+      const [selfHosted, gitlabCom, unnamed] = savedRun.mock.calls.map(([input]) => input);
+      expect(selfHosted).toMatchObject({
+        command: "glab",
+        args: ["api", "--hostname", "gitlab.example.com", "projects/sam%2Ft3code"],
+        env: { GITLAB_TOKEN: "glpat-saved", GITLAB_HOST: "https://gitlab.example.com" },
+      });
+      for (const call of [gitlabCom, unnamed]) {
+        expect(call?.args).toEqual(["api", "user"]);
+        expect(call?.env).toBeUndefined();
+      }
+    }),
+  );
+
+  it.effect("signs in a merge request command for the saved server without rewriting it", () =>
+    Effect.gen(function* () {
+      savedRun.mockReturnValue(Effect.succeed(processOutput("[]")));
+      const glab = yield* GitLabCli.GitLabCli;
+
+      yield* glab.listMergeRequests({
+        cwd: "/repo",
+        host: "gitlab.example.com",
+        headSelector: "feature/self-hosted",
+        state: "open",
+      });
+
+      expect(savedRun.mock.calls[0]?.[0]).toMatchObject({
+        args: [
+          "mr",
+          "list",
+          "--source-branch",
+          "feature/self-hosted",
+          "--per-page",
+          "20",
+          "--output",
+          "json",
+        ],
+        env: { GITLAB_TOKEN: "glpat-saved", GITLAB_HOST: "https://gitlab.example.com" },
+      });
+    }),
+  );
+});
+
+const portedRun = vi.fn<SourceControlHost.SourceControlHost["Service"]["process"]["run"]>();
+const portedSettingsLayer = it.layer(
+  GitLabCli.layer.pipe(
+    Layer.provide(
+      TestSourceControlHost.layer({
+        settings: {
+          ...DEFAULT_SERVER_SETTINGS,
+          sourceControlHosts: {
+            gitlab: { host: "gitlab.example.com:8443", token: "glpat-saved" },
+          },
+        },
+        process: { run: portedRun },
+      }),
+    ),
+  ),
+);
+
+afterEach(() => {
+  portedRun.mockReset();
+});
+
+portedSettingsLayer("GitLabCli.layer with a server saved on its own port", (it) => {
+  it.effect("moves a merge request command's repository onto the saved port", () =>
+    Effect.gen(function* () {
+      portedRun.mockReturnValue(Effect.succeed(processOutput("")));
+      const glab = yield* GitLabCli.GitLabCli;
+
+      yield* glab.execute({
+        cwd: "/repo",
+        host: "gitlab.example.com",
+        args: ["mr", "merge", "7", "--repo", "https://gitlab.example.com/group/proj", "--yes"],
+      });
+      yield* glab.execute({
+        cwd: "/repo",
+        host: "gitlab.com",
+        args: ["mr", "close", "7", "--repo", "https://gitlab.com/group/proj"],
+      });
+
+      const [ported, elsewhere] = portedRun.mock.calls.map(([input]) => input.args);
+      expect(ported).toEqual([
+        "mr",
+        "merge",
+        "7",
+        "--repo",
+        "https://gitlab.example.com:8443/group/proj",
+        "--yes",
+      ]);
+      expect(elsewhere).toEqual(["mr", "close", "7", "--repo", "https://gitlab.com/group/proj"]);
+    }),
+  );
+});
+
+describe("gitLabSavedCredential", () => {
+  it("matches the saved server by name and keeps the port it was saved with", () => {
+    expect(
+      GitLabCli.gitLabSavedCredential(
+        { host: "gitlab.example.com:8443", token: "glpat-saved" },
+        "GITLAB.EXAMPLE.COM",
+      ),
+    ).toEqual({ authority: "gitlab.example.com:8443", token: "glpat-saved" });
+  });
+
+  it("reads an empty server as gitlab.com", () => {
+    expect(GitLabCli.gitLabSavedCredential({ token: "glpat-saved" }, "gitlab.com")).toEqual({
+      authority: "gitlab.com",
+      token: "glpat-saved",
+    });
+  });
+
+  it("has nothing for another server, an unnamed one, or a server saved without a token", () => {
+    const saved = { host: "gitlab.example.com", token: "glpat-saved" };
+    expect(GitLabCli.gitLabSavedCredential(saved, "gitlab.com")).toBeNull();
+    expect(GitLabCli.gitLabSavedCredential(saved, undefined)).toBeNull();
+    expect(
+      GitLabCli.gitLabSavedCredential({ host: "gitlab.example.com" }, "gitlab.example.com"),
+    ).toBeNull();
+  });
 });

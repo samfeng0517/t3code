@@ -12,6 +12,8 @@ import {
   US_SHIFTED_TO_UNSHIFTED_KEYS,
 } from "@t3tools/shared/keybindings";
 
+import type { Translate } from "~/i18n";
+import { en, type MessageKey } from "~/i18n/messages/en";
 import { shortcutKeyFromEvent } from "../../keybindings";
 import { isMacPlatform } from "../../lib/utils";
 import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
@@ -101,12 +103,12 @@ export function whenAstToExpression(node: KeybindingWhenNode | undefined): strin
   }
 }
 
-export function whenNodeRemoveLabel(node: KeybindingWhenNode, depth: number): string {
-  if (depth === 0) return "Clear all conditions";
+export function whenNodeRemoveLabel(t: Translate, node: KeybindingWhenNode, depth: number): string {
+  if (depth === 0) return t("settingsPages.keybindings.removeLabel.clearAll");
   if (node.type === "identifier" || (node.type === "not" && node.node.type === "identifier")) {
-    return "Remove condition";
+    return t("settingsPages.keybindings.removeLabel.condition");
   }
-  return "Remove group and its conditions";
+  return t("settingsPages.keybindings.removeLabel.group");
 }
 
 function wrapWhenExpression(node: KeybindingWhenNode): string {
@@ -180,6 +182,7 @@ function conflictsWithWhen(leftWhen: string, rightWhen: string): boolean {
 export function keybindingConflictLabels(
   rows: ReadonlyArray<KeybindingRow>,
   input: { readonly rowId: string; readonly key: string; readonly when: string },
+  label: (command: KeybindingCommand) => string = commandLabel,
 ): ReadonlyArray<string> {
   if (input.key.trim().length === 0) return [];
   const conflicts: Array<string> = [];
@@ -189,7 +192,7 @@ export function keybindingConflictLabels(
       candidate.key === input.key &&
       conflictsWithWhen(candidate.when, input.when)
     ) {
-      conflicts.push(commandLabel(candidate.command));
+      conflicts.push(label(candidate.command));
     }
   }
   return [...new Set(conflicts)].toSorted();
@@ -286,6 +289,7 @@ export function buildKeybindingRows(
 export function filterKeybindingRows(
   rows: ReadonlyArray<KeybindingRow>,
   query: string,
+  localizedLabel?: (command: KeybindingCommand) => string,
 ): ReadonlyArray<KeybindingRow> {
   const normalizedQuery = query.trim().toLowerCase();
   if (normalizedQuery.length === 0) return rows;
@@ -293,6 +297,7 @@ export function filterKeybindingRows(
     return (
       row.command.toLowerCase().includes(normalizedQuery) ||
       commandLabel(row.command).toLowerCase().includes(normalizedQuery) ||
+      localizedLabel?.(row.command).toLowerCase().includes(normalizedQuery) ||
       row.key.toLowerCase().includes(normalizedQuery) ||
       row.when.toLowerCase().includes(normalizedQuery) ||
       row.source.toLowerCase().includes(normalizedQuery)
@@ -374,6 +379,22 @@ export function commandLabel(command: KeybindingCommand): string {
     return `Run Script: ${titleCaseCommandSegment(raw.slice("script.".length, -".run".length))}`;
   }
   return raw.split(".").map(titleCaseCommandSegment).join(": ");
+}
+
+// Static command names live in the search index bundle so search and this page share them.
+export function localizedCommandLabel(t: Translate, command: KeybindingCommand): string {
+  const raw = String(command);
+  if (raw.startsWith("script.") && raw.endsWith(".run")) {
+    return t("settingsPages.keybindings.command.script", {
+      name: titleCaseCommandSegment(raw.slice("script.".length, -".run".length)),
+    });
+  }
+  const key = `searchIndex.keybinding.${raw}`;
+  return isMessageKey(key) ? t(key) : commandLabel(command);
+}
+
+function isMessageKey(key: string): key is MessageKey {
+  return Object.hasOwn(en, key);
 }
 
 function titleCaseCommandSegment(segment: string): string {

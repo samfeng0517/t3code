@@ -929,7 +929,6 @@ function TaskForm({
               label="Base branch"
               value={resolveNewTaskBranchLabel({
                 branchName: draft.baseRef,
-                startFromOrigin: draft.startFromOrigin,
                 workspaceMode: "worktree",
               })}
               borderTop

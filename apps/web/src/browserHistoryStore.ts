@@ -32,6 +32,14 @@ import { readPrimaryEnvironmentId, usePrimaryEnvironmentId } from "~/state/envir
 import { readPreparedConnection } from "~/state/session";
 
 import { isLocalLoopbackHost, normalizeHostname } from "./browser/browserTargetResolver";
+import {
+  BROWSER_HISTORY_MAX_HIDDEN_TOP_SITES,
+  type BrowserHistoryEntry,
+  hideTopSiteKey,
+  historyVisitKey,
+  mergeHistoryAcrossProjects,
+  selectMostVisited,
+} from "./browserHistory.logic";
 import { useComposerDraftStore } from "./composerDraftStore";
 import {
   ensureClientSettingsHydrated,
@@ -49,13 +57,14 @@ import {
 import { buildPhysicalToLogicalProjectKeyMap } from "./sidebarProjectGrouping";
 import type { Project } from "./types";
 
-export type BrowserHistoryEntry = { url: string; lastVisitedAt: number; title?: string };
+export type { BrowserHistoryEntry } from "./browserHistory.logic";
 
-export const BROWSER_HISTORY_MAX_ENTRIES_PER_PROJECT = 50;
+const BROWSER_HISTORY_MAX_ENTRIES_PER_PROJECT = 50;
 export const BROWSER_HISTORY_MAX_PROJECTS = 20;
 const BROWSER_HISTORY_MAX_URL_LENGTH = 2048;
 export const BROWSER_HISTORY_MAX_TITLE_LENGTH = 512;
 const MAX_VALID_DATE_MS = 8_640_000_000_000_000;
+const MAX_VISIT_COUNT = 1_000_000;
 
 export function isValidHistoryTimestamp(value: unknown): value is number {
   return (
@@ -81,14 +90,7 @@ function titleLookupKey(normalized: string, environmentHostname?: string | null)
   return parsed.href;
 }
 
-function visitLookupKey(normalized: string, environmentHostname?: string | null): string {
-  const parsed = new URL(normalized);
-  const host = normalizeHostname(parsed.hostname);
-  const environmentHost = environmentHostname && normalizeHostname(environmentHostname);
-  if (isLocalLoopbackHost(host) || host === "0.0.0.0" || host === environmentHost)
-    parsed.hostname = "local";
-  return parsed.href;
-}
+const visitLookupKey = historyVisitKey;
 
 function isStableLocalUrl(normalized: string): boolean {
   const host = normalizeHostname(new URL(normalized).hostname);
@@ -113,7 +115,12 @@ export function upsertHistoryEntry(
   const storedUrl =
     existing && (isStableLocalUrl(existing.url) || !isStableLocalUrl(url)) ? existing.url : url;
   const entry: BrowserHistoryEntry = existing
-    ? { ...existing, url: storedUrl, lastVisitedAt: visitedAt }
+    ? {
+        ...existing,
+        url: storedUrl,
+        lastVisitedAt: visitedAt,
+        visitCount: Math.min(MAX_VISIT_COUNT, (existing.visitCount ?? 1) + 1),
+      }
     : { url, lastVisitedAt: visitedAt };
   if (!options?.insertOrdered)
     return [entry, ...rest].slice(0, BROWSER_HISTORY_MAX_ENTRIES_PER_PROJECT);
@@ -136,12 +143,28 @@ export function evictExcessProjects(
   return Object.fromEntries(kept.map((key) => [key, byProjectKey[key] ?? []]));
 }
 
+const isValidVisitCount = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value > 1 && value <= MAX_VISIT_COUNT;
+
+function migratePersistedHiddenTopSites(persistedState: unknown): string[] {
+  if (!persistedState || typeof persistedState !== "object") return [];
+  const raw = (persistedState as { hiddenTopSiteKeys?: unknown }).hiddenTopSiteKeys;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((key): key is string => typeof key === "string" && normalizeHistoryUrl(key) !== null)
+    .slice(-BROWSER_HISTORY_MAX_HIDDEN_TOP_SITES);
+}
+
 export function migratePersistedBrowserHistoryState(persistedState: unknown): {
   byProjectKey: Record<string, BrowserHistoryEntry[]>;
+  hiddenTopSiteKeys: string[];
 } {
-  if (!persistedState || typeof persistedState !== "object") return { byProjectKey: {} };
+  const hiddenTopSiteKeys = migratePersistedHiddenTopSites(persistedState);
+  if (!persistedState || typeof persistedState !== "object")
+    return { byProjectKey: {}, hiddenTopSiteKeys };
   const raw = (persistedState as { byProjectKey?: unknown }).byProjectKey;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { byProjectKey: {} };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw))
+    return { byProjectKey: {}, hiddenTopSiteKeys };
   const byProjectKey: Record<string, BrowserHistoryEntry[]> = {};
   for (const [projectKey, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!Array.isArray(value)) continue;
@@ -149,7 +172,7 @@ export function migratePersistedBrowserHistoryState(persistedState: unknown): {
     const entries = value
       .flatMap<BrowserHistoryEntry>((candidate) => {
         if (!candidate || typeof candidate !== "object") return [];
-        const { url, lastVisitedAt, title } = candidate as Record<string, unknown>;
+        const { url, lastVisitedAt, title, visitCount } = candidate as Record<string, unknown>;
         if (typeof url !== "string") return [];
         const normalizedUrl = normalizeHistoryUrl(url);
         if (!normalizedUrl) return [];
@@ -161,6 +184,7 @@ export function migratePersistedBrowserHistoryState(persistedState: unknown): {
             ...(typeof title === "string" && title.length > 0
               ? { title: title.slice(0, BROWSER_HISTORY_MAX_TITLE_LENGTH) }
               : {}),
+            ...(isValidVisitCount(visitCount) ? { visitCount } : {}),
           },
         ];
       })
@@ -174,7 +198,7 @@ export function migratePersistedBrowserHistoryState(persistedState: unknown): {
       .slice(0, BROWSER_HISTORY_MAX_ENTRIES_PER_PROJECT);
     if (entries.length > 0) byProjectKey[projectKey] = entries;
   }
-  return { byProjectKey: evictExcessProjects(byProjectKey) };
+  return { byProjectKey: evictExcessProjects(byProjectKey), hiddenTopSiteKeys };
 }
 
 const BROWSER_HISTORY_STORAGE_KEY = "t3code:browser-history:v1";
@@ -186,6 +210,8 @@ type PendingVisit = { url: string; at: number; environmentHostname: string | nul
 
 interface BrowserHistoryStoreState {
   byProjectKey: Record<string, BrowserHistoryEntry[]>;
+  /** Visit keys removed from the new tab's most visited links; history itself keeps them. */
+  hiddenTopSiteKeys: string[];
   projectKeyByThreadKey: Record<string, string>;
   pendingVisitsByThreadKey: Record<string, PendingVisit[]>;
   recordVisit: (
@@ -201,6 +227,11 @@ interface BrowserHistoryStoreState {
     environmentHostname?: string | null,
   ) => void;
   removeUrl: (projectKey: string, url: string) => void;
+  /** Removes a page from every project, matching loopback aliases like the merged list does. */
+  removeUrlEverywhere: (url: string) => void;
+  hideTopSite: (url: string) => void;
+  unhideTopSite: (url: string) => void;
+  restoreHiddenTopSites: () => void;
   registerThreadProject: (ref: ScopedThreadRef, projectKey: string) => void;
 }
 
@@ -224,6 +255,7 @@ export const useBrowserHistoryStore = create<BrowserHistoryStoreState>()(
   persist(
     (set, get) => ({
       byProjectKey: {},
+      hiddenTopSiteKeys: [],
       projectKeyByThreadKey: {},
       pendingVisitsByThreadKey: {},
       recordVisit: (projectKey, url, at, options) => {
@@ -277,6 +309,36 @@ export const useBrowserHistoryStore = create<BrowserHistoryStoreState>()(
         }
         set({ byProjectKey: { ...state.byProjectKey, [projectKey]: next } });
       },
+      removeUrlEverywhere: (url) => {
+        const normalized = normalizeHistoryUrl(url);
+        if (!normalized) return;
+        const key = visitLookupKey(normalized);
+        const state = get();
+        let changed = false;
+        const byProjectKey: Record<string, BrowserHistoryEntry[]> = {};
+        for (const [projectKey, entries] of Object.entries(state.byProjectKey)) {
+          const next = entries.filter((candidate) => visitLookupKey(candidate.url) !== key);
+          if (next.length !== entries.length) changed = true;
+          if (next.length > 0) byProjectKey[projectKey] = next;
+        }
+        if (changed) set({ byProjectKey });
+      },
+      hideTopSite: (url) => {
+        const normalized = normalizeHistoryUrl(url);
+        if (!normalized) return;
+        set({ hiddenTopSiteKeys: hideTopSiteKey(get().hiddenTopSiteKeys, normalized) });
+      },
+      unhideTopSite: (url) => {
+        const normalized = normalizeHistoryUrl(url);
+        if (!normalized) return;
+        const key = visitLookupKey(normalized);
+        const hidden = get().hiddenTopSiteKeys;
+        if (hidden.includes(key))
+          set({ hiddenTopSiteKeys: hidden.filter((candidate) => candidate !== key) });
+      },
+      restoreHiddenTopSites: () => {
+        if (get().hiddenTopSiteKeys.length > 0) set({ hiddenTopSiteKeys: [] });
+      },
       registerThreadProject: (ref, projectKey) => {
         const threadKey = scopedThreadKey(ref);
         const state = get();
@@ -307,6 +369,7 @@ export const useBrowserHistoryStore = create<BrowserHistoryStoreState>()(
       ),
       partialize: (state) => ({
         byProjectKey: state.byProjectKey,
+        hiddenTopSiteKeys: state.hiddenTopSiteKeys,
         projectKeyByThreadKey: state.projectKeyByThreadKey,
       }),
       migrate: migratePersistedBrowserHistoryState,
@@ -324,8 +387,23 @@ export function mergeBrowserHistoryState(
     ...currentState,
     ...migrated,
     projectKeyByThreadKey: migratePersistedThreadProjectKeys(persistedState, migrated.byProjectKey),
-    pendingVisitsByThreadKey: {},
+    // Pending visits are this window's own and never persisted; reloading another window's
+    // history must not drop them.
+    pendingVisitsByThreadKey: currentState.pendingVisitsByThreadKey,
   };
+}
+
+/**
+ * Another window recorded history; reload it so this window's next visit does not save its
+ * stale copy over that change.
+ */
+export function syncBrowserHistoryFromStorage(key: string | null): Promise<void> | void {
+  if (key !== BROWSER_HISTORY_STORAGE_KEY && key !== null) return undefined;
+  return useBrowserHistoryStore.persist.rehydrate();
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => void syncBrowserHistoryFromStorage(event.key));
 }
 
 function migratePersistedThreadProjectKeys(
@@ -507,6 +585,34 @@ export function removeUrlForThread(ref: ScopedThreadRef, url: string): void {
   useBrowserHistoryStore.getState().removeUrl(projectKey, url);
 }
 
+let mergedSource: BrowserHistoryStoreState["byProjectKey"] | null = null;
+let mergedHistory: ReadonlyArray<BrowserHistoryEntry> = [];
+
+/** Every project's history as one list, recomputed only when a project's history changes. */
+export function selectMergedBrowserHistory(
+  state: Pick<BrowserHistoryStoreState, "byProjectKey">,
+): ReadonlyArray<BrowserHistoryEntry> {
+  if (state.byProjectKey !== mergedSource) {
+    mergedHistory = mergeHistoryAcrossProjects(state.byProjectKey, mergedHistory);
+    mergedSource = state.byProjectKey;
+  }
+  return mergedHistory;
+}
+
+export function useRecentBrowserHistory(limit: number): ReadonlyArray<BrowserHistoryEntry> {
+  return useBrowserHistoryStore(
+    useShallow((state) => selectMergedBrowserHistory(state).slice(0, limit)),
+  );
+}
+
+export function useMostVisitedSites(limit: number): ReadonlyArray<BrowserHistoryEntry> {
+  return useBrowserHistoryStore(
+    useShallow((state) =>
+      selectMostVisited(selectMergedBrowserHistory(state), state.hiddenTopSiteKeys, limit),
+    ),
+  );
+}
+
 const EMPTY_HISTORY: ReadonlyArray<BrowserHistoryEntry> = [];
 
 function useThreadHistoryProjectKey(ref: ScopedThreadRef): string | null {
@@ -547,9 +653,18 @@ export function useThreadRecentHistory(
   );
 }
 
+/** The newest visit recorded for a thread's project, or `null` before it has one. */
+export function useThreadLatestHistoryUrl(ref: ScopedThreadRef): string | null {
+  const projectKey = useThreadHistoryProjectKey(ref);
+  return useBrowserHistoryStore(
+    (state) => (projectKey ? state.byProjectKey[projectKey]?.[0]?.url : undefined) ?? null,
+  );
+}
+
 export function resetBrowserHistoryForTests(): void {
   useBrowserHistoryStore.setState({
     byProjectKey: {},
+    hiddenTopSiteKeys: [],
     projectKeyByThreadKey: {},
     pendingVisitsByThreadKey: {},
   });

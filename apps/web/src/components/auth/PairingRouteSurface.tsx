@@ -15,14 +15,16 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { StandalonePage, StandalonePageHeader } from "../ui/standalone-page";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { t as translateNow, type Translate, useT } from "../../i18n";
 
 export function PairingPendingSurface() {
+  const t = useT();
   return (
     <StandalonePage tone="pairing">
       <StandalonePageHeader
         eyebrow={APP_DISPLAY_NAME}
-        title="Pairing with this environment"
-        description="Validating the pairing link and preparing your session."
+        title={t("onboarding.pairingRoute.pendingTitle")}
+        description={t("onboarding.pairingRoute.pendingDescription")}
       />
     </StandalonePage>
   );
@@ -37,6 +39,7 @@ export function PairingRouteSurface({
   initialErrorMessage?: string;
   onAuthenticated: () => void;
 }) {
+  const t = useT();
   const [autoPairToken] = useState(peekPairingTokenFromUrl);
   const [credential, setCredential] = useState(autoPairToken ?? "");
   const [errorMessage, setErrorMessage] = useState(initialErrorMessage ?? "");
@@ -87,14 +90,14 @@ export function PairingRouteSurface({
     <StandalonePage tone="pairing">
       <StandalonePageHeader
         eyebrow={APP_DISPLAY_NAME}
-        title="Pair with this environment"
-        description={describeAuthGate(auth.bootstrapMethods)}
+        title={t("onboarding.pairingRoute.title")}
+        description={describeAuthGate(auth.bootstrapMethods, t)}
       />
 
       <form className="mt-6 space-y-4" onSubmit={(event) => void handleSubmit(event)}>
         <div className="space-y-2">
           <label className="text-sm font-medium" htmlFor="pairing-token">
-            Pairing token
+            {t("onboarding.pairingRoute.tokenLabel")}
           </label>
           <Input
             id="pairing-token"
@@ -104,7 +107,7 @@ export function PairingRouteSurface({
             disabled={isSubmitting}
             nativeInput
             onChange={(event) => setCredential(event.currentTarget.value)}
-            placeholder="Paste a one-time token or pairing secret"
+            placeholder={t("onboarding.pairingRoute.tokenPlaceholder")}
             spellCheck={false}
             value={credential}
           />
@@ -118,7 +121,7 @@ export function PairingRouteSurface({
 
         <div className="flex flex-wrap gap-2">
           <Button disabled={isSubmitting} size="sm" type="submit">
-            {isSubmitting ? "Pairing..." : "Continue"}
+            {isSubmitting ? t("onboarding.pairing.pairing") : t("common.continue")}
           </Button>
           <Button
             disabled={isSubmitting}
@@ -126,19 +129,20 @@ export function PairingRouteSurface({
             size="sm"
             variant="outline"
           >
-            Reload app
+            {t("onboarding.reloadApp")}
           </Button>
         </div>
       </form>
 
       <div className="mt-6 rounded-lg border border-border/70 bg-background/55 px-3 py-3 text-xs leading-relaxed text-muted-foreground">
-        {describeSupportedMethods(auth.bootstrapMethods)}
+        {describeSupportedMethods(auth.bootstrapMethods, t)}
       </div>
     </StandalonePage>
   );
 }
 
 export function HostedPairingRouteSurface() {
+  const t = useT();
   const connectPairingEnvironment = useAtomCommand(connectPairing, {
     reportFailure: false,
   });
@@ -146,10 +150,10 @@ export function HostedPairingRouteSurface() {
   const [status, setStatus] = useState<"pairing" | "paired" | "error">(
     request ? "pairing" : "error",
   );
-  const [message, setMessage] = useState(
+  const [message, setMessage] = useState(() =>
     request
-      ? "Connecting to this backend."
-      : "This pairing link is missing its backend host or token.",
+      ? t("onboarding.hostedPairing.connecting")
+      : t("onboarding.hostedPairing.missingRequest"),
   );
   const [canRetry, setCanRetry] = useState(false);
   const submitAttemptedRef = useRef(false);
@@ -158,20 +162,20 @@ export function HostedPairingRouteSurface() {
   const submitHostedPairingRequest = async () => {
     if (!request) {
       setStatus("error");
-      setMessage("This pairing link is missing its backend host or token.");
+      setMessage(t("onboarding.hostedPairing.missingRequest"));
       setCanRetry(false);
       return;
     }
 
     if (tokenSubmittedRef.current) {
       setStatus("error");
-      setMessage("This one-time pairing token was already submitted. Request a new pairing link.");
+      setMessage(t("onboarding.hostedPairing.tokenAlreadySubmitted"));
       setCanRetry(false);
       return;
     }
 
     setStatus("pairing");
-    setMessage("Connecting to this backend.");
+    setMessage(t("onboarding.hostedPairing.connecting"));
     setCanRetry(false);
     tokenSubmittedRef.current = true;
 
@@ -181,7 +185,11 @@ export function HostedPairingRouteSurface() {
     });
     if (result._tag === "Success") {
       setStatus("paired");
-      setMessage(`${request.label || "The environment"} is saved in this browser.`);
+      setMessage(
+        t("onboarding.hostedPairing.paired", {
+          environment: request.label || t("onboarding.hostedPairing.theEnvironment"),
+        }),
+      );
       return;
     }
 
@@ -189,7 +197,9 @@ export function HostedPairingRouteSurface() {
     setStatus("error");
     setCanRetry(true);
     setMessage(
-      `${errorMessageFromUnknown(squashAtomCommandFailure(result))} If the backend accepted this one-time token, request a new pairing link before retrying.`,
+      t("onboarding.hostedPairing.failedRetryHint", {
+        error: errorMessageFromUnknown(squashAtomCommandFailure(result)),
+      }),
     );
   };
 
@@ -213,42 +223,40 @@ export function HostedPairingRouteSurface() {
         eyebrow={APP_DISPLAY_NAME}
         title={
           status === "paired"
-            ? "Backend paired"
+            ? t("onboarding.hostedPairing.title.paired")
             : status === "error"
-              ? "Pairing failed"
-              : "Pairing backend"
+              ? t("onboarding.hostedPairing.title.failed")
+              : t("onboarding.hostedPairing.title.pairing")
         }
         description={message}
       />
 
       {request ? (
         <div className="mt-5 rounded-lg border border-border/70 bg-background/55 px-3 py-3 text-xs leading-relaxed text-muted-foreground">
-          Host: <span className="font-mono text-foreground/80">{request.host}</span>
+          {t("onboarding.hostedPairing.host")}
+          <span className="font-mono text-foreground/80">{request.host}</span>
         </div>
       ) : null}
 
       {status === "error" ? (
         <Alert variant="error" className="mt-5">
-          <AlertDescription>
-            Verify the backend is reachable from this browser, supports CORS for hosted clients, and
-            is served over HTTPS when opening this page from HTTPS.
-          </AlertDescription>
+          <AlertDescription>{t("onboarding.hostedPairing.reachabilityHint")}</AlertDescription>
         </Alert>
       ) : null}
 
       <div className="mt-6 flex flex-wrap gap-2">
         {status === "pairing" ? (
           <Button disabled size="sm">
-            Pairing...
+            {t("onboarding.pairing.pairing")}
           </Button>
         ) : canRetry ? (
           <Button size="sm" onClick={() => void submitHostedPairingRequest()}>
-            Try again
+            {t("onboarding.tryAgain")}
           </Button>
         ) : null}
         {status === "paired" ? (
           <Button size="sm" variant="outline" onClick={() => (window.location.href = "/")}>
-            Open app
+            {t("onboarding.hostedPairing.openApp")}
           </Button>
         ) : null}
       </div>
@@ -265,28 +273,28 @@ function errorMessageFromUnknown(error: unknown): string {
     return error;
   }
 
-  return "Authentication failed.";
+  return translateNow("onboarding.pairingRoute.authFailed");
 }
 
-function describeAuthGate(bootstrapMethods: ReadonlyArray<string>): string {
+function describeAuthGate(bootstrapMethods: ReadonlyArray<string>, t: Translate): string {
   if (bootstrapMethods.includes("desktop-bootstrap")) {
-    return "This environment expects a trusted pairing credential before the app can connect.";
+    return t("onboarding.pairingRoute.gate.desktop");
   }
 
-  return "Enter a pairing token to start a session with this environment.";
+  return t("onboarding.pairingRoute.gate.token");
 }
 
-function describeSupportedMethods(bootstrapMethods: ReadonlyArray<string>): string {
+function describeSupportedMethods(bootstrapMethods: ReadonlyArray<string>, t: Translate): string {
   if (
     bootstrapMethods.includes("desktop-bootstrap") &&
     bootstrapMethods.includes("one-time-token")
   ) {
-    return "Desktop-managed pairing and one-time pairing tokens are both accepted for this environment.";
+    return t("onboarding.pairingRoute.methods.both");
   }
 
   if (bootstrapMethods.includes("desktop-bootstrap")) {
-    return "This environment is desktop-managed. Open it from the desktop app or paste a bootstrap credential if one was issued explicitly.";
+    return t("onboarding.pairingRoute.methods.desktop");
   }
 
-  return "This environment accepts one-time pairing tokens. Pairing links can open this page directly, or you can paste the token here.";
+  return t("onboarding.pairingRoute.methods.token");
 }

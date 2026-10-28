@@ -55,7 +55,9 @@ import {
   normalizeHistoryUrl,
   recordVisitForThread,
   resetBrowserHistoryForTests,
+  selectMergedBrowserHistory,
   startPreviewTitleRecording,
+  syncBrowserHistoryFromStorage,
   upsertHistoryEntry,
   useBrowserHistoryStore,
 } from "./browserHistoryStore";
@@ -100,18 +102,32 @@ describe("upsertHistoryEntry", () => {
   it("with insertOrdered, replaying an older visit for an existing entry keeps its newer timestamp", () => {
     const existing = [entry({ url: "http://a.test/", lastVisitedAt: 2000 })];
     const next = upsertHistoryEntry(existing, "http://a.test/", 1000, { insertOrdered: true });
-    expect(next).toEqual([{ url: "http://a.test/", lastVisitedAt: 2000 }]);
+    expect(next).toEqual([{ url: "http://a.test/", lastVisitedAt: 2000, visitCount: 2 }]);
+  });
+
+  it("should count each visit when the same page is visited again", () => {
+    const once = upsertHistoryEntry([], "http://a.test/", 1);
+    const twice = upsertHistoryEntry(once, "http://a.test/", 2);
+    const thrice = upsertHistoryEntry(twice, "http://a.test/", 3);
+    expect(once).toEqual([{ url: "http://a.test/", lastVisitedAt: 1 }]);
+    expect(thrice).toEqual([{ url: "http://a.test/", lastVisitedAt: 3, visitCount: 3 }]);
   });
 });
 
 describe("migratePersistedBrowserHistoryState", () => {
   it("drops malformed state and invalid entries", () => {
-    expect(migratePersistedBrowserHistoryState(null)).toEqual({ byProjectKey: {} });
-    expect(migratePersistedBrowserHistoryState({ byProjectKey: 42 })).toEqual({ byProjectKey: {} });
+    expect(migratePersistedBrowserHistoryState(null)).toEqual({
+      byProjectKey: {},
+      hiddenTopSiteKeys: [],
+    });
+    expect(migratePersistedBrowserHistoryState({ byProjectKey: 42 })).toEqual({
+      byProjectKey: {},
+      hiddenTopSiteKeys: [],
+    });
     const migrated = migratePersistedBrowserHistoryState({
       byProjectKey: {
         good: [
-          { url: "http://a.test/", lastVisitedAt: 100, title: "A" },
+          { url: "http://a.test/", lastVisitedAt: 100, title: "A", visitCount: 4 },
           { url: "", lastVisitedAt: 100 },
           { url: "ftp://ghost.test/", lastVisitedAt: 100 },
           { url: "http://b.test/", lastVisitedAt: Number.NaN },
@@ -121,7 +137,7 @@ describe("migratePersistedBrowserHistoryState", () => {
       },
     });
     expect(migrated.byProjectKey["good"]).toEqual([
-      { url: "http://a.test/", lastVisitedAt: 100, title: "A" },
+      { url: "http://a.test/", lastVisitedAt: 100, title: "A", visitCount: 4 },
     ]);
     expect(migrated.byProjectKey["bad"]).toBeUndefined();
   });
@@ -298,14 +314,14 @@ describe("useBrowserHistoryStore", () => {
     recordVisitForThread(threadRef, "http://127.0.0.1:5173/app", 2);
     recordVisitForThread(threadRef, "http://192.168.64.2:5173/app", 3);
     expect(useBrowserHistoryStore.getState().byProjectKey["proj-a"]).toEqual([
-      { url: "http://localhost:5173/app", lastVisitedAt: 3 },
+      { url: "http://localhost:5173/app", lastVisitedAt: 3, visitCount: 3 },
     ]);
 
     useBrowserHistoryStore.setState({ byProjectKey: {} });
     recordVisitForThread(threadRef, "http://192.168.64.2:5173/app", 4);
     recordVisitForThread(threadRef, "http://localhost:5173/app", 5);
     expect(useBrowserHistoryStore.getState().byProjectKey["proj-a"]).toEqual([
-      { url: "http://localhost:5173/app", lastVisitedAt: 5 },
+      { url: "http://localhost:5173/app", lastVisitedAt: 5, visitCount: 2 },
     ]);
   });
 });
@@ -456,14 +472,100 @@ describe("mergeBrowserHistoryState", () => {
           b: [{ url: "http://ok.test/", lastVisitedAt: 5 }],
         },
         projectKeyByThreadKey: { good: "b", stale: "a", malformed: 42 },
+        hiddenTopSiteKeys: ["http://hidden.test/", 7],
       },
       current,
     );
     expect(merged.byProjectKey).toEqual({
       b: [{ url: "http://ok.test/", lastVisitedAt: 5 }],
     });
+    expect(merged.hiddenTopSiteKeys).toEqual(["http://hidden.test/"]);
     expect(typeof merged.recordVisit).toBe("function");
     expect(merged.projectKeyByThreadKey).toEqual({ good: "b" });
     expect(merged.pendingVisitsByThreadKey).toEqual({});
+  });
+});
+
+describe("global history", () => {
+  beforeEach(resetStores);
+
+  function persistedHistory() {
+    const persisted = useBrowserHistoryStore.persist
+      .getOptions()
+      .storage?.getItem("t3code:browser-history:v1");
+    const state = persisted && !(persisted instanceof Promise) ? persisted.state : undefined;
+    return state as { byProjectKey?: unknown; hiddenTopSiteKeys?: unknown } | undefined;
+  }
+
+  it("should persist a thread panel visit when the thread's project is registered", () => {
+    recordVisitForThread(threadRef, "http://a.test/", 1);
+    expect(persistedHistory()?.byProjectKey).toEqual({});
+
+    useBrowserHistoryStore.getState().registerThreadProject(threadRef, "proj-a");
+    recordVisitForThread(threadRef, "http://b.test/", 2);
+
+    expect(persistedHistory()?.byProjectKey).toEqual({
+      "proj-a": [
+        { url: "http://b.test/", lastVisitedAt: 2 },
+        { url: "http://a.test/", lastVisitedAt: 1 },
+      ],
+    });
+  });
+
+  it("should return the same merged list when only pending state changes", () => {
+    useBrowserHistoryStore.getState().recordVisit("proj-a", "http://a.test/", 1);
+    const before = selectMergedBrowserHistory(useBrowserHistoryStore.getState());
+    recordVisitForThread(
+      { environmentId: EnvironmentId.make("env-1"), threadId: ThreadId.make("unregistered") },
+      "http://pending.test/",
+      2,
+    );
+    expect(selectMergedBrowserHistory(useBrowserHistoryStore.getState())).toBe(before);
+  });
+
+  it("should remove a page from every project when it is removed from global history", () => {
+    const state = useBrowserHistoryStore.getState();
+    state.recordVisit("proj-a", "http://localhost:3000/", 1);
+    state.recordVisit("proj-b", "http://127.0.0.1:3000/", 2);
+    state.recordVisit("proj-b", "http://keep.test/", 3);
+    useBrowserHistoryStore.getState().removeUrlEverywhere("http://localhost:3000/");
+    expect(useBrowserHistoryStore.getState().byProjectKey).toEqual({
+      "proj-b": [{ url: "http://keep.test/", lastVisitedAt: 3 }],
+    });
+  });
+
+  it("should persist hidden most visited sites and allow showing them again", () => {
+    useBrowserHistoryStore.getState().hideTopSite("http://a.test/");
+    expect(persistedHistory()?.hiddenTopSiteKeys).toEqual(["http://a.test/"]);
+    useBrowserHistoryStore.getState().unhideTopSite("http://a.test/");
+    expect(useBrowserHistoryStore.getState().hiddenTopSiteKeys).toEqual([]);
+    useBrowserHistoryStore.getState().hideTopSite("http://b.test/");
+    useBrowserHistoryStore.getState().restoreHiddenTopSites();
+    expect(useBrowserHistoryStore.getState().hiddenTopSiteKeys).toEqual([]);
+  });
+});
+
+describe("syncBrowserHistoryFromStorage", () => {
+  beforeEach(() => {
+    resetBrowserHistoryForTests();
+  });
+
+  it("should load another window's history and keep this window's pending visits when its storage event arrives", async () => {
+    recordVisitForThread(threadRef, "http://pending.test/", 1);
+    const storage = useBrowserHistoryStore.persist.getOptions().storage;
+    storage?.setItem("t3code:browser-history:v1", {
+      state: { byProjectKey: { other: [{ url: "http://other.test/", lastVisitedAt: 5 }] } },
+      version: 1,
+    });
+
+    await syncBrowserHistoryFromStorage("t3code:browser-history:v1");
+
+    expect(useBrowserHistoryStore.getState().byProjectKey).toEqual({
+      other: [{ url: "http://other.test/", lastVisitedAt: 5 }],
+    });
+    useBrowserHistoryStore.getState().registerThreadProject(threadRef, "proj-a");
+    expect(useBrowserHistoryStore.getState().byProjectKey["proj-a"]?.[0]?.url).toBe(
+      "http://pending.test/",
+    );
   });
 });

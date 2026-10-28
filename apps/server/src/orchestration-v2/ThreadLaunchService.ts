@@ -50,6 +50,9 @@ import type * as Orchestrator from "./Orchestrator.ts";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import { randomUuidV4 } from "@t3tools/provider-core/server/randomUuid";
 import * as ThreadManagement from "./ThreadManagementService.ts";
+import { worktreePopulationWarning } from "../vcs/worktreePopulation.ts";
+import type { GitPrepareWorktreeBaseResult } from "../vcs/GitVcsDriver.ts";
+import { worktreeBaseWarningDetail } from "../vcs/worktreeBaseWarning.ts";
 
 export type ThreadLaunchWorkspaceStrategy =
   | { readonly type: "root"; readonly branch?: string | undefined }
@@ -63,6 +66,7 @@ export type ThreadLaunchWorkspaceStrategy =
       readonly baseRef: string;
       readonly branch?: string | undefined;
       readonly startFromOrigin?: boolean | undefined;
+      readonly existingBranch?: boolean | undefined;
     };
 
 export interface ThreadLaunchInitialMessage {
@@ -310,7 +314,9 @@ const make = Effect.gen(function* () {
     if (input.workspaceStrategy.type === "worktree") {
       yield* setupTracker.begin({
         threadId,
-        branch: input.workspaceStrategy.branch ?? null,
+        branch: input.workspaceStrategy.existingBranch
+          ? null
+          : (input.workspaceStrategy.branch ?? null),
         baseRef: input.workspaceStrategy.baseRef,
         stages: ["fetch", "checkout", "setup-script", "agent"],
         fiber: yield* Effect.fiber,
@@ -362,9 +368,14 @@ const make = Effect.gen(function* () {
         },
       );
 
-      const requestedBranch = input.workspaceStrategy.branch;
+      const checkoutExistingBranch =
+        input.workspaceStrategy.type === "worktree" &&
+        input.workspaceStrategy.existingBranch === true;
+      const requestedBranch = checkoutExistingBranch ? undefined : input.workspaceStrategy.branch;
       let branch: string | null;
-      if (input.workspaceStrategy.type === "worktree" && requestedBranch === undefined) {
+      if (checkoutExistingBranch) {
+        branch = null;
+      } else if (input.workspaceStrategy.type === "worktree" && requestedBranch === undefined) {
         const uuid = yield* randomUuidV4;
         branch = buildTemporaryWorktreeBranchName(() => uuid.replaceAll("-", ""));
       } else {
@@ -386,30 +397,35 @@ const make = Effect.gen(function* () {
             })
             .pipe(Effect.mapError(mapError(input, "update-thread", threadId)));
         }
-        let startRef = input.workspaceStrategy.baseRef;
-        let baseRefName = input.workspaceStrategy.baseRef;
-        const shouldFetch =
-          input.workspaceStrategy.startFromOrigin === true &&
-          (yield* git
-            .resolveWorktreeBaseRemote({
+        const baseRef = input.workspaceStrategy.baseRef;
+        let prepared: GitPrepareWorktreeBaseResult | null = null;
+        if (input.workspaceStrategy.startFromOrigin === true) {
+          yield* setupTracker.stageStatus(threadId, "fetch", "running");
+          prepared = yield* git
+            .prepareWorktreeBase({
               cwd: project.workspaceRoot,
-              refName: input.workspaceStrategy.baseRef,
-            })
-            .pipe(Effect.mapError(mapError(input, "provision-worktree", threadId)))) !== null;
-        yield* setupTracker.stageStatus(threadId, "fetch", shouldFetch ? "running" : "skipped");
-        if (shouldFetch) {
-          const remoteBase = yield* git
-            .fetchWorktreeBaseCommit({
-              cwd: project.workspaceRoot,
-              refName: input.workspaceStrategy.baseRef,
+              baseRef,
+              existingBranch: checkoutExistingBranch,
             })
             .pipe(Effect.mapError(mapError(input, "provision-worktree", threadId)));
-          if (remoteBase !== null) {
-            startRef = remoteBase.commitSha;
-            baseRefName = `refs/remotes/${remoteBase.remoteRefName}`;
+          if (prepared.remoteName === null) {
+            yield* setupTracker.stageStatus(threadId, "fetch", "skipped");
+          } else if (prepared.warning !== null) {
+            yield* setupTracker.stageStatus(
+              threadId,
+              "fetch",
+              "warning",
+              worktreeBaseWarningDetail(prepared.warning),
+            );
+          } else if (prepared.fastForwardTo === null) {
+            // A pending fast-forward keeps the stage running until it runs inside the new worktree.
+            yield* setupTracker.stageStatus(threadId, "fetch", "done");
           }
+        } else {
+          yield* setupTracker.stageStatus(threadId, "fetch", "skipped");
         }
-        if (shouldFetch) yield* setupTracker.stageStatus(threadId, "fetch", "done");
+        const startRef = prepared?.startRef ?? baseRef;
+        const baseRefName = prepared?.baseRefName ?? baseRef;
         if (
           branch !== null &&
           isTemporaryWorktreeBranch(branch) &&
@@ -423,16 +439,20 @@ const make = Effect.gen(function* () {
           branch = flattenTemporaryWorktreeBranchName(branch);
         }
         yield* setupTracker.stageStatus(threadId, "checkout", "running");
+        let populationWarning: string | null = null;
         const worktree = yield* git
           .createWorktree(
+            checkoutExistingBranch
+              ? { cwd: project.workspaceRoot, refName: startRef, path: null }
+              : {
+                  cwd: project.workspaceRoot,
+                  refName: startRef,
+                  newRefName: branch!,
+                  baseRefName,
+                  path: null,
+                },
             {
-              cwd: project.workspaceRoot,
-              refName: startRef,
-              newRefName: branch!,
-              baseRefName,
-              path: null,
-            },
-            {
+              ...(checkoutExistingBranch ? { existingBranch: true } : {}),
               progress: {
                 onWorktreeClaimed: (path) =>
                   Effect.sync(() => {
@@ -440,15 +460,59 @@ const make = Effect.gen(function* () {
                   }),
                 onCheckoutProgress: (progress) =>
                   setupTracker.stage(threadId, "checkout", { percent: progress.percent }),
+                onPopulated: (result) =>
+                  Effect.sync(() => {
+                    populationWarning = worktreePopulationWarning(result);
+                  }),
               },
             },
           )
-          .pipe(Effect.mapError(mapError(input, "provision-worktree", threadId)));
+          .pipe(
+            // The fetch already succeeded; only the pending fast-forward was left, so a failed
+            // checkout must not mark the fetch failed too.
+            Effect.tapError(() =>
+              prepared !== null && prepared.fastForwardTo !== null
+                ? setupTracker.stageStatus(threadId, "fetch", "done")
+                : Effect.void,
+            ),
+            Effect.mapError(mapError(input, "provision-worktree", threadId)),
+          );
         worktreePath = worktree.worktree.path;
         branch = worktree.worktree.refName;
         createdWorktreePath = worktreePath;
         yield* setupTracker.update(threadId, (snapshot) => ({ ...snapshot, worktreePath, branch }));
-        yield* setupTracker.stageStatus(threadId, "checkout", "done");
+        if (populationWarning === null) {
+          yield* setupTracker.stageStatus(threadId, "checkout", "done");
+        } else {
+          yield* setupTracker.stageStatus(threadId, "checkout", "warning", populationWarning);
+        }
+        if (prepared !== null && prepared.remoteName !== null && prepared.fastForwardTo !== null) {
+          const remoteName = prepared.remoteName;
+          const { commitSha, remoteRef } = prepared.fastForwardTo;
+          const fastForward = yield* git.fastForwardWorktree({ cwd: worktreePath, commitSha }).pipe(
+            // The worktree already exists on the local branch, which is still usable.
+            Effect.catchTags({
+              GitCommandError: (cause) =>
+                Effect.logWarning("Worktree fast-forward failed", { threadId, cause }).pipe(
+                  Effect.as("blocked" as const),
+                ),
+            }),
+          );
+          if (fastForward === "fast-forwarded") {
+            yield* setupTracker.stageStatus(threadId, "fetch", "done");
+          } else {
+            yield* setupTracker.stageStatus(
+              threadId,
+              "fetch",
+              "warning",
+              worktreeBaseWarningDetail(
+                fastForward === "diverged"
+                  ? { kind: "diverged", remoteRef, branch: worktree.worktree.refName }
+                  : { kind: "fast-forward-blocked", remoteName, branch: worktree.worktree.refName },
+              ),
+            );
+          }
+        }
       }
 
       // Do not rewrite reused worktrees; that could undo the original branch rename.
@@ -469,6 +533,7 @@ const make = Effect.gen(function* () {
         reused === undefined &&
         worktreePath !== null &&
         branch !== null &&
+        !checkoutExistingBranch &&
         initialMessage !== undefined &&
         isTemporaryWorktreeBranch(branch)
       ) {
@@ -886,7 +951,10 @@ const make = Effect.gen(function* () {
                 },
               )
             : input.workspaceStrategy;
-        const initialBranch = workspaceStrategy.branch ?? null;
+        const initialBranch =
+          workspaceStrategy.type === "worktree" && workspaceStrategy.existingBranch === true
+            ? null
+            : (workspaceStrategy.branch ?? null);
         const initialWorktreePath =
           workspaceStrategy.type === "existing_worktree" ? workspaceStrategy.worktreePath : null;
         const claimDispatch =

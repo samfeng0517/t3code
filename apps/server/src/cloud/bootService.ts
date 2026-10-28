@@ -17,9 +17,12 @@ import { CLI_RELEASE_BASE_URL_ENV } from "@t3tools/shared/cliRelease";
 import * as ProcessRunner from "../processRunner.ts";
 import {
   ensurePinnedRuntimeInstalled,
+  FORK_RELEASE_BASE_URL_REQUIRED_MESSAGE,
   pinnedRuntimeCommand,
   pinnedRuntimePaths,
+  requirePinnedRuntimeDownloadAllowed,
   PinnedRuntimeInstallError,
+  type PinnedRuntimePreflightBlockedError,
 } from "./pinnedRuntime.ts";
 import {
   SERVICE_LAUNCHER_PROTOCOL,
@@ -413,6 +416,7 @@ const BootServiceProblem = Schema.Literals([
   "service-disabled",
   "service-stopped",
   "restart-pending",
+  "fork-release-url-required",
 ]);
 type BootServiceProblem = typeof BootServiceProblem.Type;
 
@@ -428,6 +432,8 @@ export function formatBootServiceProblem(problem: BootServiceProblem): string {
       return "The service is not enabled to start automatically. Run `t3 service install` to repair it.";
     case "service-stopped":
       return "The service is not running. Check the service log and `systemctl --user status t3code.service`, then run `t3 service install`.";
+    case "fork-release-url-required":
+      return FORK_RELEASE_BASE_URL_REQUIRED_MESSAGE;
     case "restart-pending":
       return "A newer version is installed but the service is still running the previous one. Run `t3 service restart` to switch.";
   }
@@ -706,11 +712,39 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     if (remaining[0]) return yield* new BootServicePrerequisiteError({ problem: remaining[0] });
   });
 
+  const mapPinnedRuntimeError = (
+    error: PinnedRuntimeInstallError | PinnedRuntimePreflightBlockedError,
+  ) =>
+    error._tag === "PinnedRuntimeInstallError"
+      ? new BootServiceCommandError({
+          step: error.step,
+          exitCode: error.exitCode,
+          stdoutLength: error.stdoutLength,
+          stderrLength: error.stderrLength,
+          cause: error,
+        })
+      : error.kind === "fork-release-url-required"
+        ? new BootServicePrerequisiteError({
+            problem: "fork-release-url-required",
+            cause: error,
+          })
+        : new BootServiceInstallError({ cause: error });
+
   const install = Effect.fn("cloud.boot_service.install")(function* (options?: {
     readonly allowDowngrade?: boolean;
     readonly start?: boolean;
   }) {
     const manager = yield* requireManager;
+    // A refused fork install must leave nothing behind, so this runs before lingering is enabled
+    // or the logs directory is created.
+    yield* requirePinnedRuntimeDownloadAllowed({
+      baseDir: input.baseDir,
+      version: input.cliVersion,
+      fs,
+      path,
+      platform,
+      releaseBaseUrl,
+    }).pipe(Effect.mapError(mapPinnedRuntimeError));
     yield* fs
       .makeDirectory(input.logsDir, { recursive: true })
       .pipe(Effect.mapError((cause) => new BootServiceInstallError({ cause })));
@@ -758,19 +792,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
                   );
             }),
           ),
-    }).pipe(
-      Effect.mapError((error) =>
-        error._tag === "PinnedRuntimeInstallError"
-          ? new BootServiceCommandError({
-              step: error.step,
-              exitCode: error.exitCode,
-              stdoutLength: error.stdoutLength,
-              stderrLength: error.stderrLength,
-              cause: error,
-            })
-          : new BootServiceInstallError({ cause: error }),
-      ),
-    );
+    }).pipe(Effect.mapError(mapPinnedRuntimeError));
     const installed = yield* fs
       .exists(unitPath)
       .pipe(Effect.mapError((cause) => new BootServiceInstallError({ cause })));

@@ -49,6 +49,7 @@ export function WorktreeSetupCard(props: WorktreeSetupCardProps) {
   const now = useVisibleSecondClock(running || working);
   const failed =
     snapshot.phase === "failed" || snapshot.stages.some((stage) => stage.status === "failed");
+  const warningStages = snapshot.stages.filter((stage) => stage.status === "warning");
   const label =
     handedOff && working
       ? `Working for ${elapsed(turnStartedAt, null, now) ?? "0s"}`
@@ -62,7 +63,9 @@ export function WorktreeSetupCard(props: WorktreeSetupCardProps) {
             ? "Worktree setup failed"
             : failed
               ? "Setup script failed"
-              : "Worktree ready";
+              : warningStages.length > 0
+                ? "Worktree ready, with warnings"
+                : "Worktree ready";
 
   return (
     <View accessibilityLabel="Worktree setup" className="py-1">
@@ -71,6 +74,7 @@ export function WorktreeSetupCard(props: WorktreeSetupCardProps) {
           label={label}
           active={(running || working) && !detailsOpen}
           failed={failed && !working}
+          warning={warningStages.length > 0 && !failed && !working}
         />
         {!handedOff ? (
           <Text
@@ -140,6 +144,20 @@ export function WorktreeSetupCard(props: WorktreeSetupCardProps) {
             ))}
         </View>
       ) : null}
+      {handedOff && warningStages.length > 0 ? (
+        <View className="pt-1 pb-2">
+          {warningStages.map((stage) => (
+            <StageRow
+              key={stage.id}
+              stage={stage}
+              scriptName={snapshot.setupScript?.name ?? null}
+              now={now}
+              compact
+              animate={!detailsOpen}
+            />
+          ))}
+        </View>
+      ) : null}
       {detailsOpen ? (
         <SetupDetailsSheet {...props} now={now} onClose={() => setDetailsOpen(false)} />
       ) : null}
@@ -162,10 +180,12 @@ function HeaderLabel({
   label,
   active,
   failed = false,
+  warning = false,
 }: {
   label: string;
   active: boolean;
   failed?: boolean;
+  warning?: boolean;
 }) {
   return active ? (
     <ShimmeringWorkContent
@@ -180,7 +200,9 @@ function HeaderLabel({
       className={
         failed
           ? "flex-1 text-sm text-danger-foreground"
-          : "flex-1 text-sm text-foreground-secondary"
+          : warning
+            ? "flex-1 text-sm text-warning-foreground"
+            : "flex-1 text-sm text-foreground-secondary"
       }
       style={{ fontVariant: ["tabular-nums"] }}
     >
@@ -281,6 +303,20 @@ function StageRow({
         : stage.id === "checkout" && stage.status === "running" && stage.percent !== null
           ? `${stage.percent}%`
           : stage.detail;
+  // Warnings explain what the agent started from, so they get room to wrap instead of the narrow trailing slot.
+  const warningDetail = stage.status === "warning" ? detail : null;
+  const labelText = (
+    <Text
+      numberOfLines={1}
+      className={
+        stage.status === "failed"
+          ? "flex-1 text-sm text-danger-foreground"
+          : "flex-1 text-sm text-foreground-secondary"
+      }
+    >
+      {label}
+    </Text>
+  );
   return (
     <View
       accessibilityLabel={`${label}, ${stage.status}`}
@@ -315,19 +351,17 @@ function StageRow({
           label={label}
           showIcon={false}
         />
+      ) : warningDetail ? (
+        <View className="flex-1">
+          {labelText}
+          <Text numberOfLines={2} className="text-2xs text-warning-foreground">
+            {warningDetail}
+          </Text>
+        </View>
       ) : (
-        <Text
-          numberOfLines={1}
-          className={
-            stage.status === "failed"
-              ? "flex-1 text-sm text-danger-foreground"
-              : "flex-1 text-sm text-foreground-secondary"
-          }
-        >
-          {label}
-        </Text>
+        labelText
       )}
-      {detail ? (
+      {detail && !warningDetail ? (
         <Text numberOfLines={1} className="max-w-[25%] shrink text-2xs text-foreground-secondary">
           {detail}
         </Text>

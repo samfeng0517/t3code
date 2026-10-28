@@ -17,6 +17,13 @@ import {
   McpAppUpdateModelContextInput,
 } from "./mcpApps.ts";
 import {
+  ModSurfaceActInput,
+  ModSurfaceActResult,
+  ModSurfaceActionError,
+  ModSurfaceFrame,
+  ModSurfaceSubscribeInput,
+} from "./mods.ts";
+import {
   ChatGptReconnectProfileInput,
   ChatGptReconnectProfile,
   ChatGptImportProfileInput,
@@ -133,6 +140,8 @@ import {
   GitManagerServiceError,
   GitPreparePullRequestThreadInput,
   GitPreparePullRequestThreadResult,
+  VcsFetchInput,
+  VcsFetchResult,
   VcsPullInput,
   GitPullRequestRefInput,
   VcsPullResult,
@@ -143,7 +152,27 @@ import {
   VcsStatusSubscriptionInput,
   VcsStatusResult,
   VcsStatusStreamEvent,
+  VcsRenameBranchInput,
+  VcsRenameBranchResult,
+  VcsDeleteBranchInput,
+  GitBranchNotFullyMergedError,
+  GitCreateTagInput,
+  GitDeleteTagInput,
+  GitPushTagInput,
 } from "./git.ts";
+import {
+  GitCommitDetailInput,
+  GitCommitDetailResult,
+  GitCommitFileDiffInput,
+  GitCommitFileDiffResult,
+  GitHistoryError,
+  GitHistoryFingerprintInput,
+  GitHistoryFingerprintResult,
+  GitHistoryLogInput,
+  GitHistoryLogResult,
+  GitHistoryRefsInput,
+  GitHistoryRefsResult,
+} from "./gitHistory.ts";
 import {
   ReviewDiffFileContentsInput,
   ReviewDiffFileContentsResult,
@@ -245,6 +274,7 @@ import {
   ProjectWriteFileInput,
   ProjectWriteFileResult,
 } from "./project.ts";
+import { ProjectReadCompatScriptsInput, ProjectReadCompatScriptsResult } from "./t3ProjectFile.ts";
 import {
   TerminalAttachInput,
   TerminalObserveInput,
@@ -388,6 +418,7 @@ export const WS_METHODS = {
   projectsListEntries: "projects.listEntries",
   projectsListIgnoredFiles: "projects.listIgnoredFiles",
   projectsReadFile: "projects.readFile",
+  projectsReadCompatScripts: "projects.readCompatScripts",
   projectsSearchContents: "projects.searchContents",
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
@@ -411,6 +442,9 @@ export const WS_METHODS = {
   mcpAppsReadResource: "mcpApps.readResource",
   mcpAppsUpdateModelContext: "mcpApps.updateModelContext",
 
+  modsSubscribeThread: "mods.subscribeThread",
+  modsAct: "mods.act",
+
   providerUploadFeedback: "provider.uploadFeedback",
   providerAuthStart: "provider.auth.start",
   providerConsumeResetCredit: "provider.consumeResetCredit",
@@ -429,17 +463,28 @@ export const WS_METHODS = {
   providerInstallRemove: "provider.install.remove",
 
   vcsPull: "vcs.pull",
+  vcsFetch: "vcs.fetch",
   vcsRefreshStatus: "vcs.refreshStatus",
   vcsListRefs: "vcs.listRefs",
   vcsCreateWorktree: "vcs.createWorktree",
   vcsRemoveWorktree: "vcs.removeWorktree",
   vcsCreateRef: "vcs.createRef",
   vcsSwitchRef: "vcs.switchRef",
+  vcsRenameBranch: "vcs.renameBranch",
+  vcsDeleteBranch: "vcs.deleteBranch",
   vcsInit: "vcs.init",
 
   gitRunStackedAction: "git.runStackedAction",
   gitResolvePullRequest: "git.resolvePullRequest",
   gitPreparePullRequestThread: "git.preparePullRequestThread",
+  gitHistoryLog: "git.historyLog",
+  gitHistoryFingerprint: "git.historyFingerprint",
+  gitHistoryRefs: "git.historyRefs",
+  gitCommitDetail: "git.commitDetail",
+  gitCommitFileDiff: "git.commitFileDiff",
+  gitCreateTag: "git.createTag",
+  gitDeleteTag: "git.deleteTag",
+  gitPushTag: "git.pushTag",
 
   reviewGetDiffPreview: "review.getDiffPreview",
   reviewGetDiffFileContents: "review.getDiffFileContents",
@@ -1244,6 +1289,12 @@ const WsProjectsReadFileRpc = Rpc.make(WS_METHODS.projectsReadFile, {
   error: Schema.Union([ProjectReadFileError, EnvironmentAuthorizationError]),
 });
 
+const WsProjectsReadCompatScriptsRpc = Rpc.make(WS_METHODS.projectsReadCompatScripts, {
+  payload: ProjectReadCompatScriptsInput,
+  success: ProjectReadCompatScriptsResult,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsProjectsWriteFileRpc = Rpc.make(WS_METHODS.projectsWriteFile, {
   payload: ProjectWriteFileInput,
   success: ProjectWriteFileResult,
@@ -1348,6 +1399,19 @@ const WsMcpAppsReadResourceRpc = Rpc.make(WS_METHODS.mcpAppsReadResource, {
   error: Schema.Union([McpAppRequestError, EnvironmentAuthorizationError]),
 });
 
+const WsModsSubscribeThreadRpc = Rpc.make(WS_METHODS.modsSubscribeThread, {
+  payload: ModSurfaceSubscribeInput,
+  success: ModSurfaceFrame,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsModsActRpc = Rpc.make(WS_METHODS.modsAct, {
+  payload: ModSurfaceActInput,
+  success: ModSurfaceActResult,
+  error: Schema.Union([ModSurfaceActionError, EnvironmentAuthorizationError]),
+});
+
 const WsProviderUploadFeedbackRpc = Rpc.make(WS_METHODS.providerUploadFeedback, {
   payload: ProviderUploadFeedbackInput,
   success: ProviderUploadFeedbackResult,
@@ -1364,6 +1428,12 @@ const WsSubscribeVcsStatusRpc = Rpc.make(WS_METHODS.subscribeVcsStatus, {
 const WsVcsPullRpc = Rpc.make(WS_METHODS.vcsPull, {
   payload: VcsPullInput,
   success: VcsPullResult,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
+const WsVcsFetchRpc = Rpc.make(WS_METHODS.vcsFetch, {
+  payload: VcsFetchInput,
+  success: VcsFetchResult,
   error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
 });
 
@@ -1438,9 +1508,69 @@ const WsVcsSwitchRefRpc = Rpc.make(WS_METHODS.vcsSwitchRef, {
   error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
 });
 
+const WsVcsRenameBranchRpc = Rpc.make(WS_METHODS.vcsRenameBranch, {
+  payload: VcsRenameBranchInput,
+  success: VcsRenameBranchResult,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
+const WsVcsDeleteBranchRpc = Rpc.make(WS_METHODS.vcsDeleteBranch, {
+  payload: VcsDeleteBranchInput,
+  error: Schema.Union([
+    GitCommandError,
+    GitBranchNotFullyMergedError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
 const WsVcsInitRpc = Rpc.make(WS_METHODS.vcsInit, {
   payload: VcsInitInput,
   error: Schema.Union([VcsError, EnvironmentAuthorizationError]),
+});
+
+const WsGitHistoryLogRpc = Rpc.make(WS_METHODS.gitHistoryLog, {
+  payload: GitHistoryLogInput,
+  success: GitHistoryLogResult,
+  error: Schema.Union([GitHistoryError, EnvironmentAuthorizationError]),
+});
+
+const WsGitHistoryFingerprintRpc = Rpc.make(WS_METHODS.gitHistoryFingerprint, {
+  payload: GitHistoryFingerprintInput,
+  success: GitHistoryFingerprintResult,
+  error: Schema.Union([GitHistoryError, EnvironmentAuthorizationError]),
+});
+
+const WsGitHistoryRefsRpc = Rpc.make(WS_METHODS.gitHistoryRefs, {
+  payload: GitHistoryRefsInput,
+  success: GitHistoryRefsResult,
+  error: Schema.Union([GitHistoryError, EnvironmentAuthorizationError]),
+});
+
+const WsGitCommitDetailRpc = Rpc.make(WS_METHODS.gitCommitDetail, {
+  payload: GitCommitDetailInput,
+  success: GitCommitDetailResult,
+  error: Schema.Union([GitHistoryError, EnvironmentAuthorizationError]),
+});
+
+const WsGitCommitFileDiffRpc = Rpc.make(WS_METHODS.gitCommitFileDiff, {
+  payload: GitCommitFileDiffInput,
+  success: GitCommitFileDiffResult,
+  error: Schema.Union([GitHistoryError, EnvironmentAuthorizationError]),
+});
+
+const WsGitCreateTagRpc = Rpc.make(WS_METHODS.gitCreateTag, {
+  payload: GitCreateTagInput,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
+const WsGitDeleteTagRpc = Rpc.make(WS_METHODS.gitDeleteTag, {
+  payload: GitDeleteTagInput,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
+const WsGitPushTagRpc = Rpc.make(WS_METHODS.gitPushTag, {
+  payload: GitPushTagInput,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
 });
 
 const WsReviewGetDiffPreviewRpc = Rpc.make(WS_METHODS.reviewGetDiffPreview, {
@@ -2026,6 +2156,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsListEntriesRpc,
   WsProjectsListIgnoredFilesRpc,
   WsProjectsReadFileRpc,
+  WsProjectsReadCompatScriptsRpc,
   WsProjectsSearchContentsRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsEnsureScratchRpc,
@@ -2045,11 +2176,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsMcpAppsToolInfoRpc,
   WsMcpAppsReadResourceRpc,
   WsMcpAppsUpdateModelContextRpc,
+  WsModsSubscribeThreadRpc,
+  WsModsActRpc,
   WsProviderUploadFeedbackRpc,
   WsSubscribeVcsStatusRpc,
   WsSubscribeWorktreeSetupRpc,
   WsWorktreeSetupCancelRpc,
   WsVcsPullRpc,
+  WsVcsFetchRpc,
   WsVcsRefreshStatusRpc,
   WsGitRunStackedActionRpc,
   WsGitResolvePullRequestRpc,
@@ -2059,7 +2193,17 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsRemoveWorktreeRpc,
   WsVcsCreateRefRpc,
   WsVcsSwitchRefRpc,
+  WsVcsRenameBranchRpc,
+  WsVcsDeleteBranchRpc,
   WsVcsInitRpc,
+  WsGitHistoryLogRpc,
+  WsGitHistoryFingerprintRpc,
+  WsGitHistoryRefsRpc,
+  WsGitCommitDetailRpc,
+  WsGitCommitFileDiffRpc,
+  WsGitCreateTagRpc,
+  WsGitDeleteTagRpc,
+  WsGitPushTagRpc,
   WsReviewGetDiffPreviewRpc,
   WsReviewGetDiffFileContentsRpc,
   WsTerminalOpenRpc,

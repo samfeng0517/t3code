@@ -11,7 +11,9 @@ import * as Stream from "effect/Stream";
 import * as Semaphore from "effect/Semaphore";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
+import { AppSelfUpdateEnabled } from "@t3tools/shared/appSelfUpdate";
 import {
+  CLI_RELEASE_BASE_URL_ENV,
   CLI_RELEASE_CHECKSUMS_FILE,
   cliArchiveFileName,
   cliArchivePlatformKey,
@@ -85,12 +87,17 @@ export class PinnedRuntimePreflightBlockedError extends Schema.TaggedError<Pinne
   {
     version: Schema.String,
     reason: Schema.String,
+    /** Set when the refusal has a cause callers act on, so they need not match `reason`. */
+    kind: Schema.optional(Schema.Literal("fork-release-url-required")),
   },
 ) {
   override get message(): string {
     return this.reason;
   }
 }
+
+/** Shown wherever a fork build is refused its first runtime download. */
+export const FORK_RELEASE_BASE_URL_REQUIRED_MESSAGE = `This is a fork build of T3 Code; set ${CLI_RELEASE_BASE_URL_ENV} to your own release archive before installing the background service.`;
 
 export type PinnedRuntimeProgress =
   | { readonly stage: "download"; readonly received: number; readonly total: number | undefined }
@@ -248,6 +255,47 @@ const installFromArchive = Effect.fn("cloud.pinned_runtime.install_archive")(fun
   yield* fs.remove(archivePath, { force: true }).pipe(Effect.ignore);
 });
 
+const forkReleaseSourceMissing = Effect.fn("cloud.pinned_runtime.fork_release_source_missing")(
+  function* (releaseBaseUrl: string | undefined) {
+    return !(yield* AppSelfUpdateEnabled) && !releaseBaseUrl?.trim();
+  },
+);
+
+const forkReleaseUrlRequired = (version: string) =>
+  new PinnedRuntimePreflightBlockedError({
+    version,
+    reason: FORK_RELEASE_BASE_URL_REQUIRED_MESSAGE,
+    kind: "fork-release-url-required",
+  });
+
+/**
+ * The same refusal `ensurePinnedRuntimeInstalled` makes, available before a caller does anything
+ * with side effects. A runtime that is already pinned never downloads, so it passes.
+ */
+export const requirePinnedRuntimeDownloadAllowed = Effect.fn(
+  "cloud.pinned_runtime.require_download_allowed",
+)(function* (input: {
+  readonly baseDir: string;
+  readonly version: string;
+  readonly fs: FileSystem.FileSystem;
+  readonly path: Path.Path;
+  readonly platform: NodeJS.Platform;
+  readonly releaseBaseUrl?: string | undefined;
+}) {
+  if (!(yield* forkReleaseSourceMissing(input.releaseBaseUrl))) return;
+  const paths = pinnedRuntimePaths(input.path, input.baseDir, input.version, input.platform);
+  const [entryExists, sentinel] = yield* Effect.all([
+    input.fs.exists(paths.entryPath),
+    input.fs.readFileString(paths.sentinelPath).pipe(Effect.option),
+  ]).pipe(
+    Effect.mapError(
+      (cause) => new PinnedRuntimeInstallError({ step: "checking the pinned runtime", cause }),
+    ),
+  );
+  if (entryExists && Option.isSome(sentinel) && sentinel.value.trim() === input.version) return;
+  return yield* forkReleaseUrlRequired(input.version);
+});
+
 const installPinnedRuntime = Effect.fn("cloud.pinned_runtime.ensure_installed")(function* (
   input: PinnedRuntimeInstallInput,
 ) {
@@ -268,6 +316,11 @@ const installPinnedRuntime = Effect.fn("cloud.pinned_runtime.ensure_installed")(
     input.onProgress?.({ stage: "cached" });
     yield* input.validate(paths);
     return paths;
+  }
+  // The default archive is upstream's, whose runtime has no self-update gate. This is the only
+  // place that picks a download source, so every caller is covered.
+  if (yield* forkReleaseSourceMissing(input.releaseBaseUrl)) {
+    return yield* forkReleaseUrlRequired(input.version);
   }
   if (versionDirExists) {
     yield* fs.remove(paths.versionDir, { recursive: true, force: true }).pipe(

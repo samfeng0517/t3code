@@ -6865,3 +6865,310 @@ it.layer(layerQueueResumeDisabledInstanceTest)(
     );
   },
 );
+
+// Like layerTest, but exposes SqlClient so tests can bind scheduled tasks.
+const layerAutoCleanupTest = Layer.mergeAll(
+  RuntimeLayer.layer,
+  RuntimeLayer.layerEventSink,
+  ProjectStore.layer,
+  ProjectionStore.layer,
+  EffectOutbox.layer,
+  ThreadCommandExecutor.layer,
+).pipe(
+  Layer.provide(McpSessionRegistryTestkit.layer),
+  Layer.provide(McpProviderSessions.layer),
+  Layer.provideMerge(SqlitePersistence.layerMemory),
+  Layer.provide(layerCheckpointStoreTest),
+  Layer.provide(layerServerConfig),
+  Layer.provide(ServerSettings.layerTest()),
+  Layer.provide(layerTestProviderInstanceRegistry),
+  Layer.provide(layerGitWorkflowTest),
+  Layer.provide(layerProjectServiceTest),
+  Layer.provide(layerPlatformTest),
+);
+
+it.layer(layerAutoCleanupTest)("thread auto cleanup", (it) => {
+  const createSettledThread = Effect.fn(function* (name: string) {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const threadId = ThreadId.make(`auto-cleanup:${name}`);
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make(`create:${threadId}`),
+      threadId,
+      projectId: ProjectId.make("auto-cleanup-project"),
+      title: name,
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    yield* orchestrator.dispatch({
+      type: "thread.settle",
+      commandId: CommandId.make(`settle:${threadId}`),
+      threadId,
+    });
+    return threadId;
+  });
+
+  const bindScheduledTask = Effect.fn(function* (threadId: ThreadId) {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`
+      INSERT INTO scheduled_tasks (
+        task_id, title, prompt, enabled, schedule_json, project_id, thread_id,
+        workspace_strategy_json, model_selection_json, runtime_mode, interaction_mode,
+        created_by, creation_source, created_at, updated_at, last_run_status, run_count
+      ) VALUES (
+        ${`task:${threadId}`}, 'Nightly', 'Run it', 1, '{}', 'auto-cleanup-project', ${threadId},
+        '{}', '{}', 'full-access', 'default', 'user', 'web',
+        '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z', 'never', 0
+      )
+    `;
+  });
+
+  // Subagent threads come from provider runs; rewriting the lineage is enough
+  // for the guard, which reads the projected thread.
+  const makeSubagent = Effect.fn(function* (threadId: ThreadId) {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`
+      UPDATE orchestration_v2_projection_threads
+      SET payload_json = json_set(
+        payload_json,
+        '$.lineage.relationshipToParent', 'subagent',
+        '$.lineage.parentThreadId', 'auto-cleanup:parent'
+      )
+      WHERE thread_id = ${threadId}
+    `;
+  });
+
+  const currentThread = (threadId: ThreadId) =>
+    Effect.flatMap(Orchestrator.OrchestratorV2, (orchestrator) =>
+      orchestrator.getThreadProjection(threadId).pipe(Effect.map(({ thread }) => thread)),
+    );
+
+  it.effect("thread.auto-archive should archive as auto when the settled thread is unchanged", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const threadId = yield* createSettledThread("archive");
+      const before = yield* currentThread(threadId);
+      yield* orchestrator.dispatch({
+        type: "thread.auto-archive",
+        commandId: CommandId.make(`auto-archive:${threadId}`),
+        threadId,
+        snapshotAt: before.updatedAt,
+      });
+
+      const archived = yield* currentThread(threadId);
+      assert.isNotNull(archived.archivedAt);
+      assert.equal(archived.archivedBy, "auto");
+      const shell = (yield* orchestrator.getShellSnapshot()).archivedThreads.find(
+        (thread) => thread.id === threadId,
+      );
+      assert.equal(shell?.archivedBy, "auto");
+    }),
+  );
+
+  it.effect("thread.auto-archive should reject when the thread changed or is not settled", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const threadId = yield* createSettledThread("reject-archive");
+      const settled = yield* currentThread(threadId);
+      const stale = yield* orchestrator
+        .dispatch({
+          type: "thread.auto-archive",
+          commandId: CommandId.make(`auto-archive-stale:${threadId}`),
+          threadId,
+          snapshotAt: DateTime.subtract(settled.updatedAt, { milliseconds: 1 }),
+        })
+        .pipe(Effect.flip);
+      assert.instanceOf(stale, Orchestrator.OrchestratorDispatchError);
+
+      yield* orchestrator.dispatch({
+        type: "thread.unsettle",
+        commandId: CommandId.make(`unsettle:${threadId}`),
+        threadId,
+        reason: "user",
+      });
+      const active = yield* currentThread(threadId);
+      const unsettled = yield* orchestrator
+        .dispatch({
+          type: "thread.auto-archive",
+          commandId: CommandId.make(`auto-archive-active:${threadId}`),
+          threadId,
+          snapshotAt: active.updatedAt,
+        })
+        .pipe(Effect.flip);
+      assert.instanceOf(unsettled, Orchestrator.OrchestratorDispatchError);
+
+      yield* orchestrator.dispatch({
+        type: "thread.pin",
+        commandId: CommandId.make(`pin:${threadId}`),
+        threadId,
+      });
+      const pinned = yield* currentThread(threadId);
+      const pinnedArchive = yield* orchestrator
+        .dispatch({
+          type: "thread.auto-archive",
+          commandId: CommandId.make(`auto-archive-pinned:${threadId}`),
+          threadId,
+          snapshotAt: pinned.updatedAt,
+        })
+        .pipe(Effect.flip);
+      assert.instanceOf(pinnedArchive, Orchestrator.OrchestratorDispatchError);
+      assert.isNull((yield* currentThread(threadId)).archivedAt);
+    }),
+  );
+
+  it.effect(
+    "thread.archive should record user instead of auto when an auto-archived thread is unarchived and archived again",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const threadId = yield* createSettledThread("manual");
+        yield* orchestrator.dispatch({
+          type: "thread.auto-archive",
+          commandId: CommandId.make(`auto-archive:${threadId}`),
+          threadId,
+          snapshotAt: (yield* currentThread(threadId)).updatedAt,
+        });
+        yield* orchestrator.dispatch({
+          type: "thread.unarchive",
+          commandId: CommandId.make(`unarchive:${threadId}`),
+          threadId,
+        });
+        const unarchived = yield* currentThread(threadId);
+        assert.isNull(unarchived.archivedAt);
+        assert.isNull(unarchived.archivedBy);
+
+        yield* orchestrator.dispatch({
+          type: "thread.archive",
+          commandId: CommandId.make(`archive:${threadId}`),
+          threadId,
+        });
+        assert.equal((yield* currentThread(threadId)).archivedBy, "user");
+      }),
+  );
+
+  it.effect("thread.auto-delete should reject when the thread was not auto-archived", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const threadId = yield* createSettledThread("reject-delete");
+      const settled = yield* currentThread(threadId);
+      const notArchived = yield* orchestrator
+        .dispatch({
+          type: "thread.auto-delete",
+          commandId: CommandId.make(`auto-delete-active:${threadId}`),
+          threadId,
+          snapshotAt: settled.updatedAt,
+        })
+        .pipe(Effect.flip);
+      assert.instanceOf(notArchived, Orchestrator.OrchestratorDispatchError);
+
+      yield* orchestrator.dispatch({
+        type: "thread.archive",
+        commandId: CommandId.make(`archive:${threadId}`),
+        threadId,
+      });
+      const manual = yield* orchestrator
+        .dispatch({
+          type: "thread.auto-delete",
+          commandId: CommandId.make(`auto-delete-manual:${threadId}`),
+          threadId,
+          snapshotAt: (yield* currentThread(threadId)).updatedAt,
+        })
+        .pipe(Effect.flip);
+      assert.instanceOf(manual, Orchestrator.OrchestratorDispatchError);
+      assert.isNull((yield* currentThread(threadId)).deletedAt);
+    }),
+  );
+
+  it.effect("thread.auto-delete should delete when the thread is still auto-archived", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const threadId = yield* createSettledThread("delete");
+      yield* orchestrator.dispatch({
+        type: "thread.auto-archive",
+        commandId: CommandId.make(`auto-archive:${threadId}`),
+        threadId,
+        snapshotAt: (yield* currentThread(threadId)).updatedAt,
+      });
+      const archived = yield* currentThread(threadId);
+      const stale = yield* orchestrator
+        .dispatch({
+          type: "thread.auto-delete",
+          commandId: CommandId.make(`auto-delete-stale:${threadId}`),
+          threadId,
+          snapshotAt: DateTime.subtract(archived.updatedAt, { milliseconds: 1 }),
+        })
+        .pipe(Effect.flip);
+      assert.instanceOf(stale, Orchestrator.OrchestratorDispatchError);
+
+      const deleted = yield* orchestrator.dispatch({
+        type: "thread.auto-delete",
+        commandId: CommandId.make(`auto-delete:${threadId}`),
+        threadId,
+        snapshotAt: archived.updatedAt,
+      });
+      assert.equal(deleted.storedEvents[0]?.event.type, "thread.deleted");
+      assert.isNotNull((yield* currentThread(threadId)).deletedAt);
+    }),
+  );
+
+  it.effect(
+    "thread.auto-archive should reject when the thread is a subagent or runs a scheduled task",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        for (const [name, exempt] of [
+          ["subagent", makeSubagent],
+          ["automation", bindScheduledTask],
+        ] as const) {
+          const threadId = yield* createSettledThread(`exempt-archive-${name}`);
+          yield* exempt(threadId);
+          const rejected = yield* orchestrator
+            .dispatch({
+              type: "thread.auto-archive",
+              commandId: CommandId.make(`auto-archive:${threadId}`),
+              threadId,
+              snapshotAt: (yield* currentThread(threadId)).updatedAt,
+            })
+            .pipe(Effect.flip);
+          assert.instanceOf(rejected, Orchestrator.OrchestratorDispatchError);
+          assert.isNull((yield* currentThread(threadId)).archivedAt);
+        }
+      }),
+  );
+
+  it.effect(
+    "thread.auto-delete should reject when the auto-archived thread is a subagent or runs a scheduled task",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        for (const [name, exempt] of [
+          ["subagent", makeSubagent],
+          ["automation", bindScheduledTask],
+        ] as const) {
+          const threadId = yield* createSettledThread(`exempt-delete-${name}`);
+          yield* orchestrator.dispatch({
+            type: "thread.auto-archive",
+            commandId: CommandId.make(`auto-archive:${threadId}`),
+            threadId,
+            snapshotAt: (yield* currentThread(threadId)).updatedAt,
+          });
+          yield* exempt(threadId);
+          const rejected = yield* orchestrator
+            .dispatch({
+              type: "thread.auto-delete",
+              commandId: CommandId.make(`auto-delete:${threadId}`),
+              threadId,
+              snapshotAt: (yield* currentThread(threadId)).updatedAt,
+            })
+            .pipe(Effect.flip);
+          assert.instanceOf(rejected, Orchestrator.OrchestratorDispatchError);
+          assert.isNull((yield* currentThread(threadId)).deletedAt);
+        }
+      }),
+  );
+});

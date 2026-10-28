@@ -12,6 +12,8 @@ import {
   AuthSourceControlWriteScope,
   AuthTerminalReadScope,
   AuthTerminalOperateScope,
+  clientRpcRequiredScopes,
+  RpcScopeAuthorization,
   WS_METHODS,
   WsRpcGroup,
 } from "@t3tools/contracts";
@@ -71,6 +73,44 @@ describe("RPC authorization scopes", () => {
       );
     }
   });
+});
+
+it("RPC authorization should require source-control write for Git page branch and tag mutations", () => {
+  for (const method of [
+    WS_METHODS.vcsRenameBranch,
+    WS_METHODS.vcsDeleteBranch,
+    WS_METHODS.gitCreateTag,
+    WS_METHODS.gitDeleteTag,
+    WS_METHODS.gitPushTag,
+  ]) {
+    expect(RPC_REQUIRED_SCOPES[method]).toBe(AuthSourceControlWriteScope);
+    expect(clientRpcRequiredScopes(method, undefined)).toEqual([AuthSourceControlWriteScope]);
+  }
+  for (const method of [
+    WS_METHODS.gitHistoryLog,
+    WS_METHODS.gitHistoryFingerprint,
+    WS_METHODS.gitHistoryRefs,
+  ]) {
+    expect(RPC_REQUIRED_SCOPES[method]).toBe(AuthOrchestrationReadScope);
+  }
+  for (const method of [WS_METHODS.gitCommitDetail, WS_METHODS.gitCommitFileDiff]) {
+    expect(RPC_REQUIRED_SCOPES[method]).toBe(AuthFilesystemReadScope);
+  }
+  // Git page RPCs must go through the scope middleware, not only declare a scope.
+  for (const method of [
+    WS_METHODS.vcsRenameBranch,
+    WS_METHODS.vcsDeleteBranch,
+    WS_METHODS.gitHistoryLog,
+    WS_METHODS.gitHistoryFingerprint,
+    WS_METHODS.gitHistoryRefs,
+    WS_METHODS.gitCommitDetail,
+    WS_METHODS.gitCommitFileDiff,
+    WS_METHODS.gitCreateTag,
+    WS_METHODS.gitDeleteTag,
+    WS_METHODS.gitPushTag,
+  ]) {
+    expect(WsRpcGroup.requests.get(method)?.middlewares.has(RpcScopeAuthorization)).toBe(true);
+  }
 });
 
 it("requires operate permission for host retry while preserving read-only listing", () => {

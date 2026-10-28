@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import { isMacPlatform } from "../lib/utils";
+import { useT } from "../i18n";
 
 const HOLD_HINT_LINGER_MS = 1200;
 
@@ -49,14 +50,15 @@ function subscribeQuitHint(listener: () => void): () => void {
 const readQuitHint = () => visibleMode;
 
 export function QuitHoldOverlay() {
+  const t = useT();
   const visibleMode = useSyncExternalStore(subscribeQuitHint, readQuitHint, readQuitHint);
 
   if (!visibleMode) return null;
   const shortcut = isMacPlatform(navigator.platform) ? "⌘Q" : "Ctrl+Q";
   const message =
     visibleMode === "hold"
-      ? `Hold ${shortcut} or press twice to quit`
-      : `Press ${shortcut} again to quit`;
+      ? t("onboarding.quit.hold", { shortcut })
+      : t("onboarding.quit.again", { shortcut });
   return (
     <div
       role="status"

@@ -87,6 +87,7 @@ import FileBrowserPanel from "./FileBrowserPanel";
 import { FileBreadcrumbs } from "./FileBreadcrumbs";
 import { breadcrumbPathOf, retainedBreadcrumbTrail, trailChildOf } from "./filePath";
 import { FileMarkdownPreview } from "./FileMarkdownPreview";
+import { MarkdownCommentSurface } from "../pageComments/MarkdownCommentSurface";
 import {
   type FileCommentAnnotationEntry,
   type FileCommentAnnotationGroup,
@@ -119,6 +120,7 @@ import {
 } from "./filePreviewMode";
 import { changeFileSaveSession, useFileSaveSession } from "./fileSaveSessions";
 import { revisionedQuery } from "~/state/revisionedQuery";
+import { useT, type MessageKey } from "~/i18n";
 import {
   getOptimisticProjectFileQueryData,
   getProjectFileContents,
@@ -174,6 +176,7 @@ function WorkspaceImagePreview(props: {
   readonly alt: string;
   readonly workspaceMutationId: string | null;
 }) {
+  const t = useT();
   const resource = workspaceAssetResource({
     kind:
       mediaFileReference(props.absolutePath, props.workspaceRoot).relativePath !== undefined
@@ -202,7 +205,7 @@ function WorkspaceImagePreview(props: {
     return (
       <MediaActions source={actionsSource}>
         <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-xs leading-relaxed text-destructive">
-          Unable to load workspace image.
+          {t("workspace.file.workspaceImageFailed")}
         </div>
       </MediaActions>
     );
@@ -230,6 +233,11 @@ function WorkspaceBrowserPreview(props: {
   readonly title: string;
   readonly workspaceMutationId: string | null;
 }) {
+  const t = useT();
+  const workspaceRelativePath = mediaFileReference(
+    props.absolutePath,
+    props.workspaceRoot,
+  ).relativePath;
   const resource = workspaceAssetResource({
     kind: "workspace-file",
     threadRef: props.threadRef,
@@ -246,7 +254,7 @@ function WorkspaceBrowserPreview(props: {
   if (assetUrl._tag === "Failure") {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-xs leading-relaxed text-destructive">
-        Unable to load file preview.
+        {t("workspace.file.previewFailed")}
       </div>
     );
   }
@@ -263,6 +271,16 @@ function WorkspaceBrowserPreview(props: {
       documentKey={`${props.environmentId}:${resource._tag}:${props.threadRef.threadId}:${props.absolutePath}:${props.workspaceMutationId}`}
       title={props.title}
       pdf={isPdfPreviewFile(props.absolutePath)}
+      threadRef={props.threadRef}
+      commentTarget={
+        workspaceRelativePath === undefined
+          ? undefined
+          : {
+              kind: "html-file",
+              id: workspaceRelativePath,
+              title: workspaceRelativePath.split(/[\\/]/).at(-1) ?? workspaceRelativePath,
+            }
+      }
     />
   );
 }
@@ -339,6 +357,7 @@ function WorkspaceAudioPreview(props: {
     workspaceRoot: props.workspaceRoot,
     absolutePath: props.absolutePath,
   });
+  const t = useT();
   const assetUrl = useAssetUrlState(
     props.environmentId,
     resource,
@@ -356,7 +375,7 @@ function WorkspaceAudioPreview(props: {
   if (assetUrl._tag === "Failure" || (url !== null && failedUrl === url)) {
     return (
       <FileSurfaceFailure
-        message="Unable to load audio."
+        message={t("workspace.file.audioFailed")}
         onRetry={() => {
           setFailedUrl(null);
           void refreshAssetUrl().catch(() => undefined);
@@ -927,26 +946,32 @@ function RenderedMarkdownSurface({
 
   return (
     <ScrollArea className="min-h-0 flex-1">
-      <FileMarkdownPreview
-        text={contents}
-        cwd={cwd}
-        relativePath={relativePath}
-        threadRef={threadRef}
-        workspaceMutationId={workspaceMutationId}
-        onTaskListChange={
-          readOnly
-            ? undefined
-            : ({ markerOffset, checked }) => {
-                const currentContents =
-                  getOptimisticProjectFileQueryData(environmentId, cwd, relativePath)?.contents ??
-                  contents;
-                const nextContents = setMarkdownTaskChecked(currentContents, markerOffset, checked);
-                if (nextContents === currentContents) return;
-                setProjectFileQueryData(environmentId, cwd, relativePath, nextContents);
-                changeFileSaveSession(saveTarget, nextContents);
-              }
-        }
-      />
+      <MarkdownCommentSurface threadRef={threadRef} relativePath={relativePath} contents={contents}>
+        <FileMarkdownPreview
+          text={contents}
+          cwd={cwd}
+          relativePath={relativePath}
+          threadRef={threadRef}
+          workspaceMutationId={workspaceMutationId}
+          onTaskListChange={
+            readOnly
+              ? undefined
+              : ({ markerOffset, checked }) => {
+                  const currentContents =
+                    getOptimisticProjectFileQueryData(environmentId, cwd, relativePath)?.contents ??
+                    contents;
+                  const nextContents = setMarkdownTaskChecked(
+                    currentContents,
+                    markerOffset,
+                    checked,
+                  );
+                  if (nextContents === currentContents) return;
+                  setProjectFileQueryData(environmentId, cwd, relativePath, nextContents);
+                  changeFileSaveSession(saveTarget, nextContents);
+                }
+          }
+        />
+      </MarkdownCommentSurface>
     </ScrollArea>
   );
 }
@@ -954,11 +979,15 @@ function RenderedMarkdownSurface({
 function renderedToggleLabel(
   mode: "markdown" | "mermaid" | "html" | "table",
   rendered: boolean,
-): string {
-  if (mode === "mermaid") return rendered ? "Show Mermaid source" : "Show rendered diagram";
-  if (mode === "markdown") return rendered ? "Show markdown source" : "Show rendered markdown";
-  if (mode === "table") return rendered ? "Show source" : "Show table";
-  return rendered ? "Show HTML source" : "Show rendered page";
+): MessageKey {
+  if (mode === "mermaid") {
+    return rendered ? "workspace.file.showMermaidSource" : "workspace.file.showRenderedDiagram";
+  }
+  if (mode === "markdown") {
+    return rendered ? "workspace.file.showMarkdownSource" : "workspace.file.showRenderedMarkdown";
+  }
+  if (mode === "table") return rendered ? "workspace.file.showSource" : "workspace.file.showTable";
+  return rendered ? "workspace.file.showHtmlSource" : "workspace.file.showRenderedPage";
 }
 
 function initialExplorerOpen(): boolean {
@@ -992,6 +1021,7 @@ export default function FilePreviewPanel({
 }: FilePreviewPanelProps) {
   const relativePath =
     attachment === undefined ? resolveFilePreviewPath(requestedPath, cwd) : requestedPath;
+  const t = useT();
   const draft = typeof composerDraftTarget === "string";
   const { resolvedTheme } = useTheme();
   const wordWrap = useClientSettings((settings) => settings.wordWrap);
@@ -1203,8 +1233,8 @@ export default function FilePreviewPanel({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Unable to open file in browser",
-          description: error instanceof Error ? error.message : "An error occurred.",
+          title: t("workspace.file.openInBrowserFailed"),
+          description: error instanceof Error ? error.message : t("common.errorOccurred"),
         }),
       );
     })();
@@ -1215,13 +1245,13 @@ export default function FilePreviewPanel({
       return (
         <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
           <Spinner className="size-4" />
-          Checking file access...
+          {t("workspace.file.checkingAccess")}
         </div>
       );
     }
     return (
       <div className="p-4 text-sm text-muted-foreground">
-        {fileAccess.error ?? "This connection cannot read host files."}
+        {fileAccess.error ?? t("workspace.file.cannotReadFiles")}
       </div>
     );
   }
@@ -1266,7 +1296,7 @@ export default function FilePreviewPanel({
           ) : null}
           {canToggleRendered && renderedMode ? (
             <FileSurfaceAction
-              label={renderedToggleLabel(renderedMode, rendered)}
+              label={t(renderedToggleLabel(renderedMode, rendered))}
               pressed={rendered}
               onPress={() => {
                 const pressed = !rendered;
@@ -1286,7 +1316,9 @@ export default function FilePreviewPanel({
           ) : null}
           {showsRawText ? (
             <FileSurfaceAction
-              label={wordWrap ? "Disable word wrap" : "Enable word wrap"}
+              label={t(
+                wordWrap ? "workspace.file.disableWordWrap" : "workspace.file.enableWordWrap",
+              )}
               pressed={wordWrap}
               onPress={() => updateClientSettings({ wordWrap: !wordWrap })}
             >
@@ -1294,13 +1326,18 @@ export default function FilePreviewPanel({
             </FileSurfaceAction>
           ) : null}
           {canOpenInBrowser ? (
-            <FileSurfaceAction label="Open file in preview browser" onPress={handleOpenInBrowser}>
+            <FileSurfaceAction
+              label={t("workspace.file.openInPreviewBrowser")}
+              onPress={handleOpenInBrowser}
+            >
               <Globe2 className="size-3.5" />
             </FileSurfaceAction>
           ) : null}
           {!isHostFile && previewPath !== null ? (
             <FileSurfaceAction
-              label={explorerOpen ? "Hide file explorer" : "Show file explorer"}
+              label={t(
+                explorerOpen ? "workspace.file.hideExplorer" : "workspace.file.showExplorer",
+              )}
               pressed={explorerOpen}
               onPress={toggleExplorer}
             >
@@ -1311,7 +1348,7 @@ export default function FilePreviewPanel({
       ) : null}
       {relativePath && !attachment && !isHostFile && !canWriteFiles && !fileAccess.isPending ? (
         <div className="shrink-0 border-b px-3 py-1.5 text-2xs text-muted-foreground">
-          Read-only connection. Unsaved edits are kept until write access returns.
+          {t("workspace.file.readOnly")}
         </div>
       ) : null}
       {previewPath &&
@@ -1321,7 +1358,7 @@ export default function FilePreviewPanel({
       file.data?.truncated &&
       (draft || isMarkdown || isMermaid || isHtml) ? (
         <div className="shrink-0 border-b border-warning/20 bg-warning-surface px-3 py-1.5 text-2xs text-warning-foreground">
-          Preview limited to the first 1 MB of a {file.data.byteLength.toLocaleString()} byte file.
+          {t("workspace.file.previewLimited", { size: file.data.byteLength.toLocaleString() })}
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -1434,7 +1471,7 @@ export default function FilePreviewPanel({
                 </p>
                 {attemptedPath ? (
                   <p className="text-muted-foreground">
-                    Attempted path
+                    {t("workspace.file.attemptedPath")}
                     <code className="block break-all font-mono text-foreground select-all">
                       {attemptedPath}
                     </code>
@@ -1442,11 +1479,11 @@ export default function FilePreviewPanel({
                 ) : null}
                 {!isHostFile ? (
                   <p className="text-muted-foreground">
-                    Workspace folder:{" "}
+                    {t("workspace.file.workspaceFolder")}{" "}
                     <code className="break-all font-mono select-all">
                       {file.readError?.cwd ?? cwd}
                     </code>
-                    . Check the link's path or locate the file in Files.
+                    {t("workspace.file.checkLinkPath")}
                   </p>
                 ) : null}
               </div>
@@ -1555,6 +1592,7 @@ export function WorkspaceLargeTextPreview(props: {
   revealLine: number | null;
   revealRequestId: number;
 }) {
+  const t = useT();
   const resource = {
     _tag: "media-file",
     threadId: props.threadRef.threadId,
@@ -1592,7 +1630,7 @@ export function WorkspaceLargeTextPreview(props: {
   if (assetUrl._tag === "Failure")
     return (
       <FileSurfaceFailure
-        message="Unable to load file preview."
+        message={t("workspace.file.previewFailed")}
         onRetry={() => {
           setRevision((value) => value + 1);
           void refreshAssetUrl().catch(showError);
@@ -1607,7 +1645,7 @@ export function WorkspaceLargeTextPreview(props: {
       <div className={FILE_SURFACE_SUBHEADER_CLASS}>
         <span className="min-w-0 flex-1 text-xs text-muted-foreground">Full file</span>
         <FileSurfaceAction
-          label={isCopied ? "Copied" : "Copy contents"}
+          label={t(isCopied ? "workspace.file.copied" : "workspace.file.copyContents")}
           onPress={() => {
             const copy = copyContents.current;
             if (!copy) return;
@@ -1619,15 +1657,15 @@ export function WorkspaceLargeTextPreview(props: {
           {isCopied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
         </FileSurfaceAction>
         <FileSurfaceAction
-          label={saving ? "Preparing file…" : "Save file"}
+          label={t(saving ? "workspace.file.preparing" : "workspace.file.save")}
           disabled={saving}
           onPress={() => {
             setSaving(true);
             void (async () => {
               const url = await refreshAssetUrl();
-              if (!url) throw new Error("Reconnect to the environment and try again.");
+              if (!url) throw new Error(t("workspace.file.reconnect"));
               const response = await fetch(url);
-              if (!response.ok) throw new Error("The file could not be loaded. Try again.");
+              if (!response.ok) throw new Error(t("workspace.file.downloadFailed"));
               const downloadUrl = URL.createObjectURL(await response.blob());
               setTimeout(() => URL.revokeObjectURL(downloadUrl), 30_000);
               const anchor = document.createElement("a");

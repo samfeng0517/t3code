@@ -4,6 +4,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   collectRestartingMachines,
   collectServerUpdateTargets,
+  describeUpdateEverything,
+  getUpdateEverythingToastView,
   runUpdateEverything,
   type UpdateEverythingMachine,
 } from "./updateEverything.logic";
@@ -39,30 +41,34 @@ function machine(
   };
 }
 
+const updateTargetMachines = (): UpdateEverythingMachine[] => [
+  machine("this-app", "0.0.40", "desktop-managed", { hostedByThisApp: true }),
+  machine("service", "0.0.40", "boot-service"),
+  machine("nightly-service", "0.0.49-nightly.20261001.3", "boot-service"),
+  machine("other-desktop", "0.0.49-nightly.20261001.3", "desktop-managed"),
+  machine("offline", "0.0.40", "boot-service", { connected: false }),
+  machine("never-connected", "0.0.40", "boot-service", { serverConfig: null }),
+  machine("no-scope", "0.0.40", "boot-service", { canMaintain: false }),
+  machine("busy", "0.0.40", "boot-service", {
+    updateState: {
+      status: "running",
+      stage: "downloading",
+      fromVersion: "0.0.40",
+      targetVersion: "0.0.50",
+    },
+  }),
+  machine("current", "0.0.50", "boot-service"),
+  machine("current-offline", "0.0.50", "boot-service", { connected: false }),
+  machine("manual", "0.0.40", undefined),
+];
+
 describe("collectServerUpdateTargets", () => {
   it("updates remote servers that can move to the target and names every skipped one", () => {
     const { targets, skipped } = collectServerUpdateTargets(
-      [
-        machine("this-app", "0.0.40", "desktop-managed", { hostedByThisApp: true }),
-        machine("service", "0.0.40", "boot-service"),
-        machine("nightly-service", "0.0.49-nightly.20261001.3", "boot-service"),
-        machine("other-desktop", "0.0.49-nightly.20261001.3", "desktop-managed"),
-        machine("offline", "0.0.40", "boot-service", { connected: false }),
-        machine("never-connected", "0.0.40", "boot-service", { serverConfig: null }),
-        machine("no-scope", "0.0.40", "boot-service", { canMaintain: false }),
-        machine("busy", "0.0.40", "boot-service", {
-          updateState: {
-            status: "running",
-            stage: "downloading",
-            fromVersion: "0.0.40",
-            targetVersion: "0.0.50",
-          },
-        }),
-        machine("current", "0.0.50", "boot-service"),
-        machine("current-offline", "0.0.50", "boot-service", { connected: false }),
-        machine("manual", "0.0.40", undefined),
-      ],
+      updateTargetMachines(),
       "0.0.50",
+      undefined,
+      true,
     );
 
     expect(targets.map((target) => [target.serverLabel, target.targetVersion])).toEqual([
@@ -77,6 +83,13 @@ describe("collectServerUpdateTargets", () => {
       ["busy", "already updating"],
       ["manual", "needs a manual update"],
     ]);
+  });
+
+  it("leaves every server alone on a fork build", () => {
+    expect(collectServerUpdateTargets(updateTargetMachines(), "0.0.50", undefined, false)).toEqual({
+      targets: [],
+      skipped: [],
+    });
   });
 });
 
@@ -140,5 +153,60 @@ describe("runUpdateEverything", () => {
 
     expect(calls).toEqual(["providers", "servers"]);
     expect(result.localReady).toBe(false);
+  });
+});
+
+describe("update everything copy", () => {
+  it("summarizes the plan and the result as English lists", () => {
+    const plan = describeUpdateEverything({
+      localVersion: "0.0.50",
+      servers: [
+        {
+          environmentId: EnvironmentId.make("alvin"),
+          serverLabel: "alvin",
+          selfUpdate: "boot-service",
+          targetVersion: "0.0.50",
+        },
+        {
+          environmentId: EnvironmentId.make("mac"),
+          serverLabel: "mac",
+          selfUpdate: "desktop-managed",
+          targetVersion: "0.0.50",
+        },
+      ],
+      providerMachines: [
+        {
+          environmentId: EnvironmentId.make("alvin"),
+          label: "alvin",
+          providers: ["Codex", "Claude"],
+        },
+      ],
+    });
+    expect(plan).toEqual({
+      summary: "Update this app, 2 servers, and 2 providers",
+      items: "this app, 2 servers, and 2 providers",
+      lines: [
+        "This app: 0.0.50, restarts last",
+        "alvin: server to 0.0.50, Codex, Claude",
+        "mac: desktop app update",
+      ],
+    });
+
+    expect(
+      getUpdateEverythingToastView(
+        {
+          localVersion: "0.0.50",
+          updatedServers: 1,
+          updatedProviders: 0,
+          failures: ["mac: timed out"],
+          restarting: ["alvin"],
+        },
+        "0.0.50",
+      ),
+    ).toEqual({
+      type: "error",
+      title: "Updated this app and 1 server",
+      description: "mac: timed out\nalvin is still restarting.",
+    });
   });
 });

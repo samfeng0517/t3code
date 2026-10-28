@@ -1,9 +1,14 @@
-import type { OrchestrationV2HistoricalMessage } from "@t3tools/contracts";
+import type {
+  ModSurfaceAction,
+  ModSurfaceActResult,
+  OrchestrationV2HistoricalMessage,
+} from "@t3tools/contracts";
 import {
   ChatAttachment,
   CheckpointId,
   MessageId,
   ModelSelection,
+  ModSurfaceEvent,
   NodeId,
   OrchestrationV2AppThread,
   OrchestrationV2ConversationMessage,
@@ -127,6 +132,16 @@ export const ProviderAdapterV2Event = Schema.Union([
     threadId: ThreadId,
     itemId: TurnItemId,
     chunk: Schema.String,
+  }),
+  /**
+   * A mod's drawing changed. Never persisted: the session manager hands it to
+   * the mod surface hub, which only clients showing the thread receive.
+   */
+  Schema.Struct({
+    type: Schema.Literal("mod_surface.updated"),
+    driver: ProviderDriverKind,
+    threadId: ThreadId,
+    event: ModSurfaceEvent,
   }),
   Schema.Struct({
     type: Schema.Literal("runtime_request.updated"),
@@ -535,6 +550,14 @@ export interface ProviderAdapterV2McpApps {
   }) => Effect.Effect<{ readonly contents: ReadonlyArray<unknown> }, ProviderAdapterV2Error>;
 }
 
+/** Sends a person's press or close back to the mods running in the session. */
+export interface ProviderAdapterV2ModSurface {
+  readonly act: (input: {
+    readonly threadId: ThreadId;
+    readonly action: ModSurfaceAction;
+  }) => Effect.Effect<ModSurfaceActResult, ProviderAdapterV2Error>;
+}
+
 export type ProviderAdapterV2SubagentOutcome = {
   readonly status: "completed" | "failed" | "cancelled";
   readonly completedAt: NonNullable<OrchestrationV2Subagent["completedAt"]>;
@@ -623,6 +646,8 @@ export interface ProviderAdapterV2SessionRuntime {
   }) => Effect.Effect<{ readonly feedbackId: string }, ProviderAdapterV2Error>;
   /** Absent means non-interactive apps with plain tool rows. */
   readonly mcpApps?: ProviderAdapterV2McpApps;
+  /** Absent means this provider runs no mods, so nothing it draws reaches clients. */
+  readonly mods?: ProviderAdapterV2ModSurface;
   readonly rollbackThread: (
     input: ProviderAdapterV2RollbackThreadInput,
   ) => Effect.Effect<ProviderAdapterV2ThreadSnapshot, ProviderAdapterV2Error>;

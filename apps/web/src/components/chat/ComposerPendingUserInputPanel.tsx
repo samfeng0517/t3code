@@ -10,6 +10,7 @@ import {
 import { CheckboxMark } from "../ui/checkbox";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { Kbd } from "../ui/kbd";
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { ComposerBanner } from "./ComposerBanner";
 import ChatMarkdown from "../ChatMarkdown";
@@ -83,6 +84,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   onAdvance: () => void;
   onDismiss: (requestId: RuntimeRequestId) => void;
 }) {
+  const t = useT();
   // Message-mode requests remain answerable after their provider turn ends.
   const canRespond = prompt.responseCapability !== "not_resumable";
   const responseDisabled = disabled || isResponding || !canRespond;
@@ -186,9 +188,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     >
       <CollapsibleTrigger
         render={<ComposerBanner.Row render={<button type="button" />} />}
-        title={
-          isCollapsed ? "Show the question and its options" : "Hide the question and its options"
-        }
+        title={isCollapsed ? t("composer.question.show") : t("composer.question.hide")}
         data-pending-user-input-toggle={isCollapsed ? "collapsed" : "expanded"}
         className="px-4 pt-1.5"
       >
@@ -213,8 +213,8 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
           {prompt.dismissible ? (
             <ComposerBanner.Dismiss
               render={<span role="button" tabIndex={0} />}
-              aria-label="Dismiss question without answering"
-              title="Dismiss question without answering"
+              aria-label={t("composer.question.dismiss")}
+              title={t("composer.question.dismiss")}
               disabled={isResponding}
               data-pending-user-input-dismiss
               onClick={(event) => {

@@ -1,6 +1,10 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import { ServerSelfUpdateError, ThreadId } from "@t3tools/contracts";
+import {
+  APP_SELF_UPDATE_DISABLED_MESSAGE,
+  AppSelfUpdateEnabled,
+} from "@t3tools/shared/appSelfUpdate";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
@@ -28,6 +32,7 @@ interface HarnessOptions {
   readonly beforeDownload?: Effect.Effect<void>;
   readonly requestUpdate?: ServiceLauncherClient.ServiceLauncherClient["Service"]["requestUpdate"];
   readonly desktopAppUpdate?: DesktopAppUpdate.DesktopAppUpdate["Service"];
+  readonly appSelfUpdateEnabled?: boolean;
 }
 
 const archiveBytes = new TextEncoder().encode("not really a tarball");
@@ -124,6 +129,7 @@ const makeHarness = Effect.fn("test.make_self_update_harness")(function* (
     Effect.provideService(HttpClient.HttpClient, releaseHttpClient(order, options.beforeDownload)),
     Effect.provideService(HostProcess.Platform, "linux"),
     Effect.provideService(HostProcess.Architecture, "x64"),
+    Effect.provideService(AppSelfUpdateEnabled, options.appSelfUpdateEnabled ?? true),
     Effect.provide(ServerConfig.layer({ ...config, mode: options.mode ?? "web" })),
   );
   return { selfUpdate, order };
@@ -299,6 +305,31 @@ it.layer(NodeServices.layer)("server self update", (it) => {
         (yield* desktop.selfUpdate.update({ targetVersion: "1.1.0" }).pipe(Effect.flip)).reason,
       ).toContain("desktop app");
       expect([...web.order, ...desktop.order]).toEqual([]);
+    }),
+  );
+
+  it.effect("refuses boot-service and desktop app updates on a fork build", () =>
+    Effect.gen(function* () {
+      const desktopRuns: string[] = [];
+      const service = yield* makeHarness({ appSelfUpdateEnabled: false });
+      const desktop = yield* makeHarness({
+        mode: "desktop",
+        appSelfUpdateEnabled: false,
+        desktopAppUpdate: {
+          available: true,
+          run: () =>
+            Effect.sync(() => void desktopRuns.push("run")).pipe(
+              Effect.as({ targetVersion: "1.1.0", method: "desktop-app" as const }),
+            ),
+          commit: () => Effect.never,
+        },
+      });
+      for (const { selfUpdate } of [service, desktop]) {
+        expect(
+          (yield* selfUpdate.update({ targetVersion: "1.1.0" }).pipe(Effect.flip)).reason,
+        ).toBe(APP_SELF_UPDATE_DISABLED_MESSAGE);
+      }
+      expect([...service.order, ...desktop.order, ...desktopRuns]).toEqual([]);
     }),
   );
 

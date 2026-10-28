@@ -6,7 +6,6 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 
 import {
-  VcsRepositoryDetectionError,
   VcsUnsupportedOperationError,
   type ReviewDiffFileContentsInput,
   type ReviewDiffFileContentsResult,
@@ -19,6 +18,7 @@ import * as ServerConfig from "../config.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as KnownWorkspaces from "../workspace/KnownWorkspaces.ts";
+import { assertWorkspaceBoundCwd } from "../workspace/workspaceBoundary.ts";
 
 export class ReviewService extends Context.Service<
   ReviewService,
@@ -34,61 +34,28 @@ export class ReviewService extends Context.Service<
 
 /** @public */
 export const make = Effect.gen(function* () {
-  const config = yield* ServerConfig.ServerConfig;
-  const fileSystem = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
   const vcsRegistry = yield* VcsDriverRegistry.VcsDriverRegistry;
   const git = yield* GitVcsDriver.GitVcsDriver;
-  const knownWorkspaces = yield* KnownWorkspaces.KnownWorkspaces;
+  const workspaceContext = yield* Effect.context<
+    ServerConfig.ServerConfig | FileSystem.FileSystem | Path.Path | KnownWorkspaces.KnownWorkspaces
+  >();
 
-  const canonicalizePath = (value: string) => {
-    const resolvedPath = path.resolve(value);
-    return fileSystem.realPath(resolvedPath).pipe(
-      Effect.catchTags({
-        PlatformError: (cause) =>
-          cause.reason._tag === "NotFound"
-            ? Effect.succeed(resolvedPath)
-            : Effect.fail(
-                new VcsRepositoryDetectionError({
-                  operation: "ReviewService.assertWorkspaceBoundCwd.canonicalizePath",
-                  cwd: resolvedPath,
-                  detail: "Failed to resolve a path while validating the review workspace.",
-                  cause,
-                }),
-              ),
-      }),
-    );
-  };
-
-  const assertWorkspaceBoundCwd = Effect.fn("ReviewService.assertWorkspaceBoundCwd")(function* (
+  const assertReviewCwd = (
     operation: "ReviewService.getDiffPreview" | "ReviewService.getDiffFileContents",
     cwd: string,
-  ) {
-    const [candidate, workspaceRoot] = yield* Effect.all([
-      canonicalizePath(cwd),
-      canonicalizePath(config.cwd),
-    ]);
-    if (
-      KnownWorkspaces.isWithinRoot(path, candidate, workspaceRoot) ||
-      (yield* knownWorkspaces.contains(candidate))
-    ) {
-      return;
-    }
-
-    return yield* new VcsRepositoryDetectionError({
+  ) =>
+    assertWorkspaceBoundCwd(
       operation,
       cwd,
-      detail:
-        operation === "ReviewService.getDiffPreview"
-          ? "Review diff preview cwd must stay within the configured workspace root."
-          : "Review diff file contents cwd must stay within the configured workspace root.",
-    });
-  });
+      operation === "ReviewService.getDiffPreview"
+        ? "Review diff preview cwd must stay within the configured workspace root."
+        : "Review diff file contents cwd must stay within the configured workspace root.",
+    ).pipe(Effect.provide(workspaceContext));
 
   const getDiffPreview: ReviewService["Service"]["getDiffPreview"] = Effect.fn(
     "ReviewService.getDiffPreview",
   )(function* (input) {
-    yield* assertWorkspaceBoundCwd("ReviewService.getDiffPreview", input.cwd);
+    yield* assertReviewCwd("ReviewService.getDiffPreview", input.cwd);
 
     const handle = yield* vcsRegistry.detect({ cwd: input.cwd, requestedKind: "auto" });
     if (!handle) {
@@ -117,7 +84,7 @@ export const make = Effect.gen(function* () {
   const getDiffFileContents: ReviewService["Service"]["getDiffFileContents"] = Effect.fn(
     "ReviewService.getDiffFileContents",
   )(function* (input) {
-    yield* assertWorkspaceBoundCwd("ReviewService.getDiffFileContents", input.cwd);
+    yield* assertReviewCwd("ReviewService.getDiffFileContents", input.cwd);
 
     const handle = yield* vcsRegistry.detect({ cwd: input.cwd, requestedKind: "auto" });
     if (handle?.kind !== "git") {

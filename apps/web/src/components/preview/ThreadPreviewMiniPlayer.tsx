@@ -37,6 +37,7 @@ import { useBrowserLayoutZoomFactor } from "~/browser/useBrowserLayoutZoomFactor
 import { Button } from "~/components/ui/button";
 import { toastManager } from "~/components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { useThreadPreviewState } from "~/previewStateStore";
 import {
@@ -212,6 +213,7 @@ export function ThreadPreviewMiniPlayer({ threadRef, miniPlayer }: Props) {
 }
 
 function BrowserMiniPlayer({ threadRef, tabId, miniPlayer }: Props & { readonly tabId: string }) {
+  const t = useT();
   const httpBaseUrl = useEnvironmentHttpBaseUrl(threadRef.environmentId);
   const { serverEpoch, snapshot, desktopOverlay, serverTab, sourceSize } =
     useBrowserMiniPlayerSource(threadRef, tabId);
@@ -252,8 +254,12 @@ function BrowserMiniPlayer({ threadRef, tabId, miniPlayer }: Props & { readonly 
     } catch (error) {
       toastManager.add({
         type: "error",
-        title: serverTab ? "Unable to pop out preview" : "Unable to update popped-out preview",
-        description: error instanceof Error ? error.message : "An error occurred.",
+        title: t(
+          serverTab
+            ? "workspace.preview.toast.popOutFailed"
+            : "workspace.preview.toast.popOutUpdateFailed",
+        ),
+        description: error instanceof Error ? error.message : t("common.errorOccurred"),
       });
     }
   };
@@ -273,7 +279,7 @@ function BrowserMiniPlayer({ threadRef, tabId, miniPlayer }: Props & { readonly 
       threadRef={threadRef}
       miniPlayer={miniPlayer}
       sourceSize={sourceSize}
-      label="Floating browser preview"
+      label={t("workspace.preview.mini.browser")}
       recording={recording}
       onOpenInPanel={openInPanel}
       pillActions={
@@ -284,9 +290,11 @@ function BrowserMiniPlayer({ threadRef, tabId, miniPlayer }: Props & { readonly 
                 <Button
                   variant={poppedOut ? "secondary" : "ghost"}
                   size="icon-xs"
-                  aria-label={
-                    poppedOut ? "Close popped-out preview" : "Pop preview into separate window"
-                  }
+                  aria-label={t(
+                    poppedOut
+                      ? "workspace.preview.mini.closePopOut"
+                      : "workspace.preview.mini.popOut",
+                  )}
                   disabled={!serverTab && !desktopOverlay?.hasWebContents}
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={toggleNativePictureInPicture}
@@ -296,7 +304,11 @@ function BrowserMiniPlayer({ threadRef, tabId, miniPlayer }: Props & { readonly 
               <PictureInPicture2 />
             </TooltipTrigger>
             <TooltipPopup side="top">
-              {poppedOut ? "Close separate window" : "Pop into separate window"}
+              {t(
+                poppedOut
+                  ? "workspace.preview.mini.closeSeparateWindow"
+                  : "workspace.preview.mini.popIntoSeparateWindow",
+              )}
             </TooltipPopup>
           </Tooltip>
         ) : null
@@ -345,7 +357,7 @@ function BrowserMiniPlayer({ threadRef, tabId, miniPlayer }: Props & { readonly 
             />
             {!desktopOverlay?.hasWebContents ? (
               <div className="pointer-events-none absolute inset-0 z-[49] flex items-center justify-center rounded-[inherit] bg-muted text-xs text-muted-foreground">
-                Reconnecting preview…
+                {t("workspace.preview.mini.reconnecting")}
               </div>
             ) : null}
           </>
@@ -360,6 +372,7 @@ function DeviceMiniPlayer({
   source,
   miniPlayer,
 }: Props & { readonly source: Extract<PreviewMiniPlayerSource, { kind: "device" }> }) {
+  const t = useT();
   const { state: deviceState } = useDeviceState(threadRef.environmentId);
   const viewId = miniPlayerDeviceViewId(threadRef, source);
   const screen = useAtomValue(deviceStreamScreenAtom(viewId));
@@ -368,7 +381,8 @@ function DeviceMiniPlayer({
     (entry) => entry.hostId === source.hostId && entry.id === source.deviceId,
   );
   const hostLabel =
-    deviceState.hosts.find((host) => host.id === source.hostId)?.label ?? "Device host";
+    deviceState.hosts.find((host) => host.id === source.hostId)?.label ??
+    t("workspace.preview.mini.deviceHost");
   const cornerRadius = (player: PreviewMiniPlayerSize) =>
     resolveDeviceMiniPlayerCornerRadius(source.platform, player);
 
@@ -387,7 +401,7 @@ function DeviceMiniPlayer({
       threadRef={threadRef}
       miniPlayer={miniPlayer}
       sourceSize={sourceSize}
-      label="Floating device preview"
+      label={t("workspace.preview.mini.device")}
       onOpenInPanel={openInPanel}
       cornerRadius={cornerRadius}
     >
@@ -434,6 +448,7 @@ function MiniPlayerShell({
   readonly cornerRadius?: (frame: PreviewMiniPlayerSize) => number;
   readonly children: (frame: PreviewMiniPlayerFrame) => ReactNode;
 }) {
+  const t = useT();
   const canvas = useChatCanvas();
   const gestureRef = useRef<PointerGesture | null>(null);
   // Touch toggles the pill after the tap's click so that click cannot land on the newly opened pill.
@@ -557,7 +572,7 @@ function MiniPlayerShell({
           >
             <div
               role={recording ? "status" : undefined}
-              aria-label={recording ? "Recording preview" : undefined}
+              aria-label={recording ? t("workspace.preview.mini.recording") : undefined}
               aria-hidden={!recording}
               className="absolute right-0 top-0 size-2 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0 group-data-pill-open:opacity-0 pointer-coarse:right-2.5 pointer-coarse:top-2.5"
             >
@@ -582,7 +597,7 @@ function MiniPlayerShell({
                     <Button
                       variant="ghost"
                       size="icon-xs"
-                      aria-label="Open preview in right panel"
+                      aria-label={t("workspace.preview.mini.openInPanelLabel")}
                       onPointerDown={(event) => event.stopPropagation()}
                       onClick={onOpenInPanel}
                     />
@@ -590,7 +605,7 @@ function MiniPlayerShell({
                 >
                   <PanelRightIcon />
                 </TooltipTrigger>
-                <TooltipPopup side="top">Open in right panel</TooltipPopup>
+                <TooltipPopup side="top">{t("workspace.preview.mini.openInPanel")}</TooltipPopup>
               </Tooltip>
               {pillActions}
               <Tooltip>
@@ -599,7 +614,7 @@ function MiniPlayerShell({
                     <Button
                       variant="ghost"
                       size="icon-xs"
-                      aria-label="Close floating preview"
+                      aria-label={t("workspace.preview.closeFloating")}
                       onPointerDown={(event) => event.stopPropagation()}
                       onClick={close}
                     />
@@ -607,7 +622,7 @@ function MiniPlayerShell({
                 >
                   <XIcon />
                 </TooltipTrigger>
-                <TooltipPopup side="top">Close floating preview</TooltipPopup>
+                <TooltipPopup side="top">{t("workspace.preview.closeFloating")}</TooltipPopup>
               </Tooltip>
             </div>
           </div>

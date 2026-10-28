@@ -26,6 +26,7 @@ import {
   decodeProjectScriptKeybindingRule,
 } from "~/lib/projectScriptKeybindings";
 import { keybindingFromKeyboardEvent } from "~/components/settings/KeybindingsSettings.logic";
+import { useT } from "~/i18n";
 import { commandForProjectScript, nextProjectScriptId } from "~/projectScripts";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { useComposerMenuState } from "./chat/useComposerMenuState";
@@ -85,6 +86,7 @@ export interface NewProjectScriptInput {
   runOnWorktreeCreate: boolean;
   waitForSetup: boolean;
   runOnSettle: boolean;
+  runOnWorktreeRemove: boolean;
   /** Omit to preserve the current shortcut when the form did not edit it. */
   keybinding?: string | null;
   previewUrl: string | null;
@@ -100,6 +102,7 @@ export const EMPTY_PROJECT_SCRIPT_INPUT: NewProjectScriptInput = {
   runOnWorktreeCreate: false,
   waitForSetup: false,
   runOnSettle: false,
+  runOnWorktreeRemove: false,
   keybinding: null,
   previewUrl: null,
   autoOpenPreview: false,
@@ -124,6 +127,7 @@ export function editorRequestForScript(
       runOnWorktreeCreate: script.runOnWorktreeCreate,
       waitForSetup: script.runOnWorktreeCreate && script.async === false,
       runOnSettle: script.runOnSettle ?? false,
+      runOnWorktreeRemove: script.runOnWorktreeRemove ?? false,
       keybinding: keybindingValueForCommand(keybindings, commandForProjectScript(script.id)),
       previewUrl: script.previewUrl ?? null,
       autoOpenPreview: script.autoOpenPreview ?? false,
@@ -263,6 +267,7 @@ function ProjectScriptEditorForm({
   onRequestDelete: (name: string) => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const canEditActions = useEnvironmentScope(environmentId, editScope);
   const canWriteSettings = useEnvironmentScope(environmentId, AuthSettingsWriteScope);
   const formId = React.useId();
@@ -275,6 +280,9 @@ function ProjectScriptEditorForm({
   );
   const [waitForSetup, setWaitForSetup] = useState(request.initial.waitForSetup);
   const [runOnSettle, setRunOnSettle] = useState(request.initial.runOnSettle);
+  const [runOnWorktreeRemove, setRunOnWorktreeRemove] = useState(
+    request.initial.runOnWorktreeRemove,
+  );
   const [keybinding, setKeybinding] = useState(request.initial.keybinding ?? "");
   const [previewUrl, setPreviewUrl] = useState(request.initial.previewUrl ?? "");
   const [autoOpenPreview, setAutoOpenPreview] = useState(request.initial.autoOpenPreview);
@@ -358,6 +366,7 @@ function ProjectScriptEditorForm({
         runOnWorktreeCreate,
         waitForSetup: runOnWorktreeCreate && waitForSetup,
         runOnSettle,
+        runOnWorktreeRemove,
         ...((request.scriptId === null && canChangeKeybinding) || changesKeybinding
           ? { keybinding: keybindingRule?.key ?? null }
           : {}),
@@ -518,6 +527,13 @@ function ProjectScriptEditorForm({
               <Switch
                 checked={runOnSettle}
                 onCheckedChange={(checked) => setRunOnSettle(Boolean(checked))}
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2 text-sm dark:border-transparent dark:bg-white/[0.035]">
+              <span>{t("workspace.scripts.runOnWorktreeRemove")}</span>
+              <Switch
+                checked={runOnWorktreeRemove}
+                onCheckedChange={(checked) => setRunOnWorktreeRemove(Boolean(checked))}
               />
             </label>
             <label

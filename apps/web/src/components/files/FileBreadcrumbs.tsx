@@ -17,6 +17,7 @@ import {
 } from "~/components/ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useTheme } from "~/hooks/useTheme";
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { isHostPath } from "@t3tools/shared/path";
 
@@ -84,6 +85,7 @@ function BreadcrumbMenuContent(props: {
   readonly rootPath: string;
   readonly workspaceMutationId: string | null;
 }) {
+  const t = useT();
   const entriesQuery = useProjectEntriesQuery(
     props.environmentId,
     props.cwd,
@@ -118,7 +120,11 @@ function BreadcrumbMenuContent(props: {
         <>
           <MenuItem closeOnClick={false} onClick={() => props.onDirectoryChange(parentPath)}>
             <ArrowLeftIcon />
-            <span className="truncate">Back to {pathLabel(parentPath, props.projectName)}</span>
+            <span className="truncate">
+              {t("workspace.breadcrumbs.backTo", {
+                folder: pathLabel(parentPath, props.projectName),
+              })}
+            </span>
           </MenuItem>
           <MenuSeparator />
         </>
@@ -127,20 +133,24 @@ function BreadcrumbMenuContent(props: {
         {entriesQuery.isPending && entriesQuery.data === null ? (
           <MenuItem disabled>
             <Spinner />
-            Loading folder…
+            {t("workspace.breadcrumbs.loadingFolder")}
           </MenuItem>
         ) : entriesQuery.error && entriesQuery.data === null ? (
           <MenuItem closeOnClick={false} onClick={entriesQuery.refresh}>
             <RefreshIcon refreshing={entriesQuery.isPending} />
-            <span className="min-w-0 flex-1 truncate">Retry loading folder</span>
+            <span className="min-w-0 flex-1 truncate">
+              {t("workspace.breadcrumbs.retryFolder")}
+            </span>
           </MenuItem>
         ) : !directoryAvailable && !entriesTruncated ? (
-          <MenuItem disabled>This folder is no longer available.</MenuItem>
+          <MenuItem disabled>{t("workspace.breadcrumbs.folderUnavailable")}</MenuItem>
         ) : children.length === 0 ? (
           <MenuItem disabled>
-            {entriesTruncated
-              ? "No entries from this folder are available in the partial workspace index."
-              : "This folder is empty."}
+            {t(
+              entriesTruncated
+                ? "workspace.breadcrumbs.noIndexedEntries"
+                : "workspace.breadcrumbs.folderEmpty",
+            )}
           </MenuItem>
         ) : (
           <MenuRadioGroup
@@ -200,14 +210,14 @@ function BreadcrumbMenuContent(props: {
           <MenuSeparator />
           <MenuItem closeOnClick={false} onClick={entriesQuery.refresh}>
             <RefreshIcon refreshing={entriesQuery.isPending} />
-            Refresh failed. Retry
+            {t("workspace.breadcrumbs.refreshFailed")}
           </MenuItem>
         </>
       ) : null}
       {entriesTruncated ? (
         <>
           <MenuSeparator />
-          <MenuItem disabled>Some workspace entries are not shown.</MenuItem>
+          <MenuItem disabled>{t("workspace.breadcrumbs.entriesHidden")}</MenuItem>
         </>
       ) : null}
     </MenuPopup>
@@ -215,6 +225,7 @@ function BreadcrumbMenuContent(props: {
 }
 
 function FolderContentsMenu(props: FileBreadcrumbsProps & { readonly crumb: FileBreadcrumb }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [directoryPath, setDirectoryPath] = useState(props.crumb.path);
   const [shownFor, setShownFor] = useState({
@@ -238,7 +249,7 @@ function FolderContentsMenu(props: FileBreadcrumbsProps & { readonly crumb: File
         render={
           <button
             type="button"
-            aria-label={`Browse ${props.crumb.label}`}
+            aria-label={t("workspace.breadcrumbs.browse", { folder: props.crumb.label })}
             className="relative mx-0.5 flex h-5 w-4 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground/60 outline-none pointer-coarse:after:absolute pointer-coarse:after:-inset-3 hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-popup-open:bg-accent data-popup-open:text-foreground"
           />
         }
@@ -293,13 +304,14 @@ function FolderBreadcrumb(props: {
 
 /** Host paths outside the workspace omit contents menus; the browser already lists their destination. */
 export function FileBreadcrumbs(props: FileBreadcrumbsProps) {
+  const t = useT();
   const hostPath = isHostPath(props.relativePath);
   const breadcrumbs = fileBreadcrumbs(props.projectName, props.trail);
   const currentPath = breadcrumbPathOf(props.relativePath);
   const currentIndex = breadcrumbs.findIndex((crumb) => crumb.path === currentPath);
 
   return (
-    <nav aria-label="File path" className="flex h-full">
+    <nav aria-label={t("workspace.breadcrumbs.label")} className="flex h-full">
       <ol className="flex items-center">
         {breadcrumbs.map((crumb, index) => {
           const current = index === currentIndex;

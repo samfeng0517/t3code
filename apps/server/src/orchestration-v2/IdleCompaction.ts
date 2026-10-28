@@ -10,6 +10,9 @@ const MIN_CONTEXT_TOKENS = COMPACTION_SUGGESTION_MIN_TOKENS;
 // Start this long before the cache expires: enough for the session to resume
 // and send the compaction while the cache is still warm.
 const LEAD_MS = 2 * 60_000;
+// API-key and cloud caches last 5 minutes, so their window opens while the user
+// is still reading the reply. Only a cache that outlives a real break compacts.
+const MIN_IDLE_MS = 10 * 60_000;
 
 export type IdleCompactionRecords = Pick<
   OrchestrationV2ThreadProjection,
@@ -99,5 +102,7 @@ export function idleCompactionWindow(
   const expiresAt = usages[0]?.promptCacheExpiresAt;
   const endMs = expiresAt === undefined ? Number.NaN : Date.parse(expiresAt);
   if (!Number.isFinite(endMs) || nowMs >= endMs) return null;
-  return { runId: latestRun.id, startMs: endMs - LEAD_MS, endMs };
+  const startMs = endMs - LEAD_MS;
+  if (startMs - DateTime.toEpochMillis(latestRun.completedAt) < MIN_IDLE_MS) return null;
+  return { runId: latestRun.id, startMs, endMs };
 }

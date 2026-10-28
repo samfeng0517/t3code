@@ -18,6 +18,7 @@ import React, { useState } from "react";
 import { commandForProjectScript, primaryProjectScript } from "~/projectScripts";
 import { shortcutLabelForCommand } from "~/keybindings";
 import { serverEnvironment } from "~/state/server";
+import { useT } from "~/i18n";
 import { readEnvironmentScope } from "~/state/session";
 import {
   EMPTY_PROJECT_SCRIPT_INPUT,
@@ -65,6 +66,8 @@ interface ProjectScriptsControlProps {
   environmentId: EnvironmentId;
   scripts: ReadonlyArray<ProjectScript>;
   fileScripts?: ReadonlyArray<T3ProjectFileScript>;
+  /** The project file `fileScripts` were read from. */
+  fileScriptsSource?: string;
   preferredScriptId?: string | null;
   onRunScript?: ((script: ProjectScript) => void) | undefined;
   onAddScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
@@ -82,12 +85,14 @@ export default function ProjectScriptsControl({
   environmentId,
   scripts,
   fileScripts = NO_FILE_SCRIPTS,
+  fileScriptsSource = "t3.json",
   preferredScriptId = null,
   onRunScript,
   onAddScript,
   onUpdateScript,
   onDeleteScript,
 }: ProjectScriptsControlProps) {
+  const t = useT();
   const isPanel = displayMode === "panel";
   const ActionGroup = isPanel ? "div" : Group;
   const panelAnchorRef = React.useRef<HTMLDivElement | null>(null);
@@ -137,6 +142,7 @@ export default function ProjectScriptsControl({
       runOnWorktreeCreate: fileScript.runOnWorktreeCreate ?? false,
       waitForSetup: fileScript.runOnWorktreeCreate === true && fileScript.async === false,
       runOnSettle: fileScript.runOnSettle ?? false,
+      runOnWorktreeRemove: fileScript.runOnWorktreeRemove ?? false,
       ...(readEnvironmentScope(environmentId, AuthSettingsWriteScope) ? { keybinding: null } : {}),
       previewUrl: fileScript.previewUrl ?? null,
       autoOpenPreview: fileScript.previewUrl ? (fileScript.autoOpenPreview ?? false) : false,
@@ -156,7 +162,9 @@ export default function ProjectScriptsControl({
     <>
       {scripts.length > 0 && <MenuSeparator />}
       <MenuGroup>
-        <MenuGroupLabel>From t3.json</MenuGroupLabel>
+        <MenuGroupLabel>
+          {t("workspace.scripts.fromFile", { file: fileScriptsSource })}
+        </MenuGroupLabel>
         {importableScripts.map((fileScript) => (
           <MenuItem
             density={presentation === "menu" ? "touch" : "default"}

@@ -324,6 +324,31 @@ afterEach(() => {
   state.cleanups.splice(0).forEach((cleanup) => cleanup());
 });
 
+describe("queued worktree task", () => {
+  it("outbox drain should send startFromOrigin true when a queued new task in worktree mode is delivered", async () => {
+    setOperateGrant("secondary", true);
+    await state.manager.enqueue(
+      message({
+        threadId: ThreadId.make("new-worktree-thread"),
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+        creation: {
+          projectId: ProjectId.make("project"),
+          projectCwd: "/repo",
+          workspaceMode: "worktree",
+          branch: "main",
+          worktreePath: null,
+          startFromOrigin: true,
+        },
+      }),
+    );
+    await runDrain();
+    expect(state.start).toHaveBeenCalledOnce();
+    const bootstrap = state.start.mock.calls[0]?.[0].input.bootstrap;
+    expect(bootstrap.prepareWorktree.startFromOrigin).toBe(true);
+    expect(remaining()).toEqual([]);
+  });
+});
+
 describe("queued task operation access", () => {
   it("parks a connected read-only target, then delivers its unchanged queue after a grant", async () => {
     const queued = message();

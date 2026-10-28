@@ -180,13 +180,24 @@ export function useVcsInitAction(scope: SourceControlActionScope) {
   return useAction({ kind: "init", label: "Initializing repository", scope, action });
 }
 
-export function useVcsPullAction(scope: SourceControlActionScope) {
+interface SourceControlStatusOptions {
+  /**
+   * `false` shares the passive local-only status stream: any remote-inclusive
+   * stream keeps a server-side remote poller alive while subscribed.
+   */
+  readonly includeRemote?: false;
+}
+
+export function useVcsPullAction(
+  scope: SourceControlActionScope,
+  options?: SourceControlStatusOptions,
+) {
   const pull = useAtomCommand(vcsEnvironment.pull, { reportFailure: false });
   const status = useEnvironmentQuery(
     scope.environmentId !== null && scope.cwd !== null
       ? vcsEnvironment.status({
           environmentId: scope.environmentId,
-          input: { cwd: scope.cwd },
+          input: { cwd: scope.cwd, ...options },
         })
       : null,
   );
@@ -217,7 +228,10 @@ export function useVcsPullAction(scope: SourceControlActionScope) {
   });
 }
 
-export function useGitStackedAction(scope: SourceControlActionScope) {
+export function useGitStackedAction(
+  scope: SourceControlActionScope,
+  options?: SourceControlStatusOptions,
+) {
   const runStackedAction = useAtomCommand(vcsActionManager.runStackedAction(scope), {
     reportFailure: false,
   });
@@ -225,7 +239,7 @@ export function useGitStackedAction(scope: SourceControlActionScope) {
     scope.environmentId !== null && scope.cwd !== null
       ? vcsEnvironment.status({
           environmentId: scope.environmentId,
-          input: { cwd: scope.cwd },
+          input: { cwd: scope.cwd, ...options },
         })
       : null,
   );

@@ -4,10 +4,9 @@
 
 This document covers the unified release workflow for stable and nightly desktop releases.
 
-Beta is the product label, not a release channel or version suffix. Release channels
-remain stable and nightly. To ship 0.1.0 Beta, use `channel=stable` and
-`version=0.1.0`. Removing the Beta label later is a branding change independent of
-the version.
+Stable builds carry the bare product name `T3 Code`; only Dev and Nightly builds add a
+stage label. Release channels remain stable and nightly. To ship 0.1.0, use
+`channel=stable` and `version=0.1.0`.
 
 ## What the workflow does
 

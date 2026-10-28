@@ -103,6 +103,7 @@ import { PROVIDER_ORDER, PROVIDER_PRESENTATION, providersWithUsage } from "./usa
 import {
   readUsagePagePreferences,
   saveUsagePagePreferences,
+  subscribeUsagePageMetricRequests,
   type UsagePagePreferences,
 } from "./usagePagePreferences";
 
@@ -294,6 +295,9 @@ export function UsagePage() {
     return () => globalThis.window.removeEventListener("keydown", onUsageKeyDown, true);
   }, []);
 
+  const onMetricRequest = useEffectEvent((nextMetric: UsageMetric) => selectMetric(nextMetric));
+  useEffect(() => subscribeUsagePageMetricRequests(onMetricRequest), []);
+
   const refreshWindow = () => {
     if (refreshingRef.current) return;
 
@@ -335,6 +339,7 @@ export function UsagePage() {
   const autoRefreshLimits = useEffectEvent(() => {
     void refreshLimits(true);
   });
+  // oxlint-disable-next-line t3code/react-effect-budget -- starts the limits refresh request once limits are shown and environments are connected, an external fetch
   useEffect(() => {
     if (showingLimits && connectedLimitsEnvironments) autoRefreshLimits();
   }, [showingLimits, connectedLimitsEnvironments]);

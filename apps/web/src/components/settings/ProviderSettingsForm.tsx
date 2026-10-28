@@ -18,6 +18,7 @@ import { SecretInput } from "./SecretInput";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
+import { toastManager } from "../ui/toast";
 import type { ProviderClientDefinition } from "@t3tools/provider-core/client";
 
 export type SettingsFormDefinition = Pick<ProviderClientDefinition, "settingsSchema"> & {
@@ -37,6 +38,11 @@ export interface ProviderSettingsFieldModel {
   readonly defaultBooleanValue?: boolean | undefined;
 
   readonly options?: ReadonlyArray<ProviderSettingsFormOption> | undefined;
+  /**
+   * Whether the server can decode this text as the field's value. The server marks the whole
+   * instance unavailable on one bad field, so the form must not save one.
+   */
+  readonly accepts: (value: string) => boolean;
 }
 
 function titleizeFieldKey(key: string): string {
@@ -74,6 +80,17 @@ function readProviderSettingsFormSchemaAnnotation(
   return Schema.resolveAnnotations(definition.settingsSchema)?.providerSettingsFormSchema ?? {};
 }
 
+function makeFieldValueCheck(
+  fieldSchema: ProviderClientDefinition["settingsSchema"]["fields"][string],
+  clearWhenEmpty: ProviderSettingsFieldModel["clearWhenEmpty"],
+): ProviderSettingsFieldModel["accepts"] {
+  const decode = Schema.decodeUnknownOption(fieldSchema as Schema.Decoder<unknown>);
+  return (value) =>
+    Option.isSome(
+      decode(clearWhenEmpty === "omit" && value.trim().length === 0 ? undefined : value),
+    );
+}
+
 function readFieldBooleanDefault(
   fieldSchema: ProviderClientDefinition["settingsSchema"]["fields"][string],
 ): boolean | undefined {
@@ -109,6 +126,7 @@ export function deriveProviderSettingsFields(
       if (formAnnotation.hidden) return [];
       if (isLocalAcp && key !== "source" && key !== "commandPath") return [];
 
+      const clearWhenEmpty = formAnnotation.clearWhenEmpty ?? "omit";
       const annotatedTitle = readFieldAnnotationString(fieldSchema, "title");
       const annotatedDescription = readFieldAnnotationString(fieldSchema, "description");
       return [
@@ -129,7 +147,8 @@ export function deriveProviderSettingsFields(
             : formAnnotation.placeholder !== undefined
               ? { placeholder: formAnnotation.placeholder }
               : {}),
-          clearWhenEmpty: formAnnotation.clearWhenEmpty ?? "omit",
+          clearWhenEmpty,
+          accepts: makeFieldValueCheck(fieldSchema, clearWhenEmpty),
           ...(isSecretSetting(fieldSchema) ? { secret: true } : {}),
           ...(formAnnotation.control === "switch"
             ? { defaultBooleanValue: readFieldBooleanDefault(fieldSchema) }
@@ -380,6 +399,18 @@ function ProviderSettingsFieldRow({
   onChange,
 }: ProviderSettingsFieldRowProps) {
   const inputId = `${idPrefix}-${field.key}`;
+  // A refused value is dropped and the field shows the saved one again.
+  const commitText = (next: string) => {
+    if (!field.accepts(next)) {
+      toastManager.add({
+        type: "error",
+        title: `${field.label} was not saved`,
+        description: field.description ?? "The value is not valid for this setting.",
+      });
+      return;
+    }
+    onChange(nextProviderConfigWithFieldValue(value, field, next));
+  };
   const descriptionClassName =
     variant === "dialog"
       ? "text-2xs text-muted-foreground"
@@ -433,7 +464,7 @@ function ProviderSettingsFieldRow({
             className="min-w-0 flex-1"
             configured={secretConfigured}
             value=""
-            onCommit={(next) => onChange(nextProviderConfigWithFieldValue(value, field, next))}
+            onCommit={commitText}
           />
           {secretConfigured ? (
             <Button
@@ -457,9 +488,7 @@ function ProviderSettingsFieldRow({
           autoComplete={field.control === "password" ? "off" : undefined}
           value={readProviderConfigString(value, field.key)}
           placeholder={field.placeholder}
-          onCommit={(next) => {
-            onChange(nextProviderConfigWithFieldValue(value, field, next));
-          }}
+          onCommit={commitText}
           spellCheck={false}
         />
       );
@@ -552,7 +581,7 @@ function ProviderSettingsFieldRow({
             type={field.secret ? undefined : type}
             autoComplete={!field.secret && field.control === "password" ? "off" : undefined}
             value={readProviderConfigString(value, field.key)}
-            onCommit={(next) => onChange(nextProviderConfigWithFieldValue(value, field, next))}
+            onCommit={commitText}
             placeholder={field.placeholder}
             spellCheck={false}
           />

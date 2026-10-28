@@ -62,7 +62,7 @@ import { Command, Flag } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
-const DESKTOP_APP_ID = "com.t3tools.t3code";
+const DESKTOP_APP_ID = "com.stormx.t3code";
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
 const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
@@ -973,7 +973,9 @@ interface StagePackageJson {
 }
 
 export const STAGE_INSTALL_ARGS = ["install", "--prod"] as const;
-export const DESKTOP_ELECTRON_LANGUAGES = ["en-US"] as const;
+// macOS only hands an app the system language when its bundle ships that .lproj, so every
+// UI locale needs its Electron language or "system" always resolves to English.
+export const DESKTOP_ELECTRON_LANGUAGES = ["en-US", "zh-TW"] as const;
 export const DESKTOP_FILE_EXCLUSIONS = [
   // Cursor walks from argv[1] to platform assets; helpers and native addons need real paths outside ASAR.
   "!**/node_modules/@cursor/sdk-*/**/*",
@@ -2818,6 +2820,15 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   if (platform === "mac") {
     const path = yield* Path.Path;
     const repoRoot = yield* RepoRoot;
+    // An unsigned build is ad-hoc signed, whose identity changes every build, so
+    // macOS privacy grants (e.g. reading other apps' data) never stick. A local
+    // Apple Development certificate keeps one identity across rebuilds.
+    // electron-builder rejects the "Apple Development:" prefix in the name.
+    const devSigningIdentity = signed
+      ? undefined
+      : loadRepoEnv({ repoRoot })
+          .T3CODE_MACOS_DEV_SIGNING_IDENTITY?.trim()
+          .replace(/^Apple Development:\s*/u, "");
     buildConfig.mac = {
       target: target === "dmg" ? [target, "zip"] : [target],
       icon: "icon.icns",
@@ -2856,6 +2867,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
         },
       ],
       ...(signed ? { sign: path.join(repoRoot, "scripts/sign-macos.ts") } : {}),
+      ...(devSigningIdentity ? { identity: devSigningIdentity, type: "development" } : {}),
       ...(macPasskeySigning
         ? {
             entitlements: macPasskeySigning.entitlementsPath,
@@ -3861,7 +3873,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     private: true,
     packageManager: rootPackageJson.packageManager,
     description:
-      "T3 Code is an open-source desktop app for coding agents. Work with your existing agent subscriptions, review code changes, and run commands in your projects. Connect from desktop, web, or mobile to continue working remotely.",
+      "T3 Code is a desktop app for coding agents. Work with your existing agent subscriptions, review code changes, and run commands in your projects. Connect from desktop, web, or mobile to continue working remotely.",
     license: "MIT",
     homepage: "https://t3.codes",
     author: "T3 Tools",

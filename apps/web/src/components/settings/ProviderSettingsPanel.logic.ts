@@ -148,3 +148,15 @@ export function classifyProviderEnvironmentAccess(input: {
   }
   return { kind: "editable" };
 }
+
+/**
+ * Enabled instances first, each group keeping its registry order. A row's
+ * group is whatever it was when the page first saw it, so toggling a row on
+ * the open page does not move it out from under the pointer.
+ */
+export function orderProviderRowsEnabledFirst<
+  T extends { readonly instanceId: ProviderInstanceId },
+>(rows: readonly T[], enabledAtEntry: ReadonlyMap<ProviderInstanceId, boolean>): T[] {
+  const isEnabled = (row: T) => enabledAtEntry.get(row.instanceId) === true;
+  return [...rows.filter(isEnabled), ...rows.filter((row) => !isEnabled(row))];
+}

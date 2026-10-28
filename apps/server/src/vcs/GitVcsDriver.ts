@@ -20,6 +20,9 @@ import {
   type VcsCreateRefResult,
   type VcsCreateWorktreeInput,
   type VcsCreateWorktreeResult,
+  type GitCreateTagInput,
+  type GitDeleteTagInput,
+  type GitPushTagInput,
   type ReviewDiffPreviewInput,
   type ReviewDiffPreviewResult,
   type ReviewDiffFileContentsInput,
@@ -42,6 +45,7 @@ import {
 } from "./GitVcsDriverCore.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
+import type { WorktreePopulationResult } from "./worktreePopulation.ts";
 
 export interface ExecuteGitInput {
   readonly operation: string;
@@ -133,6 +137,8 @@ export interface CreateWorktreeProgress {
     ok: boolean;
     detail: string | null;
   }) => Effect.Effect<void, never>;
+  /** Reported after `.worktreeinclude` copies and orca.yaml shared directories are applied. */
+  readonly onPopulated?: (result: WorktreePopulationResult) => Effect.Effect<void, never>;
 }
 
 export interface CreateWorktreeOptions {
@@ -140,6 +146,11 @@ export interface CreateWorktreeOptions {
   /** Null or omitted defers to the checkout's t3.json. */
   readonly submodules?: WorktreeSubmodules | null;
   readonly worktreesDirectory?: string;
+  /**
+   * Check out `refName` as it is instead of creating `newRefName` from it. A
+   * remote-only branch gets a local tracking branch of the same name.
+   */
+  readonly existingBranch?: boolean;
 }
 
 export interface GitCommitProgress {
@@ -242,6 +253,8 @@ export interface GitFetchRemoteInput {
   cwd: string;
   remoteName: string;
   refName?: string;
+  /** Removes remote-tracking refs whose branch no longer exists on the remote. */
+  prune?: boolean;
 }
 
 export interface GitRemoteExistsInput {
@@ -268,6 +281,38 @@ export interface GitFetchWorktreeBaseCommitInput {
   cwd: string;
   refName: string;
 }
+
+export interface GitPrepareWorktreeBaseInput {
+  cwd: string;
+  baseRef: string;
+  existingBranch: boolean;
+}
+
+export type GitWorktreeBaseWarning =
+  | { kind: "fetch-failed"; remoteName: string; localRef: string }
+  | { kind: "diverged"; remoteRef: string; branch: string }
+  | { kind: "fast-forward-blocked"; remoteName: string; branch: string };
+
+export interface GitPrepareWorktreeBaseResult {
+  /** The `refName` to hand to `createWorktree`. */
+  startRef: string;
+  /** The `baseRefName` to hand to `createWorktree` when it creates a new branch. */
+  baseRefName: string;
+  /** Null when no remote resolved, so nothing was fetched. */
+  remoteName: string | null;
+  /** True only when `startRef` is the fetched remote tip. */
+  remoteStart: boolean;
+  /** The remote tip to fast-forward the new worktree's existing branch to, if it is behind. */
+  fastForwardTo: { commitSha: string; remoteRef: string } | null;
+  warning: GitWorktreeBaseWarning | null;
+}
+
+export interface GitFastForwardWorktreeInput {
+  cwd: string;
+  commitSha: string;
+}
+
+export type GitFastForwardWorktreeResult = "fast-forwarded" | "diverged" | "blocked";
 
 export interface GitSetBranchUpstreamInput {
   cwd: string;
@@ -378,6 +423,13 @@ export class GitVcsDriver extends Context.Service<
     readonly fetchWorktreeBaseCommit: (
       input: GitFetchWorktreeBaseCommitInput,
     ) => Effect.Effect<GitResolveRemoteTrackingCommitResult | null, GitCommandError>;
+    /** Fetches the base's remote and picks where a worktree starts; never moves a local branch. */
+    readonly prepareWorktreeBase: (
+      input: GitPrepareWorktreeBaseInput,
+    ) => Effect.Effect<GitPrepareWorktreeBaseResult, GitCommandError>;
+    readonly fastForwardWorktree: (
+      input: GitFastForwardWorktreeInput,
+    ) => Effect.Effect<GitFastForwardWorktreeResult, GitCommandError>;
     readonly fetchRemoteBranch: (
       input: GitFetchRemoteBranchInput,
     ) => Effect.Effect<void, GitCommandError>;
@@ -406,6 +458,11 @@ export class GitVcsDriver extends Context.Service<
     readonly switchRef: (
       input: VcsSwitchRefInput,
     ) => Effect.Effect<VcsSwitchRefResult, GitCommandError>;
+    /** Creates a lightweight tag. */
+    readonly createTag: (input: GitCreateTagInput) => Effect.Effect<void, GitCommandError>;
+    /** Deletes the local tag only; remotes keep theirs. */
+    readonly deleteTag: (input: GitDeleteTagInput) => Effect.Effect<void, GitCommandError>;
+    readonly pushTag: (input: GitPushTagInput) => Effect.Effect<void, GitCommandError>;
     readonly initRepo: (input: VcsInitInput) => Effect.Effect<void, GitCommandError>;
     readonly listLocalBranchNames: (cwd: string) => Effect.Effect<string[], GitCommandError>;
   }

@@ -1,3 +1,4 @@
+import { CLI_RELEASE_BASE_URL_ENV } from "@t3tools/shared/cliRelease";
 import {
   buildEnvironmentCaptureCommand,
   listLoginShellCandidates,
@@ -95,6 +96,9 @@ const LOGIN_SHELL_ENV_NAMES = [
   "SSL_CERT_DIR",
   "NODE_EXTRA_CA_CERTS",
   "T3CODE_TELEMETRY_ENABLED",
+  // Set in the shell profile by fork builds; a Dock-launched app has to see it
+  // to pass the SSH runtime release gate.
+  CLI_RELEASE_BASE_URL_ENV,
   "__MISE_DIFF",
 ] as const;
 const WINDOWS_PROFILE_ENV_NAMES = ["PATH", "FNM_DIR", "FNM_MULTISHELL_PATH"] as const;
@@ -450,6 +454,7 @@ const installPosixEnvironment = Effect.fn("desktop.shellEnvironment.installPosix
       "SSL_CERT_DIR",
       "NODE_EXTRA_CA_CERTS",
       "T3CODE_TELEMETRY_ENABLED",
+      CLI_RELEASE_BASE_URL_ENV,
     ] as const) {
       if (!config.env[name] && shellEnvironment[name]) {
         config.env[name] = shellEnvironment[name];

@@ -5,6 +5,7 @@ import * as Schema from "effect/Schema";
 import { AsyncResult, Atom } from "effect/reactivity";
 
 import { APP_VERSION } from "~/branding";
+import { t } from "~/i18n";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { desktopUpdateStateAtom } from "~/state/desktopUpdate";
 import { serverEnvironment } from "~/state/server";
@@ -90,7 +91,7 @@ export function retryFailedUpdateRunServers(
           ? providerFailure
           : outcome.status === "failed"
             ? outcome.message
-            : "Could not start the update",
+            : t("sidebar.updateRun.startFailed"),
         { serverUpdated: outcome.status === "updated" },
       ),
     );
@@ -232,7 +233,7 @@ function takeSavedUpdateEverythingResult(): typeof SavedResult.Type | null {
 }
 
 export function showUpdateEverythingResult(result: UpdateEverythingResult): void {
-  const view = getUpdateEverythingToastView(result, APP_VERSION);
+  const view = getUpdateEverythingToastView(result, APP_VERSION, t);
   if (!view) return;
   toastManager.add(
     stackedThreadToast({
@@ -275,7 +276,10 @@ function followHandedOffServers(servers: ReadonlyArray<HandedOffServer>): void {
       queueMicrotask(() => unsubscribe());
       settleUpdateRunMachine(server.environmentId, failure);
       if (failure === null) updatedServers += 1;
-      else failures.push(`${server.label}: ${failure}`);
+      else
+        failures.push(
+          t("sidebar.updateSummary.labeledLine", { label: server.label, detail: failure }),
+        );
       remaining -= 1;
       if (remaining === 0) {
         showUpdateEverythingResult({
@@ -288,7 +292,7 @@ function followHandedOffServers(servers: ReadonlyArray<HandedOffServer>): void {
       }
     };
     const timer = setTimeout(
-      () => settle(`Not back after ${HANDOFF_TIMEOUT_MS / 60_000} minutes`),
+      () => settle(t("sidebar.updateRun.notBackAfter", { minutes: HANDOFF_TIMEOUT_MS / 60_000 })),
       server.startedAt + HANDOFF_TIMEOUT_MS - Date.now(),
     );
     const unsubscribe = appAtomRegistry.subscribe(
@@ -326,8 +330,11 @@ export function startDesktopUpdateLaunchNotice(): () => void {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Update did not apply",
-          description: `T3 Code is still on ${APP_VERSION}. Install ${notAppliedVersion} again from the update button.`,
+          title: t("sidebar.updateRun.notApplied"),
+          description: t("sidebar.updateRun.notAppliedDetail", {
+            current: APP_VERSION,
+            version: notAppliedVersion,
+          }),
         }),
       );
     },

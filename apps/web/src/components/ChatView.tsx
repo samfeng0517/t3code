@@ -250,6 +250,7 @@ import {
 } from "../state/entities";
 import { useEnvironmentShellHasSnapshot } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
+import { ModsStatusBand } from "./mods/ModsStatusBand";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialogHost, openExpandedImagePreview } from "./chat/ExpandedImageDialog";
 import {
@@ -694,10 +695,6 @@ export default function ChatView(props: ChatViewProps) {
     readonly threadId: ThreadId;
     readonly branch: string | null;
   } | null>(null);
-  const [
-    pendingServerThreadStartFromOriginByThreadId,
-    setPendingServerThreadStartFromOriginByThreadId,
-  ] = useState<Record<string, boolean>>({});
   const legendListRef = useRef<LegendListRef | null>(null);
   const getTimelineScrollableNode = () => legendListRef.current?.getScrollableNode() ?? null;
   const getTimelineScrollableNodeStable = useStableCallback(getTimelineScrollableNode);
@@ -2104,12 +2101,6 @@ export default function ChatView(props: ChatViewProps) {
     canOverrideServerThreadEnvMode && pendingServerThreadBranchEntryForThread !== null
       ? pendingServerThreadBranchEntryForThread.branch
       : (activeThread?.branch ?? null);
-  const startFromOrigin = isLocalDraftThread
-    ? (draftThread?.startFromOrigin ?? false)
-    : canOverrideServerThreadEnvMode
-      ? (pendingServerThreadStartFromOriginByThreadId[activeThread?.id ?? ""] ??
-        activeProjectSettings.settings.newWorktreesStartFromOrigin)
-      : false;
   const sendEnvMode = resolveSendEnvMode({
     requestedEnvMode: envMode,
     isGitRepo,
@@ -2661,7 +2652,6 @@ export default function ChatView(props: ChatViewProps) {
     handleRuntimeModeChangeStable,
     onEnvModeChangeStable,
     onProviderModelSelectStable,
-    onStartFromOriginChange,
     openProviderSetupStable,
     toggleInteractionModeStable,
   } = useComposerSelection({
@@ -2670,7 +2660,6 @@ export default function ChatView(props: ChatViewProps) {
     draftThread,
     activeThread,
     activeRuntime,
-    activeProjectSettings,
     settings,
     providerStatuses,
     lockedProvider,
@@ -2682,7 +2671,6 @@ export default function ChatView(props: ChatViewProps) {
     isLocalDraftThread,
     canOverrideServerThreadEnvMode,
     setPendingServerThreadEnvModeEntry,
-    setPendingServerThreadStartFromOriginByThreadId,
     scheduleComposerFocus,
   });
   const { onResume, isResuming } = useComposerResume({
@@ -2741,7 +2729,6 @@ export default function ChatView(props: ChatViewProps) {
     phase,
     runtimeMode,
     sendEnvMode,
-    startFromOrigin,
     localCheckoutBranchMismatch,
     logicalProjectEnvironments,
     providerInstanceEntries,
@@ -2896,7 +2883,7 @@ export default function ChatView(props: ChatViewProps) {
       return;
     }
     if (sendEnvMode !== "local") {
-      setDraftThreadContext(composerDraftTarget, { envMode: "local", startFromOrigin: false });
+      setDraftThreadContext(composerDraftTarget, { envMode: "local" });
       return;
     }
     resendAfterWorkLocallyStable();
@@ -3387,6 +3374,12 @@ export default function ChatView(props: ChatViewProps) {
                               }
                             />
                           ) : null}
+                          {isServerThread && activeThreadId !== null ? (
+                            <ModsStatusBand
+                              environmentId={environmentId}
+                              threadId={activeThreadId}
+                            />
+                          ) : null}
                           {!composerMounted ? null : (
                             <ChatComposer
                               canOperateThread={canOperateThread}
@@ -3592,8 +3585,6 @@ export default function ChatView(props: ChatViewProps) {
                                 showGitControls={isGitRepo}
                                 {...(routeKind === "draft" && draftId ? { draftId } : {})}
                                 onEnvModeChange={onEnvModeChangeStable}
-                                startFromOrigin={startFromOrigin}
-                                onStartFromOriginChange={onStartFromOriginChange}
                                 envMode={envMode}
                                 {...(canOverrideServerThreadEnvMode
                                   ? {
@@ -3702,8 +3693,6 @@ export default function ChatView(props: ChatViewProps) {
                     onActiveThreadBranchOverrideChange: setPendingServerThreadBranch,
                   }
                 : {})}
-              startFromOrigin={startFromOrigin}
-              onStartFromOriginChange={onStartFromOriginChange}
               {...(canCheckoutPullRequestIntoThread
                 ? { onCheckoutPullRequestRequest: openPullRequestDialogStable }
                 : {})}

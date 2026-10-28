@@ -77,7 +77,7 @@ it.effect("refuses a preferences update when the caller's turn ends while it wai
         .pipe(Effect.forkChild);
       yield* Deferred.await(held);
       const update = yield* toolkit
-        .handle("t3_environment_preferences_update", { newWorktreesStartFromOrigin: true })
+        .handle("t3_environment_preferences_update", { defaultThreadEnvMode: "worktree" })
         .pipe(Stream.unwrap, Stream.runCollect, Effect.forkChild);
       yield* Deferred.await(checked);
       yield* Ref.update(caller, (shell) => ({ ...shell, activeRunId: null }));
@@ -95,3 +95,9 @@ it.effect("refuses a preferences update when the caller's turn ends while it wai
     );
   }),
 );
+
+it("t3_environment_read should not expose newWorktreesStartFromOrigin when preferences are read", () => {
+  expect(EnvironmentHandlers.preferences(DEFAULT_SERVER_SETTINGS)).not.toHaveProperty(
+    "newWorktreesStartFromOrigin",
+  );
+});

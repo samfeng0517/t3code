@@ -23,18 +23,25 @@ import { Input } from "../ui/input";
 import { RadioGroup } from "../ui/radio-group";
 import { Spinner } from "../ui/spinner";
 import { AuthSurfaceShell } from "./AuthSurfaceShell";
+import { t as translateNow, type Translate, useT } from "../../i18n";
 
-const accessConfig: Record<
-  AuthMcpClientAccess,
-  { readonly label: string; readonly description: string; readonly icon: LucideIcon }
-> = {
-  "read-only": {
-    label: "Read only",
-    description: "Read projects and threads. Cannot start, message or change anything.",
-    icon: EyeIcon,
-  },
-  ...runtimeModeConfig,
-};
+function accessPresentation(
+  access: AuthMcpClientAccess,
+  t: Translate,
+): { readonly label: string; readonly description: string; readonly icon: LucideIcon } {
+  if (access === "read-only") {
+    return {
+      label: t("onboarding.connectAgent.readOnly.label"),
+      description: t("onboarding.connectAgent.readOnly.description"),
+      icon: EyeIcon,
+    };
+  }
+  return {
+    label: t(`composer.runtimeMode.${access}.label`),
+    description: t(`composer.runtimeMode.${access}.description`),
+    icon: runtimeModeConfig[access].icon,
+  };
+}
 
 function redirectsToThisComputer(redirectHost: string): boolean {
   return isLoopbackHost(new URL(`http://${redirectHost}`).hostname);
@@ -45,7 +52,6 @@ type Loaded =
   | { readonly status: "invalid"; readonly message: string }
   | { readonly status: "ready"; readonly details: AuthMcpApprovalDetails };
 
-const UNREACHABLE = "Could not reach this environment. Try again.";
 const isApprovalError = Schema.is(AuthMcpApprovalError);
 
 type Answer<A> =
@@ -69,11 +75,16 @@ function runApproval<A>(
       Effect.catch((error) =>
         Effect.succeed<Answer<A>>({
           kind: "error",
-          message: isApprovalError(error) ? error.message : UNREACHABLE,
+          message: isApprovalError(error)
+            ? error.message
+            : translateNow("onboarding.connectAgent.unreachable"),
         }),
       ),
     ),
-  ).catch((): Answer<A> => ({ kind: "error", message: UNREACHABLE }));
+  ).catch((): Answer<A> => ({
+    kind: "error",
+    message: translateNow("onboarding.connectAgent.unreachable"),
+  }));
 }
 
 function readAuthorizationRequest(): AuthMcpAuthorizationRequest {
@@ -86,6 +97,7 @@ function oneClickApproves(details: AuthMcpApprovalDetails, access: AuthMcpClient
 }
 
 export function ConnectAgentSurface() {
+  const t = useT();
   const [authorization] = useState(readAuthorizationRequest);
   const [loaded, setLoaded] = useState<Loaded>({ status: "loading" });
   const [access, setAccess] = useState<AuthMcpClientAccess>("read-only");
@@ -133,15 +145,17 @@ export function ConnectAgentSurface() {
       return;
     }
     setPending(null);
-    setErrorMessage(answer.kind === "error" ? answer.message : "The sign-in could not continue.");
+    setErrorMessage(
+      answer.kind === "error" ? answer.message : t("onboarding.connectAgent.cannotContinue"),
+    );
   };
 
   if (loaded.status === "loading") {
     return (
       <AuthSurfaceShell>
         <ConnectAgentHeading
-          title="Checking the sign-in request"
-          description="One moment while this environment verifies the agent's request."
+          title={t("onboarding.connectAgent.checking.title")}
+          description={t("onboarding.connectAgent.checking.description")}
         />
         <Spinner className="mt-6" size="lg" tone="muted" />
       </AuthSurfaceShell>
@@ -151,9 +165,12 @@ export function ConnectAgentSurface() {
   if (loaded.status === "invalid") {
     return (
       <AuthSurfaceShell>
-        <ConnectAgentHeading title="This sign-in cannot continue" description={loaded.message} />
+        <ConnectAgentHeading
+          title={t("onboarding.connectAgent.invalid.title")}
+          description={loaded.message}
+        />
         <p className="mt-4 text-sm text-muted-foreground">
-          Close this page and start the sign-in again from your agent.
+          {t("onboarding.connectAgent.invalid.restart")}
         </p>
       </AuthSurfaceShell>
     );
@@ -166,25 +183,23 @@ export function ConnectAgentSurface() {
   return (
     <AuthSurfaceShell>
       <ConnectAgentHeading
-        title={`Connect ${details.clientName}`}
+        title={t("onboarding.connectAgent.title", { client: details.clientName })}
         description={
           <>
-            This agent wants to use the threads in every project on{" "}
-            <span className="font-medium text-foreground">{details.environmentHost}</span>.
+            {t("onboarding.connectAgent.description.before")}
+            <span className="font-medium text-foreground">{details.environmentHost}</span>
+            {t("onboarding.connectAgent.description.after")}
           </>
         }
       />
       <p className="mt-2 text-xs text-muted-foreground">
         {redirectsToThisComputer(details.redirectHost) ? (
-          <>
-            The name is chosen by the agent. Approval returns to {details.redirectHost} on the
-            computer that opened this page. Only approve a sign-in you just started.
-          </>
+          t("onboarding.connectAgent.redirect.local", { host: details.redirectHost })
         ) : (
           <>
-            The name is chosen by the agent. Approval gives access to whoever runs{" "}
-            <span className="font-medium text-foreground">{details.redirectHost}</span>. Only
-            approve a sign-in you just started there.
+            {t("onboarding.connectAgent.redirect.remote.before")}
+            <span className="font-medium text-foreground">{details.redirectHost}</span>
+            {t("onboarding.connectAgent.redirect.remote.after")}
           </>
         )}
       </p>
@@ -198,7 +213,7 @@ export function ConnectAgentSurface() {
       >
         <div className="space-y-2">
           <span id="connect-agent-access-label" className="text-sm font-medium">
-            What it may do
+            {t("onboarding.connectAgent.accessLabel")}
           </span>
           <RadioGroup
             aria-labelledby="connect-agent-access-label"
@@ -209,16 +224,13 @@ export function ConnectAgentSurface() {
               <AccessOption key={option} access={option} selected={option === access} />
             ))}
           </RadioGroup>
-          <p className="text-xs text-muted-foreground">
-            Beyond read only, it can start, message and stop threads, and none of them can run with
-            more than the mode you pick.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("onboarding.connectAgent.accessHint")}</p>
         </div>
 
         {oneClick ? null : (
           <div className="space-y-2">
             <label className="text-sm font-medium" htmlFor="connect-agent-pairing-code">
-              Pairing code
+              {t("onboarding.connectAgent.pairingCode")}
             </label>
             <Input
               id="connect-agent-pairing-code"
@@ -228,13 +240,14 @@ export function ConnectAgentSurface() {
               disabled={pending !== null}
               nativeInput
               onChange={(event) => setPairingCode(event.currentTarget.value)}
-              placeholder="Paste a one-time pairing code"
+              placeholder={t("onboarding.connectAgent.pairingCodePlaceholder")}
               spellCheck={false}
               value={pairingCode}
             />
             <p className="text-xs text-muted-foreground">
-              Create one in Settings → Sharing & access, or run <code>t3 auth pairing create</code>{" "}
-              on this machine.
+              {t("onboarding.connectAgent.pairingCodeHint.before")}
+              <code>t3 auth pairing create</code>
+              {t("onboarding.connectAgent.pairingCodeHint.after")}
             </p>
           </div>
         )}
@@ -247,7 +260,9 @@ export function ConnectAgentSurface() {
 
         <div className="flex flex-wrap gap-2">
           <Button disabled={!canApprove} type="submit">
-            {pending === "approve" ? "Approving…" : "Approve"}
+            {pending === "approve"
+              ? t("onboarding.connectAgent.approving")
+              : t("onboarding.connectAgent.approve")}
           </Button>
           <Button
             disabled={pending !== null}
@@ -255,7 +270,9 @@ export function ConnectAgentSurface() {
             type="button"
             variant="outline"
           >
-            {pending === "deny" ? "Denying…" : "Deny"}
+            {pending === "deny"
+              ? t("onboarding.connectAgent.denying")
+              : t("onboarding.connectAgent.deny")}
           </Button>
         </div>
       </form>
@@ -270,9 +287,12 @@ function ConnectAgentHeading({
   readonly title: string;
   readonly description: ReactNode;
 }) {
+  const t = useT();
   return (
     <>
-      <p className="text-3xs font-semibold tracking-widest text-primary uppercase">Agent sign-in</p>
+      <p className="text-3xs font-semibold tracking-widest text-primary uppercase">
+        {t("onboarding.connectAgent.eyebrow")}
+      </p>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{description}</p>
     </>
@@ -286,7 +306,8 @@ function AccessOption({
   readonly access: AuthMcpClientAccess;
   readonly selected: boolean;
 }) {
-  const { label, description, icon: Icon } = accessConfig[access];
+  const t = useT();
+  const { label, description, icon: Icon } = accessPresentation(access, t);
   return (
     <RadioPrimitive.Root
       value={access}

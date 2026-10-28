@@ -4,10 +4,12 @@ import {
   scopedThreadKey,
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId, ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useRef } from "react";
 
+import { useBrowserWorkspaceCommands } from "../browser/useBrowserWorkspace";
+import { isBrowserWorkspaceThreadRef } from "../browserWorkspace.logic";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { useClosedViewStore } from "../closedViewStore";
 import { useComposerDraftStore } from "../composerDraftStore";
@@ -41,16 +43,26 @@ import {
   buildThreadRouteParams,
   resolveThreadRouteTarget,
 } from "../threadRoutes";
+import { GIT_PAGE_REF, gitTabKey, useGitTabsStore } from "./git/gitTabsStore";
+import { dispatchPreviewAction } from "./preview/previewActionBus";
 import { toastManager } from "./ui/toast";
 
 const PREVIEW_FORWARDED_LAYOUT_COMMANDS = [
   "sidebar.toggle",
   "rightPanel.toggle",
   "rightPanel.toggleMaximized",
+  "preview.newTab",
 ] as const;
 
 const isGlobalPullRequests = (ref: ScopedThreadRef) =>
   scopedThreadKey(ref) === scopedThreadKey(PULL_REQUESTS_PANEL_REF);
+
+const isGlobalGitPage = (ref: ScopedThreadRef) =>
+  scopedThreadKey(ref) === scopedThreadKey(GIT_PAGE_REF);
+
+// These reopen somewhere that is always there, whichever environment or thread they came from.
+const isGlobalOwner = (ref: ScopedThreadRef) =>
+  isGlobalPullRequests(ref) || isGlobalGitPage(ref) || isBrowserWorkspaceThreadRef(ref);
 
 export function ReopenClosedViewShortcut() {
   const navigate = useNavigate();
@@ -75,22 +87,32 @@ export function ReopenClosedViewShortcut() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const hasHistory = useClosedViewStore((state) => state.entries.length > 0);
   const openPreview = useAtomCommand(previewEnvironment.open);
+  const browserWorkspace = useBrowserWorkspaceCommands();
   const pending = useRef(Promise.resolve());
 
   const reopenNext = useEffectEvent(async () => {
     const catalog = appAtomRegistry.get(environmentCatalog.catalogValueAtom);
     const drafts = useComposerDraftStore.getState();
     const panelsByThread = useRightPanelStore.getState().byThreadKey;
+    const openGitTabKeys = new Set(useGitTabsStore.getState().tabs.map(gitTabKey));
     const { drop, restore } = planNextReopen(useClosedViewStore.getState().entries, (entry) => {
       const ref = entry.threadRef;
       const panel = selectThreadRightPanelState(panelsByThread, ref);
-      if (isGlobalPullRequests(ref)) {
+      if (isGlobalOwner(ref)) {
         return {
           environmentKnown: true,
           catalogReady: true,
           ownerExists: true,
           shellLive: true,
           panel,
+          gitTabOpen:
+            entry.kind === "git-tab" &&
+            openGitTabKeys.has(
+              gitTabKey({
+                environmentId: entry.environmentId as EnvironmentId,
+                projectId: entry.projectId as ProjectId,
+              }),
+            ),
         };
       }
       return {
@@ -107,7 +129,10 @@ export function ReopenClosedViewShortcut() {
 
     const ref = restore.threadRef;
     const globalPullRequests = isGlobalPullRequests(ref);
-    const thread = globalPullRequests ? null : readThreadShell(ref);
+    const browserWorkspaceTab = isBrowserWorkspaceThreadRef(ref);
+    const gitPage = isGlobalGitPage(ref);
+    const thread =
+      globalPullRequests || browserWorkspaceTab || gitPage ? null : readThreadShell(ref);
     const owner = thread ?? drafts.getDraftThreadByRef(ref);
     const project = owner ? readProject(scopeProjectRef(ref.environmentId, owner.projectId)) : null;
     if (!(await reopenClosedView(restore, { openPreview, workspaceAvailable: project !== null }))) {
@@ -115,7 +140,11 @@ export function ReopenClosedViewShortcut() {
       return;
     }
     useClosedViewStore.getState().remove(restore.id);
-    if (globalPullRequests) {
+    if (browserWorkspaceTab) {
+      await navigate({ to: "/browser" });
+    } else if (gitPage) {
+      await navigate({ to: "/git" });
+    } else if (globalPullRequests) {
       const selected = selectSelectedRightPanelSurface(
         useRightPanelStore.getState().byThreadKey,
         ref,
@@ -130,6 +159,12 @@ export function ReopenClosedViewShortcut() {
         await navigate({ to: "/draft/$draftId", params: buildDraftThreadRouteParams(draftId) });
       else await navigate({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(ref) });
     }
+  });
+
+  // Only a thread's ChatView handles the bus; anywhere else the tab opens in the workspace.
+  const openNewBrowserTab = useEffectEvent(() => {
+    if (threadRef) dispatchPreviewAction("new-tab");
+    else browserWorkspace.newTab();
   });
 
   const enqueueReopen = useEffectEvent(() => {
@@ -170,7 +205,9 @@ export function ReopenClosedViewShortcut() {
     };
     window.addEventListener("keydown", onKeyDown, true);
     const unsubscribe = window.desktopBridge?.onMenuAction((action) => {
-      if (action === "view.reopenClosed" && !isCommandPaletteOpen()) enqueueReopen();
+      if (isCommandPaletteOpen()) return;
+      if (action === "view.reopenClosed") enqueueReopen();
+      else if (action === "preview.newTab") openNewBrowserTab();
     });
     return () => {
       window.removeEventListener("keydown", onKeyDown, true);

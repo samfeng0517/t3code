@@ -39,6 +39,8 @@ function isAntigravitySignInUnchecked(provider: ServerProvider): boolean {
 }
 
 export function getProviderStatusKey(provider: ServerProvider | undefined): ProviderStatusKey {
+  // An instance the server could not start reports `enabled: false` even when the user enabled it.
+  if (provider?.availability === "unavailable") return "error";
   if (provider && !provider.enabled) return "disabled";
   if (provider && isAntigravitySignInUnchecked(provider)) return "neutral";
   return provider?.status ?? "warning";
@@ -49,6 +51,13 @@ export function getProviderSummary(provider: ServerProvider | undefined) {
     return {
       headline: "Checking provider status",
       detail: "Waiting for the server to report installation and authentication details.",
+    };
+  }
+  if (provider.availability === "unavailable") {
+    return {
+      headline: "Unavailable",
+      detail:
+        provider.unavailableReason ?? provider.message ?? "The provider could not be started.",
     };
   }
   if (!provider.enabled || provider.status === "disabled") {

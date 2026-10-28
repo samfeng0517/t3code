@@ -74,7 +74,6 @@ export function resolveNewTaskLocalWorkspaceSelection(input: {
 
 export function resolveNewTaskBranchLabel(input: {
   readonly branchName: string | null;
-  readonly startFromOrigin: boolean;
   readonly workspaceMode: WorkspaceMode;
   readonly pullRequestReference?: string;
 }): string {
@@ -90,8 +89,15 @@ export function resolveNewTaskBranchLabel(input: {
     return input.branchName;
   }
 
-  // Only the server can determine a local branch's configured remote.
-  return input.startFromOrigin ? `From ${input.branchName} (remote)` : `From ${input.branchName}`;
+  return `From ${input.branchName}`;
+}
+
+// Human worktree launches always sync with the remote; the server treats an
+// omitted flag as false, so local launches leave it out.
+export function resolveNewTaskCreationStartFromOrigin(workspaceMode: WorkspaceMode): {
+  readonly startFromOrigin?: true;
+} {
+  return workspaceMode === "worktree" ? { startFromOrigin: true } : {};
 }
 
 export function shouldCheckoutNewTaskBranch(input: {

@@ -3,6 +3,7 @@ import { DiscoveryListRow } from "../ui/discovery-list";
 
 import { PreviewFaviconIcon } from "./PreviewFaviconIcon";
 import type { PreviewableServer } from "./useDiscoveredLocalServers";
+import { useT, type Translate } from "~/i18n";
 
 interface Props {
   threadRef: ScopedThreadRef;
@@ -11,7 +12,8 @@ interface Props {
 }
 
 export function PreviewLocalServerCard({ threadRef, server, onOpen }: Props) {
-  const subtitle = describeServer(server);
+  const t = useT();
+  const subtitle = describeServer(t, server);
   return (
     <DiscoveryListRow
       onClick={onOpen}
@@ -22,7 +24,7 @@ export function PreviewLocalServerCard({ threadRef, server, onOpen }: Props) {
   );
 }
 
-function describeServer(server: PreviewableServer): string {
+function describeServer(t: Translate, server: PreviewableServer): string {
   if (server.processName) return server.processName;
-  return "Listening";
+  return t("workspace.preview.empty.listening");
 }

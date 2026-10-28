@@ -1,15 +1,16 @@
 {
   "fill": {
-    "solid": "display-p3:0.00000,0.00000,0.00000,1.00000"
+    "automatic-gradient": "display-p3:0.96000,0.97000,0.99000,1.00000"
   },
   "groups": [
     {
       "layers": [
         {
-          "image-name": "text.svg",
-          "name": "Text",
+          "glass": false,
+          "image-name": "code.svg",
+          "name": "Code",
           "position": {
-            "scale": 8.5,
+            "scale": 1,
             "translation-in-points": [0, 0]
           }
         }
@@ -19,8 +20,29 @@
         "opacity": 0.5
       },
       "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    },
+    {
+      "layers": [
+        {
+          "glass": true,
+          "image-name": "bubble.svg",
+          "name": "Bubble",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [0, 0]
+          }
+        }
+      ],
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.5
+      },
+      "translucency": {
         "enabled": true,
-        "value": 0.5
+        "value": 0.15
       }
     }
   ],

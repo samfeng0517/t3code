@@ -78,6 +78,17 @@ describe("resolveAddressBarInput", () => {
     expect(resolveAddressBarInput("192.168.1.5:3000")).toBe("https://192.168.1.5:3000/");
   });
 
+  it("should open a bare domain and search multi-word text when typed on the new tab page", () => {
+    const google = resolveSearchUrlTemplate({
+      browserSearchEngine: "google",
+      browserCustomSearchUrl: "",
+    });
+    expect(resolveAddressBarInput("example.com", google)).toBe("https://example.com/");
+    expect(resolveAddressBarInput("t3 code", google)).toBe(
+      "https://www.google.com/search?q=t3%20code",
+    );
+  });
+
   it("searches for text that is not an address", () => {
     expect(resolveAddressBarInput("weather")).toBe("https://duckduckgo.com/?q=weather");
     expect(resolveAddressBarInput("how to center a div")).toBe(

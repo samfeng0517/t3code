@@ -7,14 +7,20 @@ import {
 import { UNKNOWN_SOURCE_CONTROL_CLIENT } from "@t3tools/client-runtime/source-control-clients";
 import * as Schema from "effect/Schema";
 
+import type { Translate } from "~/i18n";
+import { formatMessage } from "~/i18n/locale";
+import { en } from "~/i18n/messages/en";
+import { zhTW } from "~/i18n/messages/zh-TW";
+
 import {
   filterAvailableSettingsSearchItems,
   getSettingsSearchTargetScope,
-  getThreadAutoSettlementSearchAvailability,
+  getThreadAutomationSearchAvailability,
   isSettingsSearchScopeAvailable,
   movedSettingsPath,
   searchSettings,
   SETTINGS_SEARCH_ITEMS,
+  settingsSearchItemTitle,
   sourceControlHostSearchItems,
   sourceControlHostSettingsSearchId,
   type SettingsSearchItem,
@@ -102,6 +108,7 @@ describe("searchSettings", () => {
       canManageLocalBackend: false,
       isWslSettingsRowVisible: false,
       hasThreadAutoSettlement: false,
+      hasThreadAutoCleanup: false,
     });
 
     const gatedIds = new Set<string>([
@@ -150,6 +157,15 @@ describe("searchSettings", () => {
   });
 });
 
+describe("start-from-origin search removal", () => {
+  it("settings search should not offer start-from-origin when searching for remote", () => {
+    expect(SETTINGS_SEARCH_ITEMS.map((item) => item.id)).not.toContain("start-from-origin");
+    expect(searchSettings("start from remote").map((item) => item.id)).not.toContain(
+      "start-from-origin",
+    );
+  });
+});
+
 describe("settings search targets", () => {
   it("requires an environment for the resolved telemetry export destination", () => {
     const result = searchSettings("OpenTelemetry export").find(
@@ -194,7 +210,10 @@ describe("auto-settlement search availability", () => {
   const environments = [capable, unsupported, offline, loading];
 
   it("keeps results discoverable when one connected environment supports them", () => {
-    const availability = getThreadAutoSettlementSearchAvailability(environments);
+    const availability = getThreadAutomationSearchAvailability(
+      "threadAutoSettlement",
+      environments,
+    );
     expect(availability.eligibleEnvironmentIds).toEqual([capable.environmentId]);
     const items = filterAvailableSettingsSearchItems({
       hasCloudPublicConfig: false,
@@ -204,6 +223,7 @@ describe("auto-settlement search availability", () => {
       canManageLocalBackend: false,
       isWslSettingsRowVisible: false,
       hasThreadAutoSettlement: availability.eligibleEnvironmentIds.length > 0,
+      hasThreadAutoCleanup: false,
     });
     expect(searchSettings("auto-settle", items).map((item) => item.id)).toEqual([
       "auto-settle-inactive-threads",
@@ -215,7 +235,7 @@ describe("auto-settlement search availability", () => {
 
   it("offers only capable environments when an aggregate has mixed capabilities", () => {
     expect(
-      getThreadAutoSettlementSearchAvailability(environments, {
+      getThreadAutomationSearchAvailability("threadAutoSettlement", environments, {
         kind: "all",
         environmentIds: environments.map((entry) => entry.environmentId),
       }),
@@ -226,7 +246,7 @@ describe("auto-settlement search availability", () => {
     "does not render the target on $environmentId or silently fall back",
     (selected) => {
       expect(
-        getThreadAutoSettlementSearchAvailability(environments, {
+        getThreadAutomationSearchAvailability("threadAutoSettlement", environments, {
           kind: "environment",
           environmentIds: [selected.environmentId],
         }),
@@ -237,11 +257,118 @@ describe("auto-settlement search availability", () => {
   it("ignores offline and unloaded targets when all connected targets support the setting", () => {
     const selected = [capable, offline, loading];
     expect(
-      getThreadAutoSettlementSearchAvailability(selected, {
+      getThreadAutomationSearchAvailability("threadAutoSettlement", selected, {
         kind: "all",
         environmentIds: selected.map((entry) => entry.environmentId),
       }).isTargetAvailable,
     ).toBe(true);
+  });
+});
+
+describe("auto-cleanup search availability", () => {
+  const settleOnly = {
+    environmentId: EnvironmentId.make("settle-only"),
+    connection: { phase: "connected" as const },
+    serverConfig: { environment: { capabilities: { threadAutoSettlement: true } } },
+  };
+  const cleanup = {
+    environmentId: EnvironmentId.make("cleanup"),
+    connection: { phase: "connected" as const },
+    serverConfig: {
+      environment: { capabilities: { threadAutoSettlement: true, threadAutoCleanup: true } },
+    },
+  };
+  const searchCleanup = (hasThreadAutoCleanup: boolean) =>
+    searchSettings(
+      "auto-archive",
+      filterAvailableSettingsSearchItems({
+        hasCloudPublicConfig: false,
+        hasEnvironment: true,
+        hasProviderSettingsEnvironment: true,
+        hasMacProviderSettingsEnvironment: false,
+        canManageLocalBackend: false,
+        isWslSettingsRowVisible: false,
+        hasThreadAutoSettlement: true,
+        hasThreadAutoCleanup,
+      }),
+    ).map((item) => item.id);
+
+  it("should hide cleanup results when no connected environment supports thread auto cleanup", () => {
+    expect(searchCleanup(false)).not.toContain("auto-archive-settled-threads");
+    expect(searchCleanup(true)).toContain("auto-archive-settled-threads");
+  });
+
+  it("should mark cleanup targets as requiring thread auto cleanup when resolving a search target", () => {
+    for (const id of ["auto-archive-settled-threads", "auto-delete-archived-threads"]) {
+      expect(getSettingsSearchTargetScope(id)).toMatchObject({ requiresThreadAutoCleanup: true });
+    }
+  });
+
+  it("should offer only cleanup-capable environments when an aggregate mixes server versions", () => {
+    const environments = [settleOnly, cleanup];
+    expect(
+      getThreadAutomationSearchAvailability("threadAutoCleanup", environments, {
+        kind: "all",
+        environmentIds: environments.map((entry) => entry.environmentId),
+      }),
+    ).toEqual({ eligibleEnvironmentIds: [cleanup.environmentId], isTargetAvailable: false });
+  });
+});
+
+describe("localized settings search", () => {
+  const translateEn: Translate = (key, params) => formatMessage(en[key], params);
+  const translateZhTW: Translate = (key, params) => formatMessage(zhTW[key], params);
+  const searchZhTW = (query: string) =>
+    searchSettings(query, SETTINGS_SEARCH_ITEMS, { translate: translateZhTW }).map(
+      (item) => item.id,
+    );
+
+  it("has an English search index message matching every item title", () => {
+    const keyOf: Translate = (key) => `<${key}>`;
+    for (const item of SETTINGS_SEARCH_ITEMS) {
+      expect(settingsSearchItemTitle(item, keyOf), item.id).not.toBe(item.title);
+      expect(settingsSearchItemTitle(item, translateEn), item.id).toBe(item.title);
+    }
+  });
+
+  it("matches Chinese titles, sections, and search terms", () => {
+    expect(searchZhTW("顯示語言")[0]).toBe("language");
+    expect(searchZhTW("語言")).toContain("language");
+    expect(searchZhTW("對比")[0]).toBe("setting-appearance-contrast");
+    expect(searchZhTW("深色")).toContain("color-scheme");
+    expect(searchZhTW("外觀 字型")).toEqual(
+      expect.arrayContaining(["interface-font", "code-font", "terminal-font"]),
+    );
+    expect(searchZhTW("終端機 切換")).toContain("keybinding-terminal.toggle");
+
+    const appearanceIds = SETTINGS_SEARCH_ITEMS.filter(
+      (item) => item.to === "/settings/appearance" && !("macOnly" in item),
+    ).map((item) => item.id);
+    expect(searchZhTW("外觀")).toEqual(expect.arrayContaining(appearanceIds));
+  });
+
+  it("keeps English queries working alongside the translation", () => {
+    expect(searchZhTW("contrast")[0]).toBe("setting-appearance-contrast");
+    expect(searchZhTW("appearance")).toContain("word-wrap");
+    expect(searchSettings("對比").map((item) => item.id)).toEqual([]);
+  });
+
+  it("ranks localized title matches above section matches", () => {
+    const results = searchZhTW("外觀");
+    expect(results[0]).toBe("browser-default-appearance");
+    expect(results).toContain("word-wrap");
+  });
+
+  it("localizes generated source control host titles", () => {
+    const hosts = SETTINGS_SEARCH_ITEMS.filter((item) =>
+      item.id.startsWith("source-control-host-"),
+    );
+    expect(hosts.length).toBeGreaterThan(0);
+    for (const host of hosts) {
+      expect(settingsSearchItemTitle(host, translateZhTW)).toBe(
+        host.title.replace(/ credentials$/, " 憑證").replace(/ accounts and token$/, " 帳號與權杖"),
+      );
+    }
   });
 });
 

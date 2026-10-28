@@ -387,7 +387,6 @@ export interface ComposerDraftWorkspaceSelection {
   readonly mode: "local" | "worktree";
   readonly branch: string | null;
   readonly worktreePath: string | null;
-  readonly startFromOrigin?: boolean;
   readonly pullRequestReference?: string;
   /**
    * Local mode chosen before refs named the current branch. It is never cleared when refs load:
@@ -406,7 +405,6 @@ const ComposerDraftWorkspaceSelectionSchema = Schema.Struct({
   mode: Schema.Literals(["local", "worktree"]),
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
-  startFromOrigin: Schema.optional(Schema.Boolean),
   pullRequestReference: Schema.optional(Schema.String),
   followsCurrentCheckout: Schema.optional(Schema.Boolean),
 });
@@ -1186,9 +1184,7 @@ export async function removeDeliveredCloudQueuedMessage(
             editor.workspaceSelection.branch !== message.creation?.branch ||
             editor.workspaceSelection.worktreePath !== message.creation?.worktreePath ||
             editor.workspaceSelection.pullRequestReference !==
-              message.creation?.pullRequestReference ||
-            (editor.workspaceSelection.startFromOrigin ?? false) !==
-              (message.creation?.startFromOrigin ?? false))))
+              message.creation?.pullRequestReference)))
     )
       continue;
     const drafts = { ...saved.drafts };

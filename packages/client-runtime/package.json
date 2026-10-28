@@ -443,6 +443,10 @@
       "types": "./src/state/mcpApps.ts",
       "default": "./src/state/mcpApps.ts"
     },
+    "./state/mods": {
+      "types": "./src/state/mods.ts",
+      "default": "./src/state/mods.ts"
+    },
     "./source-control-clients": {
       "types": "./src/sourceControlClients.ts",
       "default": "./src/sourceControlClients.ts"
@@ -478,6 +482,10 @@
     "./model-traits": {
       "types": "./src/modelTraits.ts",
       "default": "./src/modelTraits.ts"
+    },
+    "./page-comments": {
+      "types": "./src/pageComments.ts",
+      "default": "./src/pageComments.ts"
     },
     "./provider-clients": {
       "types": "./src/providerClients.ts",

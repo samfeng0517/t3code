@@ -88,6 +88,7 @@ import { useLegacyPlanModeState } from "./use-legacy-plan-mode-enabled";
 import {
   resolveNewTaskDraftWorkspace,
   resolveNewTaskBranchWorktreePath,
+  resolveNewTaskCreationStartFromOrigin,
   resolveNewTaskLocalWorkspaceSelection,
 } from "./new-task-context-presentation";
 import { resolveEnvironmentProjectMatch } from "./new-task-project-selection";
@@ -142,7 +143,6 @@ type NewTaskFlowContextValue = {
   readonly resolveWorkspaceSelection: (
     selection: ComposerDraftWorkspaceSelection | undefined,
   ) => ComposerDraftWorkspaceSelection;
-  readonly startFromOrigin: boolean;
   readonly pullRequestReference: string | undefined;
   readonly draftKey: string | null;
   readonly prompt: string;
@@ -184,7 +184,6 @@ type NewTaskFlowContextValue = {
   ) => void;
   readonly setWorkspaceMode: (mode: WorkspaceMode) => void;
   readonly selectBranch: (branch: VcsRef) => void;
-  readonly setStartFromOrigin: (value: boolean) => void;
   readonly buildPendingTaskMessage: (
     metadata: TurnCommandMetadata,
     options?: {
@@ -465,12 +464,6 @@ export function NewTaskFlowProvider(
   const workspaceMode = workspaceSelection.mode;
   const selectedBranchName = workspaceSelection.branch;
   const selectedWorktreePath = workspaceSelection.worktreePath;
-  // Keep the user's explicit choice separate from the resolved display value:
-  // only the explicit flag is ever written back to the draft, so the resolved
-  // value keeps tracking the server setting when the config loads late.
-  const draftStartFromOrigin = selectedProjectDraft.workspaceSelection?.startFromOrigin;
-  const startFromOrigin =
-    isGitRepo && (draftStartFromOrigin ?? projectSettings.settings.newWorktreesStartFromOrigin);
   const defaultRuntimeMode = projectSettings.settings.defaultRuntimeMode;
   const runtimeMode = selectedProjectDraft.runtimeMode ?? defaultRuntimeMode;
 
@@ -689,7 +682,6 @@ export function NewTaskFlowProvider(
         mode,
         branch: mode === "local" ? localSelection.branch : selectedBranchName,
         worktreePath: mode === "local" ? localSelection.worktreePath : selectedWorktreePath,
-        ...(draftStartFromOrigin !== undefined ? { startFromOrigin: draftStartFromOrigin } : {}),
         // Refs have not named the current branch yet; the selection follows it.
         ...(mode === "local" && localSelection.awaitsCurrentBranch
           ? { followsCurrentCheckout: true }
@@ -711,24 +703,6 @@ export function NewTaskFlowProvider(
           projectCwd: selectedProject.workspaceRoot,
           branchWorktreePath: branch.worktreePath,
         }),
-        ...(draftStartFromOrigin !== undefined ? { startFromOrigin: draftStartFromOrigin } : {}),
-      },
-    });
-  };
-
-  const setStartFromOrigin = (value: boolean) => {
-    if (!selectedProjectDraftKey) {
-      return;
-    }
-    updateComposerDraftSettings(selectedProjectDraftKey, {
-      workspaceSelection: {
-        mode: workspaceMode,
-        branch: selectedBranchName,
-        worktreePath: selectedWorktreePath,
-        startFromOrigin: value,
-        ...(selectedBranchName === null && workspaceSelection.followsCurrentCheckout
-          ? { followsCurrentCheckout: true }
-          : {}),
       },
     });
   };
@@ -816,9 +790,7 @@ export function NewTaskFlowProvider(
           currentCheckoutBranch: options?.currentCheckoutBranch ?? null,
         }),
         worktreePath: mode === "worktree" ? null : (workspaceSelection?.worktreePath ?? null),
-        ...((workspaceSelection?.startFromOrigin ?? startFromOrigin)
-          ? { startFromOrigin: true }
-          : {}),
+        ...resolveNewTaskCreationStartFromOrigin(mode),
       },
       createdAt: metadata.createdAt,
     };
@@ -837,7 +809,6 @@ export function NewTaskFlowProvider(
     selectedBranchName,
     selectedWorktreePath,
     resolveWorkspaceSelection,
-    startFromOrigin,
     draftKey: selectedProjectDraftKey,
     pullRequestReference: selectedProjectDraft.workspaceSelection?.pullRequestReference,
     prompt,
@@ -868,7 +839,6 @@ export function NewTaskFlowProvider(
     setSelectedModelKey,
     setWorkspaceMode,
     selectBranch,
-    setStartFromOrigin,
     buildPendingTaskMessage,
     setPrompt,
     replaceAttachments,

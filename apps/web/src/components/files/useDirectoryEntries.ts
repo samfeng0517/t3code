@@ -5,6 +5,7 @@ import * as Cause from "effect/Cause";
 import { useEffect, useRef, useState } from "react";
 
 import { environmentCatalog } from "~/connection/catalog";
+import { t } from "~/i18n";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { projectEnvironment } from "~/state/projects";
 
@@ -64,7 +65,7 @@ export function useDirectoryEntries(environmentId: EnvironmentId, cwd: string) {
           setErrors((previous) =>
             new Map(previous).set(
               directoryPath,
-              cause instanceof Error ? cause.message : "Unable to load folder.",
+              cause instanceof Error ? cause.message : t("workspace.files.folderFailed"),
             ),
           );
         }

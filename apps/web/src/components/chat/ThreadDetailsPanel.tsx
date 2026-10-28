@@ -54,8 +54,6 @@ export interface ThreadDetailsPanelProps extends Pick<
   envMode: EnvMode;
   activeThreadBranchOverride?: string | null;
   onActiveThreadBranchOverrideChange?: (branch: string | null) => void;
-  startFromOrigin: boolean;
-  onStartFromOriginChange: (startFromOrigin: boolean) => void;
   onCheckoutPullRequestRequest?: (reference: string) => void;
   onComposerFocusRequest: () => void;
   onOpenChanges?: () => void;
@@ -69,7 +67,7 @@ export interface ThreadDetailsPanelProps extends Pick<
 }
 
 export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
-  const fileScripts = useT3ProjectFileScripts(
+  const { scripts: fileScripts, source: fileScriptsSource } = useT3ProjectFileScripts(
     props.environmentId,
     props.activeProjectScripts ? props.gitCwd : null,
   );
@@ -83,8 +81,6 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
     isServerThread: props.isServerThread,
     ...(props.draftId ? { draftId: props.draftId } : {}),
     onEnvModeChange: props.onEnvModeChange,
-    startFromOrigin: props.startFromOrigin,
-    onStartFromOriginChange: props.onStartFromOriginChange,
     envMode: props.envMode,
     ...(props.activeThreadBranchOverride !== undefined
       ? { activeThreadBranchOverride: props.activeThreadBranchOverride }
@@ -146,6 +142,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                   displayMode="panel"
                   scripts={props.activeProjectScripts}
                   fileScripts={fileScripts}
+                  fileScriptsSource={fileScriptsSource}
                   preferredScriptId={props.preferredScriptId}
                   onRunScript={props.onRunProjectScript}
                   onAddScript={props.onAddProjectScript}

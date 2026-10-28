@@ -10,6 +10,15 @@ and mode selections, unless the destination project has its own model default.
 Its branch and workspace mode come from your configured defaults. To continue in
 an existing worktree, use **New thread in this worktree** from the branch toolbar.
 
+The branch picker lists local branches and remote branches that have no local copy yet. Click
+**Fetch** in the picker to download new branches from the remote and drop ones deleted there.
+In **New worktree** mode, **Create new branch** is on by default: the thread gets a new branch
+based on the branch you pick. Turn it off to work on the picked branch itself in the new
+worktree; a remote branch gets a local branch that tracks it. A branch that is already checked
+out somewhere cannot be picked then. A send to several models still creates a new branch from the
+picked branch for each thread, because threads cannot share one checked-out branch. The switch is
+remembered on this device; turn it back on to create new branches again.
+
 On mobile, **New thread** starts in the current thread's project, or else in the
 last project you opened or chose on that device. If neither is available, the
 project picker opens. Turn off **Settings → General → Use last project** to
@@ -184,6 +193,19 @@ rules to connected environments that support shared settings. Offline environmen
 and older servers keep their previous values. Changing a rule does not reopen
 already settled threads.
 
+### Clean up settled work
+
+By default, a thread that stays settled for 30 days is archived automatically, and a thread
+that was archived automatically is deleted 30 days later. Pinned threads, threads with work in
+progress, and threads waiting on a question or approval are never archived automatically.
+Subagent threads and threads used by a scheduled task are never archived or deleted
+automatically. Threads you archive yourself, including those archived before this feature
+existed, are never deleted automatically. **Settings → Archive** marks automatically archived threads and shows
+when each will be deleted. Unarchive a thread to keep it; if it settles and is archived again,
+its countdown starts over. Deletion works like deleting the thread yourself and cannot be undone.
+
+Turn either step off or change its number of days in **Settings → Threads → Auto-cleanup** on web and desktop.
+
 ## Link a pull request
 
 The server finds the PR for each unsettled thread's saved branch, even when your
@@ -250,6 +272,28 @@ thread asks for it.
 Expand a tool call in the conversation to see its full command and output.
 Summaries shorten shell wrappers and can still describe the latest call after it
 finishes; the call's own result shows its status.
+
+## Browser tabs
+
+The sidebar's **Browser** section lists your browser workspace: tabs that fill the window beside
+the sidebar instead of sitting in a thread's browser panel. The list is the same on every page,
+and each thread's own panel tabs stay separate. Click **+** to open a new workspace tab, or click
+a tab to show it. Drag a tab up or down to reorder it, and close it with its **×** or a middle
+click.
+
+Right-click a tab to pin it, which keeps it at the top of the list, or to move it to the side
+panel of the thread you looked at last. A pinned tab cannot be closed, by its button, a middle
+click, or the close shortcut, until you unpin it with the pin in its row. Double-click a tab or
+choose **Rename** from its context menu to give it your own name; clear the name to show the page
+title again. To bring a page from a thread into the workspace, choose
+**Move to browser workspace** in the panel browser's **⋮** menu. A moved tab reloads at the same
+address with the same profile, so signed-in sites stay signed in but unsent form input is lost.
+
+The clock button next to **+** lists recently closed browser tabs from the workspace and every
+thread; pick one to reopen it in the workspace. Workspace tabs are saved on this device and come
+back when you reopen the app; only the tab you are looking at loads right away. **New browser
+tab** is also in the command palette, and you can bind a key to **Preview: New Tab** in
+**Settings → Keybindings**. Click the **Browser** heading to collapse the list.
 
 ## Snooze until later
 

@@ -123,5 +123,17 @@ lazily inside `WindowsForeground.ts` for a handful of Win32 calls. macOS window 
 to `osascript` instead of a native addon. A crash or stall in any of these must not take the app
 down, so new native capability goes in a child with a deadline, not an `import` in main.
 
+The desktop app runs the server on Electron's bundled Node (`ELECTRON_RUN_AS_NODE`), so the server
+inherits that Node's security fixes late. Node 22 before 22.23.4, 24 before 24.22.1 and 26 before
+26.12.1 are open to CVE-2026-111497, an RCE in the Brotli decoder that `fetch()` reaches through any
+`Content-Encoding: br` response.
+`rejectBrotliResponsesOnVulnerableNode` in [outboundHttp.ts](../../apps/server/src/outboundHttp.ts)
+wraps the global dispatcher at CLI startup so fetch stops offering `br` and fails a Brotli response
+before the decoder sees it. It covers every request through undici's global dispatcher, `fetch()`
+included. Processes started on Electron's Node outside `runCli()` (the `acp-mcp-bridge` fast path in
+`bin.ts`, which only calls T3's own MCP endpoint, and the Claude history worker) and `node:http`
+clients are not covered. It is skipped on 22.23.4+, 24.22.1+ and 26.12.1+. Bump `electron` as soon
+as a release bundles Node 24.22.1 or later; the guard then turns itself off.
+
 See the [glossary](./glossary.md) for shared terms and the
 [development runbook](../operations/development.md) for setup and checks.

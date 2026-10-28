@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as WorktreeSetupTracker from "./WorktreeSetupTracker.ts";
 
@@ -138,6 +139,98 @@ describe("WorktreeSetupTracker", () => {
       expect(yield* tracker.cancel(threadId)).toBe(false);
       expect((yield* tracker.get(threadId))?.phase).toBe("running");
       yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("get should keep a finished snapshot past retention when a stage warned", () =>
+    Effect.gen(function* () {
+      const tracker = yield* WorktreeSetupTracker.make;
+      yield* tracker.begin({
+        threadId,
+        branch: "feat",
+        baseRef: "feat",
+        stages: ["fetch", "agent"],
+        fiber: null,
+      });
+      yield* tracker.stageStatus(threadId, "fetch", "warning", "feat diverged from origin/feat");
+      yield* tracker.finish(threadId, "done");
+
+      yield* TestClock.adjust("1 hour");
+
+      const kept = yield* tracker.get(threadId);
+      expect(kept?.phase).toBe("done");
+      expect(kept?.stages[0]?.status).toBe("warning");
+    }),
+  );
+
+  it.effect("get should keep a failed snapshot past retention when a stage failed", () =>
+    Effect.gen(function* () {
+      const tracker = yield* WorktreeSetupTracker.make;
+      yield* tracker.begin({
+        threadId,
+        branch: null,
+        baseRef: null,
+        stages: ["checkout"],
+        fiber: null,
+      });
+      yield* tracker.stageStatus(threadId, "checkout", "running");
+      yield* tracker.finish(threadId, "failed", "boom");
+
+      yield* TestClock.adjust("1 hour");
+
+      expect((yield* tracker.get(threadId))?.phase).toBe("failed");
+    }),
+  );
+
+  it.effect("get should return null after retention when the finished snapshot is clean", () =>
+    Effect.gen(function* () {
+      const tracker = yield* WorktreeSetupTracker.make;
+      yield* tracker.begin({
+        threadId,
+        branch: null,
+        baseRef: null,
+        stages: ["fetch"],
+        fiber: null,
+      });
+      yield* tracker.stageStatus(threadId, "fetch", "done");
+      yield* tracker.finish(threadId, "done");
+
+      expect((yield* tracker.get(threadId))?.phase).toBe("done");
+      yield* TestClock.adjust("31 seconds");
+
+      expect(yield* tracker.get(threadId)).toBeNull();
+    }),
+  );
+
+  it.effect("begin should replace a warned snapshot when the same thread starts a new setup", () =>
+    Effect.gen(function* () {
+      const tracker = yield* WorktreeSetupTracker.make;
+      yield* tracker.begin({
+        threadId,
+        branch: "first",
+        baseRef: null,
+        stages: ["fetch"],
+        fiber: null,
+      });
+      yield* tracker.stageStatus(threadId, "fetch", "warning", "offline");
+      yield* tracker.finish(threadId, "done");
+      yield* TestClock.adjust("1 hour");
+
+      yield* tracker.begin({
+        threadId,
+        branch: "second",
+        baseRef: null,
+        stages: ["fetch"],
+        fiber: null,
+      });
+      yield* tracker.stageStatus(threadId, "fetch", "done");
+      yield* tracker.finish(threadId, "done");
+
+      const replaced = yield* tracker.get(threadId);
+      expect(replaced?.branch).toBe("second");
+      expect(replaced?.stages[0]?.status).toBe("done");
+      yield* TestClock.adjust("31 seconds");
+      expect(yield* tracker.get(threadId)).toBeNull();
     }),
   );
 });

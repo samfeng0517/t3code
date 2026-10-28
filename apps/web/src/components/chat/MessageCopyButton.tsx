@@ -2,6 +2,7 @@ import { memo, useRef } from "react";
 import { Check, Copy } from "lucide";
 import { Button } from "../ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import {
@@ -13,7 +14,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export const MessageCopyButton = memo(function MessageCopyButton({
   text,
-  label = "Copy message",
+  label,
   icon = Copy,
   extraFlavors,
   size = "xs",
@@ -28,6 +29,8 @@ export const MessageCopyButton = memo(function MessageCopyButton({
   variant?: "outline" | "ghost";
   className?: string;
 }) {
+  const t = useT();
+  const resolvedLabel = label ?? t("composer.message.copy");
   const ref = useRef<HTMLButtonElement>(null);
   const { copyToClipboard, isCopied } = useCopyToClipboard<void>({
     onCopy: () => showAnchoredCopySuccessToast(ref),
@@ -41,7 +44,7 @@ export const MessageCopyButton = memo(function MessageCopyButton({
       <TooltipTrigger
         render={
           <Button
-            aria-label={label}
+            aria-label={resolvedLabel}
             disabled={isCopied}
             onClick={() => copyToClipboard(text)}
             ref={ref}
@@ -58,7 +61,7 @@ export const MessageCopyButton = memo(function MessageCopyButton({
         />
       </TooltipTrigger>
       <TooltipPopup>
-        <p>{label}</p>
+        <p>{resolvedLabel}</p>
       </TooltipPopup>
     </Tooltip>
   );

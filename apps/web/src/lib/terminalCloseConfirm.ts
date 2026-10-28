@@ -1,3 +1,4 @@
+import { t } from "~/i18n";
 import { readLocalApi } from "~/localApi";
 
 let pendingConfirmations = 0;
@@ -16,14 +17,14 @@ export async function confirmTerminalClose(
     return await localApi.dialogs.confirm(
       labels.length === 1
         ? [
-            `Close terminal "${labels[0]}"?`,
-            "This stops the running process and clears its history.",
+            t("workspace.terminal.closeConfirm.singleTitle", { label: labels[0] }),
+            t("workspace.terminal.closeConfirm.singleBody"),
           ].join("\n")
         : [
-            `Close ${labels.length} terminals?`,
-            `This stops their running processes and clears their histories: ${labels
-              .map((label) => `"${label}"`)
-              .join(", ")}.`,
+            t("workspace.terminal.closeConfirm.multiTitle", { count: labels.length }),
+            t("workspace.terminal.closeConfirm.multiBody", {
+              labels: labels.map((label) => `"${label}"`).join(", "),
+            }),
           ].join("\n"),
       { variant: "destructive" },
     );

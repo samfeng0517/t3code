@@ -6,6 +6,7 @@ import {
   respondToConfirmDialog,
   subscribeConfirmDialogHost,
 } from "../confirmDialog";
+import { type Translate, useT } from "../i18n";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -22,10 +23,11 @@ type ConfirmationCopy = {
   readonly description: string | null;
 };
 
-function resolveConfirmDialogCopy(message: string): ConfirmationCopy {
+function resolveConfirmDialogCopy(message: string, t: Translate): ConfirmationCopy {
   const normalizedMessage = message.trim();
   const lines = normalizedMessage.split("\n");
-  const questionLineIndex = lines.findIndex((line) => line.trim().endsWith("?"));
+  // Translated prompts end their question with a full-width "？".
+  const questionLineIndex = lines.findIndex((line) => /[?？]$/.test(line.trim()));
 
   if (questionLineIndex >= 0) {
     const title = lines[questionLineIndex]!.trim();
@@ -36,7 +38,7 @@ function resolveConfirmDialogCopy(message: string): ConfirmationCopy {
     return { title, description: description || null };
   }
 
-  const questionMarkIndex = normalizedMessage.indexOf("?");
+  const questionMarkIndex = normalizedMessage.search(/[?？]/);
   if (questionMarkIndex >= 0) {
     return {
       title: normalizedMessage.slice(0, questionMarkIndex + 1).trim(),
@@ -45,19 +47,20 @@ function resolveConfirmDialogCopy(message: string): ConfirmationCopy {
   }
 
   return {
-    title: "Confirm action",
-    description: normalizedMessage || "This action requires your confirmation.",
+    title: t("common.confirmDialog.title"),
+    description: normalizedMessage || t("common.confirmDialog.description"),
   };
 }
 
 export function ConfirmDialogHost() {
+  const t = useT();
   const state = useSyncExternalStore(
     subscribeConfirmDialogHost,
     readConfirmDialogState,
     readConfirmDialogState,
   );
 
-  const copy = resolveConfirmDialogCopy(state.status === "idle" ? "" : state.message);
+  const copy = resolveConfirmDialogCopy(state.status === "idle" ? "" : state.message, t);
   const confirmVariant = state.status === "idle" ? "default" : state.variant;
   const onCancel = () => respondToConfirmDialog(false);
   const onConfirm = () => respondToConfirmDialog(true);
@@ -82,9 +85,11 @@ export function ConfirmDialogHost() {
           ) : null}
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+          <AlertDialogClose render={<Button variant="outline" />}>
+            {t("common.cancel")}
+          </AlertDialogClose>
           <Button variant={confirmVariant} onClick={onConfirm}>
-            Confirm
+            {t("common.confirm")}
           </Button>
         </AlertDialogFooter>
       </AlertDialogPopup>

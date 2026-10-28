@@ -5,6 +5,10 @@ import {
   EnvironmentHttpApi,
 } from "@t3tools/contracts";
 import { isDevProxiedPath } from "@t3tools/shared/devProxy";
+import {
+  HTML_FILE_COMMENT_ANCHORS_QUERY,
+  injectHtmlFileCommentBootstrap,
+} from "@t3tools/shared/htmlRender";
 import { injectMcpAppCookieBootstrap, injectMcpAppThemeBootstrap } from "@t3tools/shared/mcpApp";
 import { decodeOtlpTraceRecords } from "@t3tools/shared/observability";
 import * as ByteSize from "effect/ByteSize";
@@ -62,6 +66,29 @@ const SVG_CONTENT_SECURITY_POLICY = "default-src 'none'; style-src 'unsafe-inlin
 // Agent HTML can open without a click, so disallow blocking modals.
 const HTML_CONTENT_SECURITY_POLICY =
   "sandbox allow-scripts allow-forms allow-popups allow-downloads";
+// Larger pages are served as written; comments on them fall back to regions.
+const HTML_FILE_COMMENT_ANCHORS_MAX_BYTES = 5 * 1024 * 1024;
+
+const readHtmlUpTo = Effect.fn("readHtmlUpTo")(function* (filePath: string, limit: number) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const chunks = yield* Stream.runCollect(fileSystem.stream(filePath, { bytesToRead: limit + 1 }));
+  const size = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
+  if (size > limit) return null;
+  const bytes = new Uint8Array(size);
+  let position = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, position);
+    position += chunk.byteLength;
+  }
+  return bytes;
+});
+
+// The response says UTF-8 either way, so a UTF-8 or ASCII page decodes and
+// re-encodes unchanged; a UTF-16 page (it starts with a byte-order mark) would
+// not, so it is served as written.
+const isUtf16 = (bytes: Uint8Array) =>
+  bytes.length >= 2 &&
+  ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff));
 
 // Proxies may strip disposition; force document-capable downloads to octet-stream.
 const DOWNLOAD_MIME_TYPE_PATTERN = /^[\w!#$&^.+-]+\/[\w!#$&^.+-]+$/;
@@ -166,6 +193,8 @@ export const assetFileResponse = Effect.fn("assetFileResponse")(function* (
     readonly mimeType?: string;
     readonly file?: OpenMediaFile;
     readonly renderIntent?: "mcp-app";
+    /** The client is commenting on this HTML page, so it gets the comment-anchor script. */
+    readonly commentAnchors?: boolean;
   },
   rangeHeader?: string,
   ifRangeHeader?: string,
@@ -188,6 +217,23 @@ export const assetFileResponse = Effect.fn("assetFileResponse")(function* (
     return method === "HEAD"
       ? HttpServerResponse.empty({ status: 200, headers })
       : HttpServerResponse.uint8Array(body, { headers });
+  }
+  if (
+    asset.commentAnchors === true &&
+    asset.renderIntent === undefined &&
+    !asset.download &&
+    headers["Content-Type"] === "text/html; charset=utf-8"
+  ) {
+    const bytes = yield* readHtmlUpTo(asset.path, HTML_FILE_COMMENT_ANCHORS_MAX_BYTES);
+    if (bytes !== null && !isUtf16(bytes)) {
+      const body = new TextEncoder().encode(
+        injectHtmlFileCommentBootstrap(new TextDecoder().decode(bytes)),
+      );
+      headers["Content-Length"] = String(body.byteLength);
+      return method === "HEAD"
+        ? HttpServerResponse.empty({ status: 200, headers })
+        : HttpServerResponse.uint8Array(body, { headers });
+    }
   }
   const mediaFile = asset.file;
   const mediaInfo = mediaFile ? yield* statMediaFile(asset.path, mediaFile) : undefined;
@@ -442,7 +488,10 @@ export const layerAssetRoute = HttpRouter.add(
       );
     }
     return yield* assetFileResponse(
-      asset,
+      {
+        ...asset,
+        commentAnchors: url.value.searchParams.get(HTML_FILE_COMMENT_ANCHORS_QUERY) === "1",
+      },
       request.method === "GET" ? request.headers.range : undefined,
       request.headers["if-range"],
       request.method === "HEAD" ? "HEAD" : "GET",

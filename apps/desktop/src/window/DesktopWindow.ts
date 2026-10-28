@@ -26,6 +26,11 @@ import {
   TRACKPAD_SCROLL_END_CHANNEL,
   WINDOW_FULLSCREEN_STATE_CHANNEL,
 } from "../ipc/channels.ts";
+import {
+  closeExtensionWindows,
+  extensionContextMenuItems,
+  isExtensionWindow,
+} from "../preview/ChromeExtensions.ts";
 import { PASSKEY_BRIDGE_ARGUMENT } from "../preview/GuestProtocol.ts";
 import * as PreviewManager from "../preview/Manager.ts";
 import * as PreviewPasskeys from "../preview/Passkeys.ts";
@@ -321,7 +326,12 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-  const currentMainWindow = electronWindow.currentMainOrFirst.pipe(Effect.flatMap(withoutSplash));
+  // An extension can open a window after the main window closed (its service worker
+  // outlives it on macOS), so the "first window" fallback may be one of those.
+  const currentMainWindow = electronWindow.currentMainOrFirst.pipe(
+    Effect.flatMap(withoutSplash),
+    Effect.map(Option.filter((window) => !isExtensionWindow(window))),
+  );
   const focusedMainWindow = electronWindow.focusedMainOrFirst.pipe(Effect.flatMap(withoutSplash));
 
   const zoomWindow = Effect.fn("desktop.window.zoomWindow")(function* (
@@ -529,7 +539,7 @@ export const make = Effect.gen(function* () {
         // Right-clicking a guest may leave native editing roles targeting the host renderer.
         contents.focus();
 
-        const menuTemplate: Electron.MenuItemConstructorOptions[] = [];
+        const menuTemplate: Array<Electron.MenuItemConstructorOptions | Electron.MenuItem> = [];
 
         if (params.misspelledWord) {
           for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
@@ -578,6 +588,18 @@ export const make = Effect.gen(function* () {
           { role: "paste", enabled: params.editFlags.canPaste },
           { role: "selectAll", enabled: params.editFlags.canSelectAll },
         );
+
+        let items: ReadonlyArray<Electron.MenuItem> = [];
+        try {
+          items = extensionContextMenuItems(contents, params);
+        } catch (cause) {
+          // Extension contextMenus props reach the menu builder unvalidated; one bad
+          // item must not cost the page its editing menu.
+          void runPromise(
+            logWindowWarning("failed to build extension context-menu items", { cause }),
+          );
+        }
+        if (items.length > 0) menuTemplate.push({ type: "separator" }, ...items);
 
         void runPromise(
           electronMenu.popupTemplate({
@@ -822,6 +844,7 @@ export const make = Effect.gen(function* () {
     window.on("closed", () => {
       clearDevelopmentLoadRetry();
       clearBoundsPersist();
+      closeExtensionWindows();
       void runPromise(electronWindow.clearMain(Option.some(window)));
     });
 

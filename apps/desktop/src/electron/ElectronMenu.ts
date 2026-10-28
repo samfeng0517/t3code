@@ -21,7 +21,7 @@ export interface ElectronMenuContextInput {
 
 export interface ElectronMenuTemplateInput {
   readonly window: Electron.BrowserWindow;
-  readonly template: readonly Electron.MenuItemConstructorOptions[];
+  readonly template: readonly (Electron.MenuItemConstructorOptions | Electron.MenuItem)[];
   readonly frame?: Electron.WebFrameMain;
 }
 

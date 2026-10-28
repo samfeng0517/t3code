@@ -1,9 +1,6 @@
-import {
-  FULL_ACCESS_OVERRIDE_QUESTION,
-  fullAccessOverrideExplanation,
-} from "@t3tools/client-runtime/state/thread-requests";
 import { memo } from "react";
 import { type PendingApproval } from "../../session-logic";
+import { useT } from "~/i18n";
 import { InlineButton } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { composerFloatingLayerProps } from "./composerEventScope";
@@ -20,27 +17,28 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
   pendingCount,
   className,
 }: ComposerPendingApprovalPanelProps) {
+  const t = useT();
   const Detail = approval.requestKind === "mcp-elicitation" ? "span" : "code";
   const fallbackLabel =
     approval.requestKind === "mcp-elicitation"
-      ? "App access approval"
+      ? t("composer.approval.title.appAccess")
       : approval.requestKind === "command"
-        ? "Command approval"
+        ? t("composer.approval.title.command")
         : approval.requestKind === "file-read"
-          ? "File read approval"
+          ? t("composer.approval.title.fileRead")
           : approval.requestKind === "permission"
-            ? "App permission approval"
-            : "File change approval";
+            ? t("composer.approval.title.permission")
+            : t("composer.approval.title.fileChange");
   const detailAriaLabel =
     approval.requestKind === "mcp-elicitation"
-      ? "App access request"
+      ? t("composer.approval.detail.appAccess")
       : approval.requestKind === "command"
-        ? "Command"
+        ? t("composer.approval.detail.command")
         : approval.requestKind === "file-read"
-          ? "File to read"
+          ? t("composer.approval.detail.fileRead")
           : approval.requestKind === "permission"
-            ? "Permission request"
-            : "File change";
+            ? t("composer.approval.detail.permission")
+            : t("composer.approval.detail.fileChange");
 
   return (
     <span
@@ -54,16 +52,18 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
         {approval.fullAccessOverride ? (
           <Popover>
             <PopoverTrigger openOnHover render={<InlineButton tone="muted" />}>
-              {FULL_ACCESS_OVERRIDE_QUESTION}
+              {t("composer.approval.fullAccessOverride.question")}
             </PopoverTrigger>
             <PopoverPopup
               {...composerFloatingLayerProps}
-              aria-label={FULL_ACCESS_OVERRIDE_QUESTION}
+              aria-label={t("composer.approval.fullAccessOverride.question")}
               tooltipStyle
               side="top"
               className="max-w-[min(22rem,calc(100vw-2rem))] whitespace-normal"
             >
-              {fullAccessOverrideExplanation(approval.fullAccessOverride)}
+              {approval.fullAccessOverride === "ask_rule"
+                ? t("composer.approval.fullAccessOverride.askRule")
+                : t("composer.approval.fullAccessOverride.safetyCheck")}
             </PopoverPopup>
           </Popover>
         ) : null}
@@ -83,7 +83,7 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
         tabIndex={0}
       >
         {approval.responseCapability === "not_resumable"
-          ? "Provider process is gone. Interrupt or restart the run to respond."
+          ? t("composer.approval.notResumable")
           : approval.detail || fallbackLabel}
       </Detail>
       {approval.reason ? (

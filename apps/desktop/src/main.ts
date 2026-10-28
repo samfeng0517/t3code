@@ -11,6 +11,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 // @effect-diagnostics-next-line nodeBuiltinImport:off - Version output must flush before Electron exits, without acquiring the runtime.
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
+import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -19,7 +20,7 @@ import * as Electron from "electron";
 
 import * as NetService from "@t3tools/shared/Net";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import type { RemoteT3RunnerOptions } from "@t3tools/ssh/tunnel";
+import { CLI_RELEASE_BASE_URL_ENV } from "@t3tools/shared/cliRelease";
 import serverPackageJson from "../../server/package.json" with { type: "json" };
 
 import * as DesktopIpc from "./ipc/DesktopIpc.ts";
@@ -59,6 +60,7 @@ import * as DesktopAppSettings from "./settings/DesktopAppSettings.ts";
 import * as DesktopPreReadyFileSystem from "./app/DesktopPreReadyFileSystem.ts";
 import * as DesktopPreReadyPlatform from "./app/DesktopPreReadyPlatform.ts";
 import * as DesktopShellEnvironment from "./shell/DesktopShellEnvironment.ts";
+import { resolveDesktopSshCliRunner } from "./ssh/DesktopSshCliRunner.ts";
 import * as DesktopSshEnvironment from "./ssh/DesktopSshEnvironment.ts";
 import * as DesktopSshPasswordPrompts from "./ssh/DesktopSshPasswordPrompts.ts";
 import * as DesktopState from "./app/DesktopState.ts";
@@ -69,6 +71,7 @@ import * as DesktopUpdates from "./updates/DesktopUpdates.ts";
 import * as BrowserImport from "./preview/BrowserImport/BrowserImport.ts";
 import * as LinuxBrowserSecret from "./preview/BrowserImport/LinuxBrowserSecret.ts";
 import * as BrowserSession from "./preview/BrowserSession.ts";
+import * as BrowserExtensions from "./preview/BrowserExtensions.ts";
 import * as DesktopBrowserHost from "./preview/DesktopBrowserHost.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PreviewPasskeys from "./preview/Passkeys.ts";
@@ -103,24 +106,33 @@ const layerDesktopEnvironment = Layer.unwrap(
   }),
 );
 
-const resolveDesktopSshCliRunner = (
-  environment: DesktopEnvironment.DesktopEnvironment["Service"],
-): RemoteT3RunnerOptions => {
-  const devRemoteEntryPath = Option.getOrUndefined(environment.devRemoteT3ServerEntryPath);
-  if (environment.isDevelopment && devRemoteEntryPath !== undefined) {
-    return {
-      nodeScriptPath: devRemoteEntryPath,
-      nodeEngineRange: serverPackageJson.engines.node,
-    };
-  }
-  return { archiveVersion: environment.appVersion };
-};
-
 const layerDesktopSshEnvironment = Layer.unwrap(
   Effect.gen(function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    // Read on every connect: the shell environment is imported after layers are built.
+    const readReleaseBaseUrl = Config.String(CLI_RELEASE_BASE_URL_ENV).pipe(
+      Config.option,
+      Effect.map((value) =>
+        value.pipe(
+          Option.map((entry) => entry.trim()),
+          Option.filter((entry) => entry.length > 0),
+          Option.getOrUndefined,
+        ),
+      ),
+      Effect.orElseSucceed(() => undefined),
+    );
     return DesktopSshEnvironment.layer({
-      resolveCliRunner: Effect.succeed(resolveDesktopSshCliRunner(environment)),
+      resolveCliRunner: readReleaseBaseUrl.pipe(
+        Effect.map((releaseBaseUrl) =>
+          resolveDesktopSshCliRunner({
+            isDevelopment: environment.isDevelopment,
+            devRemoteEntryPath: Option.getOrUndefined(environment.devRemoteT3ServerEntryPath),
+            nodeEngineRange: serverPackageJson.engines.node,
+            appVersion: environment.appVersion,
+            releaseBaseUrl,
+          }),
+        ),
+      ),
     });
   }),
 );
@@ -165,6 +177,7 @@ const layerDesktopPreview = PreviewManager.layer.pipe(
   Layer.provideMerge(DesktopBrowserHost.layer),
   // IPC needs both services on the same BrowserSession.
   Layer.provideMerge(BrowserImport.layer.pipe(Layer.provide(LinuxBrowserSecret.layer))),
+  Layer.provideMerge(BrowserExtensions.layer),
   Layer.provideMerge(BrowserSession.layer),
   Layer.provideMerge(PreviewPasskeys.layer),
   Layer.provideMerge(layerDesktopFoundation),

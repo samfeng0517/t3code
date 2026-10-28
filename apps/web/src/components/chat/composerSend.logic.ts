@@ -59,23 +59,32 @@ export function multipleModelSendBlock(input: {
   return null;
 }
 
-/** Why a message sent over pending approvals did not go out, or null to stop quietly. */
+export type ApprovalRedirectNoticeKey =
+  | "composer.toast.approvalRedirect.declinedDraftChanged"
+  | "composer.toast.approvalRedirect.draftChanged"
+  | "composer.toast.approvalRedirect.approvalResponding"
+  | "composer.toast.approvalRedirect.approvalArrived";
+
+/**
+ * Message key for why a message sent over pending approvals did not go out, or null to stop
+ * quietly.
+ */
 export function approvalRedirectNotice(input: {
   readonly draftChanged: boolean;
   readonly declined: boolean;
   readonly approvalResponding: boolean;
   readonly approvalArrived: boolean;
-}): string | null {
+}): ApprovalRedirectNoticeKey | null {
   if (input.draftChanged) {
     return input.declined
-      ? "Approval declined. Your message changed, so it wasn't sent."
-      : "Your message changed, so it wasn't sent.";
+      ? "composer.toast.approvalRedirect.declinedDraftChanged"
+      : "composer.toast.approvalRedirect.draftChanged";
   }
   if (input.approvalResponding) {
-    return "An approval is already being answered, so your message wasn't sent.";
+    return "composer.toast.approvalRedirect.approvalResponding";
   }
   if (input.declined && input.approvalArrived) {
-    return "Another approval arrived, so your message wasn't sent.";
+    return "composer.toast.approvalRedirect.approvalArrived";
   }
   return null;
 }

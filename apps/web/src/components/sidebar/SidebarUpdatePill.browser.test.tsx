@@ -68,6 +68,11 @@ const RELEASE_NOTES: DesktopUpdateState["releaseNotes"] = [
   { version: "0.0.50-nightly.2", items: ["Faster sidebar."], totalItems: 1 },
 ];
 
+// Fork builds hide the pill unless the desktop updater is enabled.
+function upToDate(): DesktopUpdateState {
+  return { ...nightlyUpdate([]), status: "up-to-date", availableVersion: null };
+}
+
 function setup(update: DesktopUpdateState | null, { hasUpdates = false } = {}) {
   mocks.update = update;
   mocks.hasUpdates = hasUpdates;
@@ -106,7 +111,7 @@ describe("SidebarUpdatePill release notes", () => {
 
 describe("SidebarUpdatePill update everything", () => {
   it("does not refocus the update button after a pointer cancel", async () => {
-    setup(null, { hasUpdates: true });
+    setup(upToDate(), { hasUpdates: true });
     await using screen = await render(<SidebarUpdatePill />);
     const button = screen.getByRole("button", { name: "Update everything" });
     await userEvent.click(button);
@@ -119,7 +124,7 @@ describe("SidebarUpdatePill update everything", () => {
   });
 
   it("returns focus to the update button after Escape", async () => {
-    setup(null, { hasUpdates: true });
+    setup(upToDate(), { hasUpdates: true });
     await using screen = await render(<SidebarUpdatePill />);
     const button = screen.getByRole("button", { name: "Update everything" });
     await userEvent.click(button);

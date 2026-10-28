@@ -3,8 +3,6 @@ import { ChevronDownIcon, GitBranchIcon } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 
 import { usePaginatedBranches } from "../state/queries";
-import { useEnvironmentQuery } from "../state/query";
-import { vcsEnvironment } from "../state/vcs";
 import { BranchPicker, BranchPickerRefItem } from "./BranchPicker";
 import { resolveBranchTriggerLabel, sanitizeNewRefName } from "./BranchToolbar.logic";
 import { MiddleTruncate } from "./ui/middle-truncate";
@@ -38,23 +36,10 @@ export function WorktreeBaseBranchPicker({
     cwd,
     query: sanitizeNewRefName(deferredQuery),
   });
-  const selectedRefQuery = useEnvironmentQuery(
-    cwd && value
-      ? vcsEnvironment.listRefs({
-          environmentId,
-          input: { cwd, query: value, limit: 10 },
-        })
-      : null,
-  );
-  const selectedRef =
-    branches.refs.find((branch) => branch.name === value) ??
-    selectedRefQuery.data?.refs.find((branch) => branch.name === value);
   const label = resolveBranchTriggerLabel({
     activeWorktreePath: null,
     effectiveEnvMode: "worktree",
     resolvedActiveBranch: value || null,
-    resolvedActiveBranchIsRemote: selectedRef ? selectedRef.isRemote === true : null,
-    startFromOrigin,
   });
   const branchByName = new Map(branches.refs.map((branch) => [branch.name, branch]));
   const items = [...branchByName.keys()];

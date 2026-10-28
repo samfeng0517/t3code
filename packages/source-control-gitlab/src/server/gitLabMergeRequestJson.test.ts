@@ -2,7 +2,9 @@ import * as Result from "effect/Result";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  decodeApprovalsJson,
   decodeAwardEmojiJson,
+  gitLabApprovalDecision,
   decodeRepositoryBlobsJson,
   decodeCommitsJson,
   decodeMergeRequestDetailJson,
@@ -618,5 +620,40 @@ describe("decodeRepositoryBlobsJson", () => {
         ),
       ),
     ).toEqual(new Map());
+  });
+});
+
+describe("review state", () => {
+  it("reads what a list row can say about review from its detailed merge status", () => {
+    const decoded = decodeMergeRequestListJson(
+      listJson([
+        { iid: 1, detailed_merge_status: "not_approved" },
+        { iid: 2, detailed_merge_status: "requested_changes" },
+        { iid: 3, detailed_merge_status: "mergeable" },
+        { iid: 4 },
+      ]),
+    );
+
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (!Result.isSuccess(decoded)) return;
+    expect(decoded.success.items.map((item) => item.reviewDecision)).toEqual([
+      "review-required",
+      "changes-requested",
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it("puts approval still required ahead of approval given", () => {
+    const decision = (raw: Record<string, unknown>) => {
+      const decoded = decodeApprovalsJson(JSON.stringify(raw));
+      return Result.isSuccess(decoded) ? gitLabApprovalDecision(decoded.success) : "unreadable";
+    };
+    const approver = { user: { username: "octocat" } };
+
+    expect(decision({ approvals_left: 1, approved_by: [approver] })).toBe("review-required");
+    expect(decision({ approvals_left: 0, approved_by: [approver] })).toBe("approved");
+    expect(decision({ approved_by: [approver] })).toBe("approved");
+    expect(decision({ approvals_left: 0, approved_by: [] })).toBeNull();
   });
 });

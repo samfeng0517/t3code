@@ -115,6 +115,8 @@ import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
 import * as CommandOutputHub from "./orchestration-v2/CommandOutputHub.ts";
 import * as McpAppRequests from "./mcpApps/McpAppRequests.ts";
+import * as ModSurfaceActions from "./mods/ModSurfaceActions.ts";
+import * as ModSurfaceHub from "./mods/ModSurfaceHub.ts";
 import * as ProviderSessionManager from "./orchestration-v2/ProviderSessionManager.ts";
 import * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadMessageIntake from "./orchestration-v2/ThreadMessageIntake.ts";
@@ -211,11 +213,13 @@ import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import { refreshPushedPullRequests } from "./git/refreshPushedPullRequests.ts";
 import { linkCreatedPullRequest } from "./git/linkCreatedPullRequest.ts";
 import * as ReviewService from "./review/ReviewService.ts";
+import * as GitHistoryService from "./git/GitHistoryService.ts";
 import * as ProjectEnrichmentService from "./project/ProjectEnrichmentService.ts";
 import * as ProjectService from "./project/ProjectService.ts";
 import { threadWorkspaceRoot } from "./project/threadWorkspaceRoot.ts";
 import * as ManagedProjectFolders from "./project/ManagedProjectFolders.ts";
 import { projectMutationOperation } from "./project/ProjectMutation.ts";
+import * as CompatProjectConfig from "./project/CompatProjectConfig.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
@@ -1258,6 +1262,8 @@ export const layerWsRpc = (
 
       const providerSessionsV2 = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const mcpAppRequests = yield* McpAppRequests.McpAppRequests;
+      const modSurfaceHub = yield* ModSurfaceHub.ModSurfaceHub;
+      const modSurfaceActions = yield* ModSurfaceActions.ModSurfaceActions;
       const analytics = yield* AnalyticsService.AnalyticsService;
       const originProps = clientAnalyticsProps;
       const recordClientCommandAnalytics = (command: OrchestrationV2Command) => {
@@ -1322,6 +1328,7 @@ export const layerWsRpc = (
       const directEndpoints = yield* DirectEndpoints.DirectEndpoints;
       const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
       const review = yield* ReviewService.ReviewService;
+      const gitHistory = yield* GitHistoryService.GitHistoryService;
       const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager.TerminalManager;
@@ -1346,6 +1353,7 @@ export const layerWsRpc = (
       const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+      const compatProjectConfig = yield* CompatProjectConfig.CompatProjectConfig;
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
       const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
       const rpcClientIds = yield* Ref.make(new Set<RpcClientId>());
@@ -2413,6 +2421,8 @@ export const layerWsRpc = (
         [WS_METHODS.mcpAppsToolInfo]: (input) => mcpAppRequests.toolInfo(input),
         [WS_METHODS.mcpAppsUpdateModelContext]: (input) => mcpAppRequests.updateModelContext(input),
         [WS_METHODS.mcpAppsReadResource]: (input) => mcpAppRequests.readResource(input),
+        [WS_METHODS.modsSubscribeThread]: (input) => modSurfaceHub.subscribe(input.threadId),
+        [WS_METHODS.modsAct]: (input) => modSurfaceActions.act(input),
         [WS_METHODS.providerUploadFeedback]:
           /* Request instrumentation already owns the span; keep this helper in that context. */
           Effect.fnUntraced(
@@ -2824,6 +2834,8 @@ export const layerWsRpc = (
                 }),
             ),
           ),
+        [WS_METHODS.projectsReadCompatScripts]: (input) =>
+          compatProjectConfig.readScripts(input.cwd),
         [WS_METHODS.projectsWriteFile]: (input) =>
           workspaceFileSystem.writeFile(input).pipe(
             Effect.mapError(
@@ -3012,6 +3024,8 @@ export const layerWsRpc = (
           gitWorkflow
             .preparePullRequestThread(input)
             .pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+        [WS_METHODS.vcsFetch]: (input) =>
+          gitWorkflow.fetch(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
         [WS_METHODS.vcsListRefs]: (input) => gitWorkflow.listRefs(input),
         [WS_METHODS.vcsCreateWorktree]: (input) =>
           gitWorkflow.createWorktree(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
@@ -3021,8 +3035,23 @@ export const layerWsRpc = (
           gitWorkflow.createRef(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
         [WS_METHODS.vcsSwitchRef]: (input) =>
           gitWorkflow.switchRef(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+        [WS_METHODS.vcsRenameBranch]: (input) =>
+          gitWorkflow.renameLocalBranch(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+        [WS_METHODS.vcsDeleteBranch]: (input) =>
+          gitWorkflow.deleteBranch(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+        [WS_METHODS.gitCreateTag]: (input) =>
+          gitWorkflow.createTag(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+        [WS_METHODS.gitDeleteTag]: (input) =>
+          gitWorkflow.deleteTag(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+        [WS_METHODS.gitPushTag]: (input) =>
+          gitWorkflow.pushTag(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
         [WS_METHODS.vcsInit]: (input) =>
           vcsProvisioning.initRepository(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+        [WS_METHODS.gitHistoryLog]: (input) => gitHistory.logPage(input),
+        [WS_METHODS.gitHistoryFingerprint]: (input) => gitHistory.fingerprint(input),
+        [WS_METHODS.gitHistoryRefs]: (input) => gitHistory.refs(input),
+        [WS_METHODS.gitCommitDetail]: (input) => gitHistory.commitDetail(input),
+        [WS_METHODS.gitCommitFileDiff]: (input) => gitHistory.commitFileDiff(input),
         [WS_METHODS.reviewGetDiffPreview]: (input) => review.getDiffPreview(input),
         [WS_METHODS.reviewGetDiffFileContents]: (input) => review.getDiffFileContents(input),
         [WS_METHODS.terminalOpen]: (input) => terminalManager.open(input),

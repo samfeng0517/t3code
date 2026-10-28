@@ -20,10 +20,9 @@ import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 
 /**
- * Beta: when a run completes on a Claude instance set to compact before the
- * cache expires, waits until shortly before its prompt cache expires and sends
- * `/compact` as a visible T3 Code turn. Timers live in
- * memory, so a server restart skips compactions that were still waiting.
+ * After a run completes on a Claude instance set to compact before cache expiry, waits until shortly
+ * before the prompt cache expires and sends `/compact` as a visible turn; re-armed on start for runs
+ * that completed before a restart. A request served fully from cache reports no TTL, so it is skipped.
  */
 export const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
@@ -95,6 +94,26 @@ export const make = Effect.gen(function* () {
         event.type === "run.updated" && event.payload.status === "completed"
           ? FiberMap.run(timers, event.threadId, compactWhenDue(event.threadId, event.payload.id))
           : Effect.void,
+      ),
+    );
+    // Re-arms runs that completed before a restart. A timer the live listener
+    // already started for the thread is newer, so it wins.
+    yield* forkParked(
+      Effect.gen(function* () {
+        const candidates = yield* projections.getIdleCompactionCandidates({
+          // Claude's longest prompt cache TTL: older runs have no warm cache left.
+          completedAfter: DateTime.subtract(yield* DateTime.now, { hours: 1 }),
+        });
+        yield* Effect.forEach(
+          candidates,
+          ({ threadId, runId }) =>
+            FiberMap.run(timers, threadId, compactWhenDue(threadId, runId), {
+              onlyIfMissing: true,
+            }),
+          { discard: true },
+        );
+      }).pipe(
+        Effect.catch((cause) => Effect.logWarning("idle compaction recovery failed", { cause })),
       ),
     );
   });

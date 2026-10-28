@@ -36,6 +36,7 @@ import {
   type ThreadPullRequestLink,
   type ThreadPullRequestWatch,
   type OrchestrationV2AppThread,
+  type OrchestrationV2ThreadArchivedBy,
   type OrchestrationV2ContextHandoff,
   type OrchestrationV2ContextSourcePoint,
   type OrchestrationV2ContextTransfer,
@@ -470,6 +471,8 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.guest-message.dismiss":
     case "thread.settle":
     case "thread.auto-settle":
+    case "thread.auto-archive":
+    case "thread.auto-delete":
     case "thread.unsettle":
     case "thread.snooze":
     case "thread.unsnooze":
@@ -2835,6 +2838,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     >,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
     effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
+    archivedBy: OrchestrationV2ThreadArchivedBy = "user",
   ) {
     const thread = yield* projectionStore.getThread(command.threadId).pipe(
       Effect.mapError(
@@ -3238,13 +3242,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return {
             ...thread,
             archivedAt: now,
+            archivedBy,
             titleRegeneration: null,
             guestShare: null,
             pullRequests: thread.pullRequests?.map((link) => withPullRequestWatch(link, undefined)),
             updatedAt: now,
           };
         case "thread.unarchive":
-          return { ...thread, archivedAt: null, updatedAt: now };
+          return { ...thread, archivedAt: null, archivedBy: null, updatedAt: now };
         case "thread.settle": {
           const wasPinned = thread.pinnedAt != null;
           const alreadySettled =
@@ -11848,7 +11853,84 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         );
         break;
       }
+      case "thread.auto-archive": {
+        // The cleanup sweep read a snapshot; anything the user did since, or
+        // work that started on the thread, wins over the sweep. Subagent
+        // threads are hidden in the sidebar and automations need their thread,
+        // so neither is ever archived automatically.
+        const projection = yield* projectionStore
+          .getThreadRecords(command.threadId, ["runs", "runtimeRequests"])
+          .pipe(
+            Effect.mapError(
+              (cause) => new OrchestratorProjectionError({ threadId: command.threadId, cause }),
+            ),
+          );
+        const { thread } = projection;
+        if (
+          thread.deletedAt !== null ||
+          thread.archivedAt !== null ||
+          thread.settledOverride !== "settled" ||
+          thread.lineage.relationshipToParent === "subagent" ||
+          thread.pinnedAt != null ||
+          DateTime.toEpochMillis(thread.updatedAt) > DateTime.toEpochMillis(command.snapshotAt) ||
+          projection.runs.some((run) =>
+            ["preparing", "queued", "starting", "running", "waiting"].includes(run.status),
+          ) ||
+          projection.runtimeRequests.some((request) => request.status === "pending") ||
+          (yield* projectionStore
+            .isBoundToScheduledTask(command.threadId)
+            .pipe(mapDispatchError(command)))
+        ) {
+          return yield* new OrchestratorDispatchError({
+            commandId: command.commandId,
+            commandType: command.type,
+            cause: `Thread ${command.threadId} changed before automatic archiving.`,
+          });
+        }
+        yield* dispatchThreadMutation(
+          { type: "thread.archive", commandId: command.commandId, threadId: command.threadId },
+          events,
+          effects,
+          "auto",
+        );
+        break;
+      }
+      case "thread.auto-delete":
       case "thread.delete": {
+        if (command.type === "thread.auto-delete") {
+          // Only threads this server archived itself are deleted, so manual
+          // archives and archives from before `archivedBy` existed are kept.
+          // Deleting a thread also deletes its scheduled tasks, so bound
+          // threads are kept too.
+          const thread = yield* projectionStore
+            .getThread(command.threadId)
+            .pipe(
+              Effect.mapError(
+                (cause) => new OrchestratorProjectionError({ threadId: command.threadId, cause }),
+              ),
+            );
+          if (
+            thread.deletedAt !== null ||
+            thread.archivedAt === null ||
+            thread.archivedBy !== "auto" ||
+            thread.lineage.relationshipToParent === "subagent" ||
+            DateTime.toEpochMillis(thread.updatedAt) > DateTime.toEpochMillis(command.snapshotAt) ||
+            (yield* projectionStore
+              .isBoundToScheduledTask(command.threadId)
+              .pipe(mapDispatchError(command)))
+          ) {
+            return yield* new OrchestratorDispatchError({
+              commandId: command.commandId,
+              commandType: command.type,
+              cause: `Thread ${command.threadId} changed before automatic deletion.`,
+            });
+          }
+        }
+        const deleteCommand = {
+          type: "thread.delete",
+          commandId: command.commandId,
+          threadId: command.threadId,
+        } as const;
         const projection = yield* projectionStore
           .getThreadRecords(command.threadId, [
             "runs",
@@ -11865,7 +11947,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           );
         return yield* mapDispatchError(command)(
           planThreadDeletion({
-            command,
+            command: deleteCommand,
             projection,
             attachmentIds: yield* projectionStore
               .getThreadAttachmentIds(command.threadId)

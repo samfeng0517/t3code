@@ -303,6 +303,13 @@ export function createVcsEnvironmentAtoms<R, E>(
       concurrency: vcsCommandConcurrency,
       onSettled: invalidateRefs,
     }),
+    fetch: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:vcs:fetch",
+      tag: WS_METHODS.vcsFetch,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+      onSettled: invalidateRefs,
+    }),
     refreshStatus: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:vcs:refresh-status",
       tag: WS_METHODS.vcsRefreshStatus,
@@ -343,6 +350,20 @@ export function createVcsEnvironmentAtoms<R, E>(
     switchRef: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:vcs:switch-ref",
       tag: WS_METHODS.vcsSwitchRef,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+      onSettled: invalidateRefs,
+    }),
+    renameBranch: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:vcs:rename-branch",
+      tag: WS_METHODS.vcsRenameBranch,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+      onSettled: invalidateRefs,
+    }),
+    deleteBranch: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:vcs:delete-branch",
+      tag: WS_METHODS.vcsDeleteBranch,
       scheduler: vcsCommandScheduler,
       concurrency: vcsCommandConcurrency,
       onSettled: invalidateRefs,

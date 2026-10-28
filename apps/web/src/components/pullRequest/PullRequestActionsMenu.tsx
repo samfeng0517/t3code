@@ -360,6 +360,15 @@ export function PullRequestActionsMenu({
             </MenuItem>
           </>
         ) : null}
+        {detail.state === "open" && can("unapprove") ? (
+          <>
+            <MenuSeparator />
+            <MenuItem disabled={actionPending} onClick={() => void perform("unapprove")}>
+              <RotateCcwIcon className="size-3.5" />
+              {pendingAction === "unapprove" ? "Revoking approval..." : "Revoke approval"}
+            </MenuItem>
+          </>
+        ) : null}
         {showsDeleteBranch ? (
           <>
             <MenuSeparator />

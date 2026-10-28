@@ -154,6 +154,12 @@ export function createProjectEnvironmentAtoms<R, E>(
               : fileMetadata.rememberFile(input.cwd, result, isCurrent),
         ),
     }),
+    readCompatScripts: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:projects:read-compat-scripts",
+      tag: WS_METHODS.projectsReadCompatScripts,
+      staleTimeMs: 30_000,
+      idleTtlMs: 5 * 60_000,
+    }),
     optimisticFile: (target: OptimisticProjectFileTarget) =>
       optimisticFileFamily(optimisticProjectFileKey(target)),
     create: createEnvironmentCommand(runtime, {

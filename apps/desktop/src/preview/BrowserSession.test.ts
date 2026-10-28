@@ -2,6 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import { beforeEach, vi } from "vite-plus/test";
 
 const { fromPartition, sessions } = vi.hoisted(() => ({
@@ -30,6 +31,12 @@ vi.mock("electron", () => ({
   },
 }));
 
+const { attachChromeExtensions } = vi.hoisted(() => ({
+  attachChromeExtensions: vi.fn<(browserSession: unknown) => void>(),
+}));
+
+vi.mock("./ChromeExtensions.ts", () => ({ attachChromeExtensions }));
+
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import * as BrowserSession from "./BrowserSession.ts";
 
@@ -52,6 +59,7 @@ const layer = BrowserSession.layer.pipe(
 describe("BrowserSession", () => {
   beforeEach(() => {
     sessions.clear();
+    attachChromeExtensions.mockReset();
     fromPartition.mockReset();
     fromPartition.mockImplementation((partition: string) => {
       const browserSession = {
@@ -242,5 +250,75 @@ describe("BrowserSession", () => {
       assert.isDefined(created);
       assert.strictEqual(created.clearStorageData.mock.calls.length, 1);
     }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect(
+    "getSession should attach chrome extensions before persistent session initializers run when it creates the session",
+    () =>
+      Effect.gen(function* () {
+        const browserSessions = yield* BrowserSession.BrowserSession;
+        const attachCallsAtInitialization: Array<number> = [];
+        yield* browserSessions.addPersistentSessionInitializer(() =>
+          Effect.sync(() => {
+            attachCallsAtInitialization.push(attachChromeExtensions.mock.calls.length);
+          }),
+        );
+
+        const browserSession = yield* browserSessions.getSession("scope-a");
+
+        assert.deepStrictEqual(attachCallsAtInitialization, [1]);
+        assert.strictEqual(attachChromeExtensions.mock.calls[0]?.[0], browserSession);
+      }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect(
+    "getSession should attach chrome extensions once when the same persistent partition is requested twice",
+    () =>
+      Effect.gen(function* () {
+        const browserSessions = yield* BrowserSession.BrowserSession;
+
+        yield* browserSessions.getSession("scope-a");
+        yield* browserSessions.getSession("scope-a");
+
+        assert.strictEqual(attachChromeExtensions.mock.calls.length, 1);
+      }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("getSession should not attach chrome extensions when the session is ephemeral", () =>
+    Effect.gen(function* () {
+      const browserSessions = yield* BrowserSession.BrowserSession;
+
+      yield* browserSessions.getSession("scope-a", false);
+
+      assert.strictEqual(attachChromeExtensions.mock.calls.length, 0);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect(
+    "getSession should log a warning and still return the session when attaching chrome extensions throws",
+    () => {
+      const failure = new Error("toolbar unavailable");
+      const warnings: Array<unknown> = [];
+      const logger = Logger.make(({ logLevel, message }) => {
+        if (logLevel === "Warn") warnings.push(message);
+      });
+      return Effect.gen(function* () {
+        const browserSessions = yield* BrowserSession.BrowserSession;
+        attachChromeExtensions.mockImplementation(() => {
+          throw failure;
+        });
+
+        const partition = yield* browserSessions.getPartition("scope-a");
+        const browserSession = yield* browserSessions.getSession("scope-a");
+
+        assert.strictEqual<unknown>(browserSession, sessions.get(partition));
+        assert.deepStrictEqual(yield* browserSessions.persistentSessions, [browserSession]);
+        assert.deepStrictEqual(warnings, [
+          ["Could not enable the browser extension toolbar.", failure],
+        ]);
+      }).pipe(
+        Effect.provide(Layer.mergeAll(layer, Logger.layer([logger], { mergeWithExisting: false }))),
+      );
+    },
   );
 });

@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { DESKTOP_UPDATE_RESTART_MARKER_FILE } from "@t3tools/contracts";
+import { APP_SELF_UPDATE_DISABLED_MESSAGE } from "@t3tools/shared/appSelfUpdate";
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -61,6 +62,38 @@ describe("DesktopUpdates", () => {
         assert.equal(harness.checkCount(), 0);
       }),
     ).pipe(Effect.provide(harness.layer));
+  });
+
+  it.effect("never checks, downloads, or installs on a fork build", () => {
+    const harness = makeHarness({ appSelfUpdateEnabled: false });
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+
+        const state = yield* updates.getState;
+        assert.equal(state.enabled, false);
+        assert.equal(state.status, "disabled");
+        assert.equal(state.message, APP_SELF_UPDATE_DISABLED_MESSAGE);
+        assert.deepEqual(
+          yield* updates.disabledReason,
+          Option.some(APP_SELF_UPDATE_DISABLED_MESSAGE),
+        );
+        assert.equal(harness.listenerCount(), 0);
+
+        yield* TestClock.adjust("1 hour");
+        const checked = yield* updates.check("menu");
+        assert.equal(checked.checked, false);
+        const download = yield* updates.download;
+        assert.equal(download.accepted, false);
+        const install = yield* updates.install;
+        assert.equal(install.accepted, false);
+        assert.equal(harness.checkCount(), 0);
+        assert.equal(harness.downloadCount(), 0);
+        assert.equal(harness.quitAndInstalls(), 0);
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
   });
 
   it.effect("checks for newer releases after an update has been downloaded", () => {

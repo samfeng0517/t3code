@@ -1786,6 +1786,33 @@ describe("mobile composer drafts", () => {
     });
   });
 
+  it("composer drafts should load a persisted workspace selection when it still carries startFromOrigin", () => {
+    const [draft] = Object.values(
+      decodePersistedComposerState({
+        schemaVersion: 1,
+        drafts: {
+          "new-task:environment-1:project-1": {
+            text: "keep this prompt",
+            attachments: [],
+            workspaceSelection: {
+              mode: "worktree",
+              branch: "main",
+              worktreePath: null,
+              startFromOrigin: true,
+            },
+          },
+        },
+      }).drafts,
+    );
+
+    expect(draft?.text).toBe("keep this prompt");
+    expect(draft?.workspaceSelection).toEqual({
+      mode: "worktree",
+      branch: "main",
+      worktreePath: null,
+    });
+  });
+
   it("keeps share-import receipts on otherwise contentless new-task drafts", () => {
     const receiptDraft: ComposerDraft = {
       text: "",

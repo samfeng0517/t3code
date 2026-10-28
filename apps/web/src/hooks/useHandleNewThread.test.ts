@@ -8,7 +8,6 @@ const testState = vi.hoisted(() => {
   let connectedEnvironmentIds = ["environment-primary", "environment-ssh"];
   let targetSettings = {
     defaultThreadEnvMode: "local" as "local" | "worktree" | null,
-    newWorktreesStartFromOrigin: false,
     defaultModelSelection: null,
     defaultRuntimeMode: "full-access" as RuntimeMode,
   };
@@ -61,17 +60,13 @@ const testState = vi.hoisted(() => {
     },
     reset(
       nextStoredDraft: typeof storedDraft,
-      workspaceDefaults = {
-        envMode: "local" as "local" | "worktree" | null,
-        startFromOrigin: false,
-      },
+      defaultThreadEnvMode: "local" | "worktree" | null = "local",
     ) {
       storedDraft = nextStoredDraft;
       projectRemoved = false;
       connectedEnvironmentIds = ["environment-primary", "environment-ssh"];
       targetSettings = {
-        defaultThreadEnvMode: workspaceDefaults.envMode,
-        newWorktreesStartFromOrigin: workspaceDefaults.startFromOrigin,
+        defaultThreadEnvMode,
         defaultModelSelection: null,
         defaultRuntimeMode: "full-access",
       };
@@ -89,15 +84,7 @@ const testState = vi.hoisted(() => {
 
 const testServerConfigs = () =>
   new Map([
-    [
-      "environment-primary",
-      {
-        settings: {
-          ...testState.targetSettings,
-          newWorktreesStartFromOrigin: !testState.targetSettings.newWorktreesStartFromOrigin,
-        },
-      },
-    ],
+    ["environment-primary", { settings: testState.targetSettings }],
     ["environment-ssh", { settings: testState.targetSettings }],
   ]);
 
@@ -110,12 +97,6 @@ vi.mock("../rpc/atomRegistry", () => ({
   },
 }));
 
-vi.mock("@effect/atom-react", () => ({
-  useAtomValue: (atom: unknown) =>
-    atom === "primary-settings"
-      ? { newWorktreesStartFromOrigin: !testState.targetSettings.newWorktreesStartFromOrigin }
-      : testServerConfigs(),
-}));
 vi.mock("@t3tools/client-runtime/environment", () => ({
   scopedProjectKey: () => "remote-project",
   scopeProjectRef: (environmentId: string, projectId: string) => ({ environmentId, projectId }),
@@ -206,7 +187,6 @@ vi.mock("../state/presentation", () => ({
 }));
 vi.mock("../state/server", () => ({
   environmentServerConfigsAtom: {},
-  primaryServerSettingsAtom: "primary-settings",
 }));
 vi.mock("../threadRoutes", () => ({ resolveThreadRouteTarget: () => null }));
 vi.mock("../uiStateStore", () => ({
@@ -264,7 +244,7 @@ describe.each([
 
 describe("useNewThreadHandler", () => {
   it("opens the draft without waiting on a project file from an offline machine", async () => {
-    testState.reset(null, { envMode: null, startFromOrigin: false });
+    testState.reset(null, null);
     testState.disconnect("environment-ssh");
 
     const opened = await useNewThreadHandler()({

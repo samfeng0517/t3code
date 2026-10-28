@@ -1,5 +1,7 @@
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 
+import { t } from "./i18n";
+
 function getTimestampFormatOptions(
   timestampFormat: TimestampFormat,
   includeSeconds: boolean,
@@ -162,7 +164,7 @@ export function formatDayAwareTimestamp(
   const dayDiff = Math.round((startOfToday - startOfMessageDay) / 86_400_000);
 
   if (dayDiff <= 0) return time;
-  if (dayDiff === 1) return `yesterday at ${time}`;
+  if (dayDiff === 1) return t("workspace.time.yesterdayAt", { time });
   const dateFormatter =
     date.getFullYear() === now.getFullYear() ? numericDateFormatter : numericDateWithYearFormatter;
   return `${dateFormatter.format(date)} ${time}`;
@@ -184,7 +186,7 @@ export function formatUpcomingTimestamp(
 
   if (dayDiff < 0) return formatDayAwareTimestamp(isoDate, timestampFormat, nowMs);
   if (dayDiff === 0) return time;
-  if (dayDiff === 1) return `tomorrow at ${time}`;
+  if (dayDiff === 1) return t("workspace.time.tomorrowAt", { time });
   const dateFormatter =
     date.getFullYear() === now.getFullYear() ? numericDateFormatter : numericDateWithYearFormatter;
   return `${dateFormatter.format(date)} ${time}`;
@@ -230,13 +232,16 @@ export function msUntilRelativeTimeChange(
 
 export function formatRelativeElapsed(elapsedMs: number): RelativeTimeParts {
   const seconds = Math.floor(elapsedMs / 1000);
-  if (seconds < 60) return { value: "just now", suffix: null };
+  if (seconds < 60) return { value: t("workspace.time.justNow"), suffix: null };
+  // An empty suffix (not null) marks a past label whose unit already carries
+  // "ago", so callers that join value and suffix add nothing.
+  const suffix = t("workspace.time.agoSuffix");
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return { value: `${minutes}m`, suffix: "ago" };
+  if (minutes < 60) return { value: t("workspace.time.minutesAgo", { count: minutes }), suffix };
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return { value: `${hours}h`, suffix: "ago" };
+  if (hours < 24) return { value: t("workspace.time.hoursAgo", { count: hours }), suffix };
   const days = Math.floor(hours / 24);
-  return { value: `${days}d`, suffix: "ago" };
+  return { value: t("workspace.time.daysAgo", { count: days }), suffix };
 }
 
 export function formatRelativeTime(
@@ -257,20 +262,20 @@ export function formatElapsedDurationLabel(isoDate: string, nowMs: number = Date
   const date = parseTimestampDate(isoDate);
   if (!date) return "";
   const diffMs = nowMs - date.getTime();
-  if (diffMs <= 0) return "just now";
+  if (diffMs <= 0) return t("workspace.time.justNow");
 
   const seconds = Math.floor(diffMs / 1000);
-  if (seconds < 5) return "just now";
-  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 5) return t("workspace.time.justNow");
+  if (seconds < 60) return t("workspace.time.unit.seconds", { count: seconds });
 
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60) return t("workspace.time.unit.minutes", { count: minutes });
 
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
+  if (hours < 24) return t("workspace.time.unit.hours", { count: hours });
 
   const days = Math.floor(hours / 24);
-  return `${days}d`;
+  return t("workspace.time.unit.days", { count: days });
 }
 
 /** Pass nowMs to match a parent-driven render tick. */
@@ -278,39 +283,20 @@ export function formatExpiresInLabel(isoDate: string, nowMs: number = Date.now()
   const date = parseTimestampDate(isoDate);
   if (!date) return "";
   const diffMs = date.getTime() - nowMs;
-  if (diffMs <= 0) return "Expired";
+  if (diffMs <= 0) return t("workspace.time.expired");
 
   const totalSeconds = Math.floor(diffMs / 1000);
-  if (totalSeconds < 5) return "Expires in a moment";
-  if (totalSeconds < 60) return `Expires in ${totalSeconds}s`;
-
-  if (totalSeconds < 3600) {
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return seconds === 0 ? `Expires in ${minutes}m` : `Expires in ${minutes}m ${seconds}s`;
-  }
-
-  if (totalSeconds < 86_400) {
-    const hours = Math.floor(totalSeconds / 3600);
-    const rem = totalSeconds % 3600;
-    const minutes = Math.floor(rem / 60);
-    const seconds = rem % 60;
-    const parts = [`${hours}h`];
-    if (minutes > 0) parts.push(`${minutes}m`);
-    if (seconds > 0) parts.push(`${seconds}s`);
-    return `Expires in ${parts.join(" ")}`;
-  }
+  if (totalSeconds < 5) return t("workspace.time.expiresMoment");
 
   const days = Math.floor(totalSeconds / 86_400);
-  const remAfterDays = totalSeconds % 86_400;
-  if (remAfterDays === 0) return `Expires in ${days}d`;
-  const hours = Math.floor(remAfterDays / 3600);
-  const rem = remAfterDays % 3600;
-  const minutes = Math.floor(rem / 60);
-  const seconds = rem % 60;
-  const tail: string[] = [];
-  if (hours > 0) tail.push(`${hours}h`);
-  if (minutes > 0) tail.push(`${minutes}m`);
-  if (seconds > 0) tail.push(`${seconds}s`);
-  return tail.length > 0 ? `Expires in ${days}d ${tail.join(" ")}` : `Expires in ${days}d`;
+  const hours = Math.floor((totalSeconds % 86_400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  // Largest unit first; every smaller unit appears only while non-zero.
+  const parts: string[] = [];
+  if (days > 0) parts.push(t("workspace.time.unit.days", { count: days }));
+  if (hours > 0) parts.push(t("workspace.time.unit.hours", { count: hours }));
+  if (minutes > 0) parts.push(t("workspace.time.unit.minutes", { count: minutes }));
+  if (seconds > 0) parts.push(t("workspace.time.unit.seconds", { count: seconds }));
+  return t("workspace.time.expiresIn", { duration: parts.join(" ") });
 }

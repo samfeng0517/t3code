@@ -269,3 +269,15 @@ passed as `--wsl-runtime`; see the
 Add `--signed` after configuring the platform credentials in the
 [release runbook](./release.md). macOS passkeys need a signed, provisioned app; follow the
 [Connect setup](./connect-setup.md#desktop-passkeys) for local signing and renderer HMR.
+
+## Fork CI
+
+This fork runs [fork-ci.yml](../../.github/workflows/fork-ci.yml), a trimmed port of upstream's
+[ci.yml](../../.github/workflows/ci.yml) that checks and tests but never builds or releases. It
+runs for pull requests, pushes to `main`, and manual dispatches. Upstream's workflow files stay in
+the tree so merges stay clean, but they are disabled on the fork's GitHub repository. A workflow
+runs as soon as the push that adds it lands, so before pushing an upstream merge, list new ones
+with `git diff --diff-filter=A --name-only origin/main HEAD -- .github/workflows` and either
+delete them in the merge or disable Actions around the push and `gh workflow disable` them. CI
+builds no desktop artifacts; build them locally on a Mac (see
+[Desktop artifacts](#desktop-artifacts)).

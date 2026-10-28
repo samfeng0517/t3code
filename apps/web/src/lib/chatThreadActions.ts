@@ -24,7 +24,6 @@ interface NewThreadHandler {
       branch?: string | null;
       worktreePath?: string | null;
       envMode?: DraftThreadEnvMode;
-      startFromOrigin?: boolean;
     },
   ): Promise<unknown>;
 }
@@ -34,13 +33,6 @@ export interface ChatThreadActionContext {
   readonly activeThread: ThreadContextLike | undefined;
   readonly defaultProjectRef: ScopedProjectRef | null;
   readonly handleNewThread: NewThreadHandler;
-}
-
-export function resolveNewDraftStartFromOrigin(input: {
-  envMode: DraftThreadEnvMode;
-  newWorktreesStartFromOrigin: boolean;
-}): boolean {
-  return input.envMode === "worktree" && input.newWorktreesStartFromOrigin;
 }
 
 export function resolveNewThreadModelSelectionOverride(input: {

@@ -18,6 +18,7 @@ import { clerkFrontendApiHostnameFromPublishableKey } from "@t3tools/shared/rela
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronProtocol from "../electron/ElectronProtocol.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
+import { isExtensionWindow } from "../preview/ChromeExtensions.ts";
 import * as DesktopUserData from "./DesktopUserData.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopWebLinks from "./DesktopWebLinks.ts";
@@ -148,6 +149,10 @@ export const make = Effect.gen(function* () {
       const webLinks = yield* DesktopWebLinks.DesktopWebLinks;
       const context = yield* Effect.context<ElectronWindow.ElectronWindow>();
       const runPromise = Effect.runPromiseWith(context);
+      // Same exclusion as the Dock's activate: an extension window is never the main window.
+      const currentMainWindow = Effect.suspend(() => electronWindow.currentMainOrFirst).pipe(
+        Effect.map(Option.filter((window) => !isExtensionWindow(window))),
+      );
 
       const startProviderAuthHandoff = (value: string | undefined) => {
         if (!value) return false;
@@ -181,7 +186,7 @@ export const make = Effect.gen(function* () {
         if (!destination?.startsWith(`${expectedOrigin}/`)) return false;
         void runPromise(
           Effect.gen(function* () {
-            const mainWindow = yield* electronWindow.currentMainOrFirst;
+            const mainWindow = yield* currentMainWindow;
             if (Option.isNone(mainWindow)) return;
             yield* Effect.promise(() => mainWindow.value.loadURL(destination));
             yield* electronWindow.reveal(mainWindow.value);
@@ -229,7 +234,7 @@ export const make = Effect.gen(function* () {
           return;
         void runPromise(
           Effect.gen(function* () {
-            const mainWindow = yield* electronWindow.currentMainOrFirst;
+            const mainWindow = yield* currentMainWindow;
             if (Option.isSome(mainWindow)) yield* electronWindow.reveal(mainWindow.value);
           }),
         );

@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
+import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ThreadEnvMode, WorktreeSubmodules } from "./environment.ts";
 import { ProjectScriptIcon } from "./project.ts";
 import type { ProjectScopedServerSettingKey, ServerSettings } from "./settings.ts";
@@ -44,6 +45,12 @@ export const T3ProjectFileScript = Schema.Struct({
     Schema.Boolean.annotate({
       description:
         "When true, the script runs in the thread's worktree each time the thread settles, for example to delete build output. Threads without their own worktree skip it.",
+    }),
+  ),
+  runOnWorktreeRemove: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "When true, the script runs in the thread's worktree before T3 Code removes that worktree, for example to stop containers. It gets one minute, and a failure does not stop the removal.",
     }),
   ),
   async: Schema.optionalKey(
@@ -109,6 +116,25 @@ export const T3ProjectFile = Schema.Struct({
     "Checked-in project configuration for T3 Code (t3.json at the repository root). See https://t3.codes for documentation.",
 });
 export type T3ProjectFile = typeof T3ProjectFile.Type;
+
+/**
+ * Project files of other agent IDEs that T3 Code reads when a repository has no t3.json, in
+ * precedence order.
+ */
+export const CompatProjectFileSource = Schema.Literals(["orca.yaml", ".superset/config.json"]);
+export type CompatProjectFileSource = typeof CompatProjectFileSource.Type;
+
+export const ProjectReadCompatScriptsInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+});
+export type ProjectReadCompatScriptsInput = typeof ProjectReadCompatScriptsInput.Type;
+
+/** Empty with a null source when the checkout has a t3.json or no supported file. */
+export const ProjectReadCompatScriptsResult = Schema.Struct({
+  source: Schema.NullOr(CompatProjectFileSource),
+  scripts: Schema.Array(T3ProjectFileScript),
+});
+export type ProjectReadCompatScriptsResult = typeof ProjectReadCompatScriptsResult.Type;
 
 /** Keys must be nullable in ServerSettings so both environment and project overrides can inherit t3.json. */
 export const PROJECT_FILE_BACKED_SETTINGS = {

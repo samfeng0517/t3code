@@ -16,6 +16,8 @@ import * as Data from "effect/Data";
 import { AsyncResult } from "effect/reactivity";
 
 import { resolveAssetUrl } from "~/assets/assetUrls";
+import { isBrowserWorkspaceThreadRef } from "~/browserWorkspace.logic";
+import { useBrowserWorkspaceStore } from "~/browserWorkspaceStore";
 import { isPreviewAvailableFor, previewRuntimeFor } from "~/browser/previewRuntime";
 import {
   applyPreviewServerSnapshot,
@@ -99,6 +101,11 @@ export async function openUrlInPreview<E>(input: {
       return;
     }
     applyPreviewServerSnapshot(input.threadRef, snapshot);
+    // The workspace has no panel; its session sync turns the session into the tab shown.
+    if (isBrowserWorkspaceThreadRef(input.threadRef)) {
+      useBrowserWorkspaceStore.getState().showSession(snapshot.tabId);
+      return;
+    }
     useRightPanelStore.getState().openBrowser(input.threadRef, snapshot.tabId);
   });
 }

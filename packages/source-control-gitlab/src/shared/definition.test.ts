@@ -1,7 +1,11 @@
-import { recognizeRemoteWith } from "@t3tools/source-control-core/shared/definition";
+import { normalizeGitRemoteUrl } from "@t3tools/shared/git";
+import {
+  projectChangeRequestHost,
+  recognizeRemoteWith,
+} from "@t3tools/source-control-core/shared/definition";
 import { describe, expect, it } from "vite-plus/test";
 
-import { definition } from "./definition.ts";
+import { definition, gitLabSettingsAuthority } from "./definition.ts";
 
 const parse = (url: string) => definition.parseChangeRequestUrl(new URL(url));
 
@@ -71,5 +75,79 @@ describe("GitLab remotes", () => {
 
   it("matches complete DNS labels only", () => {
     expect(recognize("https://notgitlab.example.com/group/repo.git")).toBeNull();
+  });
+});
+
+const MERGE_REQUEST_URL = "https://gitlab.example.com/sam/t3code/-/merge_requests/42";
+
+describe.each([
+  "https://gitlab.example.com/sam/t3code.git",
+  "git@gitlab.example.com:sam/t3code.git",
+])("a self-hosted GitLab checkout from %s", (remoteUrl) => {
+  const identity = {
+    canonicalKey: normalizeGitRemoteUrl(remoteUrl),
+    locator: { source: "git-remote" as const, remoteName: "origin", remoteUrl },
+    displayName: "sam/t3code",
+    owner: "sam",
+    name: "t3code",
+  };
+
+  it("should detect GitLab on its own server when the remote names it", () => {
+    expect(recognizeRemoteWith(definition, remoteUrl)).toEqual({
+      kind: "gitlab",
+      name: "GitLab Self-Hosted",
+      baseUrl: "https://gitlab.example.com",
+    });
+    expect(identity.canonicalKey).toBe("gitlab.example.com/sam/t3code");
+    expect(projectChangeRequestHost(identity, definition.kind)).toBe("gitlab.example.com");
+  });
+
+  it("should build merge request links on that server when the checkout is self-hosted", () => {
+    const link = parse(MERGE_REQUEST_URL);
+    expect(link).toMatchObject({
+      host: "gitlab.example.com",
+      repository: "sam/t3code",
+      number: 42,
+    });
+    expect(
+      definition.changeRequestUrl({
+        host: "gitlab.example.com",
+        repository: "sam/t3code",
+        number: 42,
+      }),
+    ).toBe(MERGE_REQUEST_URL);
+    expect(definition.isChangeRequestInRepository(identity, link!)).toBe(true);
+    expect(definition.canReadChangeRequestOnHost(identity, link!)).toBe(true);
+    expect(
+      definition.canReadChangeRequestOnHost(identity, {
+        host: "gitlab.com",
+        repository: "sam/t3code",
+        number: 42,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("merge request references", () => {
+  it("should recognize a merge request on any server when it uses GitLab's own route", () => {
+    expect(definition.isChangeRequestReference(MERGE_REQUEST_URL)).toBe(true);
+    expect(
+      definition.isChangeRequestReference("https://code.example.com/team/app/-/merge_requests/7"),
+    ).toBe(true);
+    expect(definition.isChangeRequestReference("https://code.example.com/team/app/pull/7")).toBe(
+      false,
+    );
+    expect(definition.checkoutCommandArgument("glab mr checkout 42")).toBe("42");
+  });
+});
+
+describe("gitLabSettingsAuthority", () => {
+  const authority = (host: string) => gitLabSettingsAuthority({ host, token: "" });
+
+  it("should read the server when it is typed as a name, URL, or URL with a path", () => {
+    expect(authority("gitlab.example.com")).toBe("gitlab.example.com");
+    expect(authority("https://GitLab.Example.com/")).toBe("gitlab.example.com");
+    expect(authority("https://gitlab.example.com:8443/some/path")).toBe("gitlab.example.com:8443");
+    expect(authority("")).toBe("gitlab.com");
   });
 });
