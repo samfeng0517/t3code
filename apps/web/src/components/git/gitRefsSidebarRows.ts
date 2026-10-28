@@ -11,7 +11,12 @@ interface GitRefsSidebarTarget {
 }
 
 export type GitRefsSidebarRow =
-  | { readonly kind: "header"; readonly key: string; readonly group: GitRefsGroup }
+  | {
+      readonly kind: "header";
+      readonly key: string;
+      readonly group: GitRefsGroup;
+      readonly collapsed: boolean;
+    }
   | {
       readonly kind: "remote";
       readonly key: string;
@@ -29,14 +34,21 @@ export type GitRefsSidebarRow =
       readonly menu: GitMenuTarget | null;
     };
 
-/** Flattens the refs into one row list so the sidebar can virtualize it. Empty groups are left out. */
+/**
+ * Flattens the refs into one row list so the sidebar can virtualize it. Empty groups are left out.
+ * `collapsed` holds the keys of collapsed group and remote rows; their children are left out too.
+ */
 export function buildRefsSidebarRows(
   refs: GitHistoryRefsResult,
-  collapsedRemotes: ReadonlySet<string>,
+  collapsed: ReadonlySet<string>,
 ): ReadonlyArray<GitRefsSidebarRow> {
   const rows: GitRefsSidebarRow[] = [];
-  const header = (group: GitRefsGroup) =>
-    rows.push({ kind: "header", key: `header:${group}`, group });
+  /** Pushes the group's header and returns whether its items follow. */
+  const header = (group: GitRefsGroup) => {
+    const key = `header:${group}`;
+    rows.push({ kind: "header", key, group, collapsed: collapsed.has(key) });
+    return !collapsed.has(key);
+  };
   const ref = (
     key: string,
     label: string,
@@ -45,8 +57,7 @@ export function buildRefsSidebarRows(
     nested = false,
   ) => rows.push({ kind: "ref", key, label, current: false, nested, target, menu });
 
-  if (refs.branches.length > 0) {
-    header("branches");
+  if (refs.branches.length > 0 && header("branches")) {
     for (const branch of refs.branches) {
       rows.push({
         kind: "ref",
@@ -59,17 +70,12 @@ export function buildRefsSidebarRows(
       });
     }
   }
-  if (refs.remotes.length > 0) {
-    header("remotes");
+  if (refs.remotes.length > 0 && header("remotes")) {
     for (const remote of refs.remotes) {
-      const collapsed = collapsedRemotes.has(remote.remote);
-      rows.push({
-        kind: "remote",
-        key: `remote:${remote.remote}`,
-        remote: remote.remote,
-        collapsed,
-      });
-      if (collapsed) continue;
+      const key = `remote:${remote.remote}`;
+      const remoteCollapsed = collapsed.has(key);
+      rows.push({ kind: "remote", key, remote: remote.remote, collapsed: remoteCollapsed });
+      if (remoteCollapsed) continue;
       for (const branch of remote.branches) {
         ref(
           `remote-branch:${branch.fullName}`,
@@ -81,8 +87,7 @@ export function buildRefsSidebarRows(
       }
     }
   }
-  if (refs.tags.length > 0) {
-    header("tags");
+  if (refs.tags.length > 0 && header("tags")) {
     for (const tag of refs.tags) {
       ref(
         `tag:${tag.name}`,
@@ -92,14 +97,12 @@ export function buildRefsSidebarRows(
       );
     }
   }
-  if (refs.stashes.length > 0) {
-    header("stashes");
+  if (refs.stashes.length > 0 && header("stashes")) {
     for (const stash of refs.stashes) {
       ref(`stash:${stash.ref}`, stash.message, { hash: stash.hash, select: false }, null);
     }
   }
-  if (refs.worktrees.length > 0) {
-    header("worktrees");
+  if (refs.worktrees.length > 0 && header("worktrees")) {
     for (const worktree of refs.worktrees) {
       ref(
         `worktree:${worktree.path}`,

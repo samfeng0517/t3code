@@ -52,10 +52,30 @@ describe("buildRefsSidebarRows", () => {
   });
 
   it("buildRefsSidebarRows should hide a remote's branches when that remote is collapsed", () => {
-    const rows = buildRefsSidebarRows(refs, new Set(["origin"]));
+    const rows = buildRefsSidebarRows(refs, new Set(["remote:origin"]));
 
     expect(rows.find((row) => row.key === "remote:origin")).toMatchObject({ collapsed: true });
     expect(rows.some((row) => row.key === "remote-branch:origin/main")).toBe(false);
+  });
+
+  it("buildRefsSidebarRows should keep only a group's header when that group is collapsed", () => {
+    const rows = buildRefsSidebarRows(
+      { ...refs, tags: [{ name: "v1", hash: "h3" }] },
+      new Set(["header:tags", "header:remotes"]),
+    );
+
+    expect(rows.map((row) => row.key)).toEqual([
+      "header:branches",
+      "branch:main",
+      "branch:fix",
+      "header:remotes",
+      "header:tags",
+      "header:stashes",
+      "stash:stash@{0}",
+      "header:worktrees",
+      "worktree:/gone",
+    ]);
+    expect(rows.find((row) => row.key === "header:tags")).toMatchObject({ collapsed: true });
   });
 
   it("buildRefsSidebarRows should give a stash a non-selecting target and a hashless worktree none when building items", () => {

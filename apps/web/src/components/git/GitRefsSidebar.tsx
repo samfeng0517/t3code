@@ -33,18 +33,26 @@ const ESTIMATED_ROW_HEIGHT = 20;
 function RefsSidebarRow(props: {
   readonly row: GitRefsSidebarRow;
   readonly onSelectRef: GitSelectRef;
-  readonly onToggleRemote: (remote: string) => void;
+  readonly onToggle: (key: string) => void;
   readonly onOpenMenu: GitOpenMenu;
 }) {
   const t = useT();
   const { row } = props;
   switch (row.kind) {
-    case "header":
+    case "header": {
+      const Chevron = row.collapsed ? ChevronRightIcon : ChevronDownIcon;
       return (
-        <div className="px-1.5 pt-2 pb-1 text-2xs tracking-wide text-muted-foreground uppercase">
-          {t(GROUP_TITLE_KEYS[row.group])}
-        </div>
+        <button
+          type="button"
+          aria-expanded={!row.collapsed}
+          className="flex w-full min-w-0 items-center gap-0.5 rounded px-1 pt-2 pb-1 text-left text-2xs tracking-wide text-muted-foreground uppercase hover:text-foreground"
+          onClick={() => props.onToggle(row.key)}
+        >
+          <Chevron aria-hidden className="size-3 shrink-0" />
+          <span className="truncate">{t(GROUP_TITLE_KEYS[row.group])}</span>
+        </button>
       );
+    }
     case "remote": {
       const Chevron = row.collapsed ? ChevronRightIcon : ChevronDownIcon;
       return (
@@ -52,7 +60,7 @@ function RefsSidebarRow(props: {
           type="button"
           aria-expanded={!row.collapsed}
           className="flex w-full min-w-0 items-center gap-0.5 rounded py-0.5 pr-1.5 pl-1 text-left text-xs hover:bg-accent"
-          onClick={() => props.onToggleRemote(row.remote)}
+          onClick={() => props.onToggle(row.key)}
         >
           <Chevron aria-hidden className="size-3 shrink-0 text-muted-foreground" />
           <span className="truncate">{row.remote}</span>
@@ -98,17 +106,17 @@ export function GitRefsSidebar(props: {
   readonly onOpenMenu: GitOpenMenu;
 }) {
   const { refs, onSelectRef, onOpenMenu } = props;
-  const [collapsedRemotes, setCollapsedRemotes] = useState<ReadonlySet<string>>(new Set());
-  const toggleRemote = (remote: string) => {
-    setCollapsedRemotes((current) => {
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (key: string) => {
+    setCollapsed((current) => {
       const next = new Set(current);
-      if (next.has(remote)) next.delete(remote);
-      else next.add(remote);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
   // Repositories can carry thousands of tags and remote branches; only rows in view mount.
-  const rows = buildRefsSidebarRows(refs, collapsedRemotes);
+  const rows = buildRefsSidebarRows(refs, collapsed);
 
   return (
     <nav className="flex h-full min-h-0 w-52.5 shrink-0 flex-col border-r border-border">
@@ -120,7 +128,7 @@ export function GitRefsSidebar(props: {
           <RefsSidebarRow
             row={row}
             onSelectRef={onSelectRef}
-            onToggleRemote={toggleRemote}
+            onToggle={toggle}
             onOpenMenu={onOpenMenu}
           />
         )}
