@@ -5,11 +5,15 @@ import { useShallow } from "zustand/react/shallow";
 
 import {
   addBookmark,
+  addBookmarkFolder,
+  type BookmarkDestination,
   type BrowserBookmarkImportSource,
   type BrowserBookmarkNode,
   type BrowserBookmarkRoots,
   buildImportedFolder,
+  dissolveBookmarkFolder,
   isUrlBookmarked,
+  moveBookmarkNode,
   normalizeBookmarkUrl,
   type RemovedBookmark,
   removeBookmarkNodeWithLocation,
@@ -17,6 +21,7 @@ import {
   replaceImportedFolder,
   restoreRemovedBookmark,
   sanitizePersistedBookmarks,
+  updateBookmarkNode,
 } from "./browserBookmarks.logic";
 import { resolveStorage } from "./lib/storage";
 
@@ -28,6 +33,15 @@ export type BrowserBookmarkSaveResult = "saved" | "unsupported-url" | "storage-f
 export type BrowserBookmarkRemoval =
   | { readonly ok: true; readonly removed: RemovedBookmark | null }
   | { readonly ok: false };
+
+/**
+ * Undoing a dissolve puts `before` back only while the bookmarks are still exactly `after`;
+ * a reload from another window's write counts as a change.
+ */
+export interface BrowserBookmarkSnapshot {
+  readonly before: BrowserBookmarkRoots;
+  readonly after: BrowserBookmarkRoots;
+}
 
 export type BrowserBookmarkImportOutcome =
   | { readonly ok: true; readonly bookmarkCount: number }
@@ -41,6 +55,21 @@ interface BrowserBookmarksStoreState extends BrowserBookmarkRoots {
   removeNode: (id: string) => BrowserBookmarkRemoval;
   /** Undoes one `removeNode`, touching nothing else. */
   restoreRemoved: (removed: RemovedBookmark) => boolean;
+  /** Returns false only when storage is full; an impossible move changes nothing. */
+  moveNode: (id: string, destination: BookmarkDestination) => boolean;
+  updateNode: (
+    id: string,
+    patch: { readonly title: string; readonly url?: string },
+  ) => BrowserBookmarkSaveResult;
+  /** The new folder's id, or null when storage is full. */
+  addFolder: (destination: BookmarkDestination, title: string) => string | null;
+  /** A null snapshot means the folder was already gone, so nothing changed. */
+  dissolveFolder: (
+    id: string,
+  ) =>
+    | { readonly ok: true; readonly snapshot: BrowserBookmarkSnapshot | null }
+    | { readonly ok: false };
+  restoreSnapshot: (snapshot: BrowserBookmarkSnapshot) => "restored" | "changed" | "storage-full";
   importFolder: (input: {
     readonly nodes: ReadonlyArray<BrowserBookmarkTreeNode>;
     readonly importSource: BrowserBookmarkImportSource;
@@ -101,6 +130,36 @@ export const useBrowserBookmarksStore = create<BrowserBookmarksStoreState>()(
           return next.bookmarkBar === state.bookmarkBar && next.other === state.other
             ? true
             : commit(next);
+        },
+        moveNode: (id, destination) => {
+          const state = get();
+          const roots = selectBookmarkRoots(state);
+          const next = moveBookmarkNode(roots, id, destination);
+          return next === roots ? true : commit(next);
+        },
+        updateNode: (id, patch) => {
+          const next = updateBookmarkNode(selectBookmarkRoots(get()), id, patch);
+          if (next === "unsupported-url") return next;
+          return commit(next) ? "saved" : "storage-full";
+        },
+        addFolder: (destination, title) => {
+          const state = get();
+          const id = String(state.nextId);
+          const next = addBookmarkFolder(selectBookmarkRoots(state), destination, { id, title });
+          return commit({ ...next, nextId: state.nextId + 1 }) ? id : null;
+        },
+        dissolveFolder: (id) => {
+          const before = selectBookmarkRoots(get());
+          const after = dissolveBookmarkFolder(before, id);
+          if (after === before) return { ok: true, snapshot: null };
+          return commit(after) ? { ok: true, snapshot: { before, after } } : { ok: false };
+        },
+        restoreSnapshot: ({ before, after }) => {
+          const state = get();
+          if (state.bookmarkBar !== after.bookmarkBar || state.other !== after.other) {
+            return "changed";
+          }
+          return commit(before) ? "restored" : "storage-full";
         },
         importFolder: (input) => {
           const state = get();
