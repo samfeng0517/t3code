@@ -159,6 +159,7 @@ export const settingsPagesEn = {
   "settingsPages.storage.keepWhen.tracked-changes": "Edited tracked files",
   "settingsPages.storage.lastRun.everyMachine": "{counts} on every machine",
   "settingsPages.storage.result.worktrees": "Worktrees",
+  "settingsPages.storage.result.branches": "Branches",
   "settingsPages.storage.result.logs": "Rotated logs",
   "settingsPages.storage.result.browserArtifacts": "Browser artifacts",
   "settingsPages.storage.result.machine": "Machine",
@@ -210,6 +211,9 @@ export const settingsPagesEn = {
   "settingsPages.storage.merged.title": "Delete merged worktrees",
   "settingsPages.storage.merged.description":
     "Remove worktrees whose pull request is merged and whose commits are included in the default branch.",
+  "settingsPages.storage.branchOnMerge.title": "Delete merged branches",
+  "settingsPages.storage.branchOnMerge.description":
+    "Delete local branches whose remote branch is gone and whose work is merged. A clean worktree on that branch is removed with it.",
   "settingsPages.storage.unchanged.title": "Delete unchanged worktrees",
   "settingsPages.storage.unchanged.description":
     "Remove worktrees with no commits beyond the default branch.",

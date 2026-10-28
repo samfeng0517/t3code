@@ -226,6 +226,7 @@ export function resolveWorktreeCleanup(
       worktreeOnMerge: false,
       worktreeOnDelete: false,
       worktreeUnchanged: false,
+      branchOnMerge: false,
     };
   const {
     worktreeKeepWhen,
@@ -234,6 +235,7 @@ export function resolveWorktreeCleanup(
     worktreeOnMerge,
     worktreeOnDelete,
     worktreeUnchanged,
+    branchOnMerge,
   } = settings.storageCleanup;
   return {
     worktreeKeepWhen,
@@ -242,5 +244,6 @@ export function resolveWorktreeCleanup(
     worktreeOnMerge,
     worktreeOnDelete,
     worktreeUnchanged,
+    branchOnMerge,
   };
 }

@@ -150,6 +150,7 @@ export const settingsPagesZhTW: Readonly<Record<keyof typeof settingsPagesEn, st
   "settingsPages.storage.keepWhen.tracked-changes": "已編輯的追蹤檔案",
   "settingsPages.storage.lastRun.everyMachine": "每台電腦皆為 {counts}",
   "settingsPages.storage.result.worktrees": "工作樹",
+  "settingsPages.storage.result.branches": "分支",
   "settingsPages.storage.result.logs": "輪替日誌",
   "settingsPages.storage.result.browserArtifacts": "瀏覽器產物",
   "settingsPages.storage.result.machine": "電腦",
@@ -200,6 +201,9 @@ export const settingsPagesZhTW: Readonly<Record<keyof typeof settingsPagesEn, st
   "settingsPages.storage.merged.title": "刪除已合併的工作樹",
   "settingsPages.storage.merged.description":
     "移除 Pull Request 已合併、且提交已包含在預設分支中的工作樹。",
+  "settingsPages.storage.branchOnMerge.title": "刪除已合併的分支",
+  "settingsPages.storage.branchOnMerge.description":
+    "刪除遠端分支已不存在、且內容已合併的本機分支；該分支所在的工作樹若沒有未提交的變更，會一併移除。",
   "settingsPages.storage.unchanged.title": "刪除未變更的工作樹",
   "settingsPages.storage.unchanged.description": "移除沒有超出預設分支之提交的工作樹。",
   "settingsPages.storage.keepWhen.title": "保留含有本機變更的工作樹",

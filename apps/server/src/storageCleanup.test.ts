@@ -387,6 +387,7 @@ const cleanupFixture = (
         )) as unknown as SqlClient.SqlClient),
       Effect.provideService(GitManager.GitManager, {
         invalidateStatus: () => Effect.void,
+        branchPullRequest: () => Effect.succeed(null),
       } as unknown as GitManager.GitManager["Service"]),
       Effect.provideService(TerminalManager.TerminalManager, {
         subscribeMetadata: () => Effect.succeed(() => {}),
@@ -1851,6 +1852,188 @@ describe("storage cleanup reports and local file policies", () => {
           "browser-artifacts",
           "logs",
         ]);
+      }),
+    ),
+  );
+});
+
+describe("merged branch cleanup", () => {
+  const goneBranchFixture = Effect.gen(function* () {
+    const fixture = yield* cleanupFixture({
+      ...DEFAULT_SERVER_SETTINGS.storageCleanup,
+      branchOnMerge: true,
+    });
+    const { fs, repo, worktree, command } = fixture;
+    const remote = yield* fs.makeTempDirectoryScoped({ prefix: "cleanup-remote-" });
+    yield* command(remote, ["init", "--bare", "-b", "main"]);
+    yield* command(repo, ["remote", "add", "origin", remote]);
+    yield* command(repo, ["push", "-u", "origin", "main"]);
+    yield* command(repo, ["remote", "set-head", "origin", "main"]);
+    const deleteOnRemote = () =>
+      Effect.gen(function* () {
+        yield* command(worktree, ["push", "-u", "origin", "feature"]);
+        yield* command(repo, ["push", "origin", "--delete", "feature"]);
+      });
+    const localBranches = () =>
+      command(repo, ["branch", "--list", "--format=%(refname:short)"]).pipe(
+        Effect.map((result) => result.stdout.split("\n").filter(Boolean)),
+      );
+    return { ...fixture, deleteOnRemote, localBranches };
+  });
+  it.live(
+    "should delete a gone branch and its clean worktree when the branch is merged into the default branch",
+    () =>
+      runCleanupTest(
+        Effect.gen(function* () {
+          const { service, fs, worktree, deleteOnRemote, localBranches } = yield* goneBranchFixture;
+          yield* deleteOnRemote();
+
+          const report = yield* service.runNow;
+
+          expect(report.entries.find((entry) => entry.kind === "branch")).toMatchObject({
+            outcome: "removed",
+            branch: "feature",
+            reason: expect.stringMatching(
+              /^Merged into main and deleted on origin; was [0-9a-f]{7}$/,
+            ),
+          });
+          expect(yield* fs.exists(worktree)).toBe(false);
+          expect(yield* localBranches()).toEqual(["main"]);
+        }),
+      ),
+  );
+
+  it.live(
+    "should keep a gone branch and its worktree when the worktree has uncommitted changes",
+    () =>
+      runCleanupTest(
+        Effect.gen(function* () {
+          const { service, fs, worktree, deleteOnRemote, localBranches } = yield* goneBranchFixture;
+          yield* deleteOnRemote();
+          yield* fs.writeFileString(`${worktree}/tracked.txt`, "in progress\n");
+
+          const report = yield* service.runNow;
+
+          expect(report.entries.find((entry) => entry.kind === "branch")).toMatchObject({
+            outcome: "kept",
+            branch: "feature",
+            reason: "Has uncommitted changes (1 file)",
+          });
+          expect(yield* fs.readFileString(`${worktree}/tracked.txt`)).toBe("in progress\n");
+          expect(yield* localBranches()).toEqual(["feature", "main"]);
+        }),
+      ),
+  );
+
+  it.live(
+    "should keep a gone branch when its commits are not merged and no pull request was merged",
+    () =>
+      runCleanupTest(
+        Effect.gen(function* () {
+          const { service, fs, worktree, command, deleteOnRemote, localBranches } =
+            yield* goneBranchFixture;
+          yield* fs.writeFileString(`${worktree}/tracked.txt`, "unmerged work\n");
+          yield* command(worktree, ["commit", "-am", "unmerged work"]);
+          yield* deleteOnRemote();
+
+          const report = yield* service.runNow;
+
+          expect(report.entries.find((entry) => entry.kind === "branch")).toMatchObject({
+            outcome: "kept",
+            branch: "feature",
+            reason: "Not merged into main",
+          });
+          expect(yield* fs.exists(worktree)).toBe(true);
+          expect(yield* localBranches()).toEqual(["feature", "main"]);
+        }),
+      ),
+  );
+
+  it.live("should keep a gone branch's worktree when it holds ignored files", () =>
+    runCleanupTest(
+      Effect.gen(function* () {
+        const { service, fs, worktree, deleteOnRemote, localBranches } = yield* goneBranchFixture;
+        yield* deleteOnRemote();
+        yield* fs.writeFileString(`${worktree}/.env`, "SECRET=1\n");
+
+        const report = yield* service.runNow;
+
+        expect(report.entries.find((entry) => entry.kind === "branch")).toMatchObject({
+          outcome: "kept",
+          reason: "Has ignored files (.env)",
+        });
+        expect(yield* fs.readFileString(`${worktree}/.env`)).toBe("SECRET=1\n");
+        expect(yield* localBranches()).toEqual(["feature", "main"]);
+      }),
+    ),
+  );
+
+  it.live(
+    "should keep a gone branch's worktree when a thread recorded under another spelling of its path is running",
+    () =>
+      runCleanupTest(
+        Effect.gen(function* () {
+          const { service, fs, worktree, deleteOnRemote, localBranches, setThreads } =
+            yield* goneBranchFixture;
+          yield* deleteOnRemote();
+          const parent = yield* fs.makeTempDirectoryScoped({ prefix: "cleanup-alias-" });
+          const alias = `${parent}/link`;
+          yield* fs.symlink(worktree, alias);
+          setThreads([shell({ branch: "feature", worktreePath: alias, status: "running" })]);
+
+          const report = yield* service.runNow;
+
+          expect(report.entries.find((entry) => entry.kind === "branch")).toMatchObject({
+            outcome: "kept",
+            reason: "Thread is running or has pending work",
+          });
+          expect(yield* fs.exists(worktree)).toBe(true);
+          expect(yield* localBranches()).toEqual(["feature", "main"]);
+        }),
+      ),
+  );
+
+  it.live(
+    "should leave a shared repository's branches alone when one of its projects turns the rule off",
+    () =>
+      runCleanupTest(
+        Effect.gen(function* () {
+          const {
+            service,
+            repo,
+            worktree,
+            deleteOnRemote,
+            localBranches,
+            setProjectRoots,
+            setSettings,
+          } = yield* goneBranchFixture;
+          yield* deleteOnRemote();
+          setProjectRoots([repo, worktree]);
+          setSettings({
+            projectSettingsOverrides: {
+              [ProjectId.make("project-1")]: { worktreeCleanup: { mode: "off" } },
+            },
+          });
+
+          const report = yield* service.runNow;
+
+          expect(report.entries.some((entry) => entry.kind === "branch")).toBe(false);
+          expect(yield* localBranches()).toEqual(["feature", "main"]);
+        }),
+      ),
+  );
+
+  it.live("should leave branches alone when the branch rule is off", () =>
+    runCleanupTest(
+      Effect.gen(function* () {
+        const { service, deleteOnRemote, localBranches, setSettings } = yield* goneBranchFixture;
+        yield* deleteOnRemote();
+        setSettings({ storageCleanup: DEFAULT_SERVER_SETTINGS.storageCleanup });
+
+        const report = yield* service.runNow;
+
+        expect(report.entries.some((entry) => entry.kind === "branch")).toBe(false);
+        expect(yield* localBranches()).toEqual(["feature", "main"]);
       }),
     ),
   );

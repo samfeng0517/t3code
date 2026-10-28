@@ -1018,6 +1018,8 @@ export const WorktreeCleanupRules = Schema.Struct({
   worktreeOnMerge: Schema.Boolean,
   worktreeOnDelete: Schema.Boolean,
   worktreeUnchanged: Schema.Boolean,
+  /** Deletes local branches whose upstream is gone and whose work reached the default branch. */
+  branchOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 });
 export type WorktreeCleanupRules = typeof WorktreeCleanupRules.Type;
 
@@ -1137,7 +1139,7 @@ export function shouldRecommendDatabaseCompaction(status: DatabaseStorageStatus)
 }
 
 export const StorageCleanupReportEntry = Schema.Struct({
-  kind: Schema.Literals(["worktree", "browser-artifacts", "logs"]),
+  kind: Schema.Literals(["worktree", "branch", "browser-artifacts", "logs"]),
   outcome: Schema.Literals(["removed", "kept", "failed"]),
   reason: Schema.String,
   path: Schema.NullOr(Schema.String),
@@ -1146,6 +1148,7 @@ export const StorageCleanupReportEntry = Schema.Struct({
   threadTitle: Schema.NullOr(Schema.String),
   bytes: Schema.NullOr(Schema.Number).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   files: Schema.NullOr(Schema.Number).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  branch: Schema.optionalKey(Schema.String),
 });
 export type StorageCleanupReportEntry = typeof StorageCleanupReportEntry.Type;
 export const StorageCleanupReport = Schema.Struct({
@@ -1170,6 +1173,7 @@ export const StorageCleanupSettings = Schema.Struct({
   worktreeOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   worktreeOnDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   worktreeUnchanged: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  branchOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   browserArtifactsAfterDays: StorageRetentionDays.pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -1546,6 +1550,7 @@ export const ServerSettingsPatch = Schema.Struct({
             worktreeOnMerge: Schema.optionalKey(Schema.Boolean),
             worktreeOnDelete: Schema.optionalKey(Schema.Boolean),
             worktreeUnchanged: Schema.optionalKey(Schema.Boolean),
+            branchOnMerge: Schema.optionalKey(Schema.Boolean),
           }),
         }),
       ]),
@@ -1559,6 +1564,7 @@ export const ServerSettingsPatch = Schema.Struct({
       worktreeOnMerge: Schema.optionalKey(Schema.Boolean),
       worktreeOnDelete: Schema.optionalKey(Schema.Boolean),
       worktreeUnchanged: Schema.optionalKey(Schema.Boolean),
+      branchOnMerge: Schema.optionalKey(Schema.Boolean),
       browserArtifactsAfterDays: Schema.optionalKey(StorageRetentionDays),
       logsAfterDays: Schema.optionalKey(StorageRetentionDays),
     }),

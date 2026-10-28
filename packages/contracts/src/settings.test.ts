@@ -36,6 +36,7 @@ describe("storage cleanup settings", () => {
       worktreeOnMerge: false,
       worktreeOnDelete: false,
       worktreeUnchanged: false,
+      branchOnMerge: false,
       worktreeKeepWhen: "uncommitted-changes",
       browserArtifactsAfterDays: null,
       logsAfterDays: null,
@@ -66,6 +67,7 @@ describe("storage cleanup settings", () => {
                 worktreeOnMerge: false,
                 worktreeOnDelete: false,
                 worktreeUnchanged: false,
+                branchOnMerge: false,
               },
             },
           },
@@ -86,6 +88,7 @@ describe("storage cleanup settings", () => {
           worktreeOnMerge: false,
           worktreeOnDelete: false,
           worktreeUnchanged: false,
+          branchOnMerge: false,
         },
       },
     });

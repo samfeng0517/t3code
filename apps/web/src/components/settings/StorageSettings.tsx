@@ -202,9 +202,11 @@ function CleanupResults({
                 ? entry.path
                 : entry.path?.split(/[\\/]/).findLast(Boolean)) ??
               t("settingsPages.storage.result.worktrees"))
-            : entry.kind === "logs"
-              ? t("settingsPages.storage.result.logs")
-              : t("settingsPages.storage.result.browserArtifacts");
+            : entry.kind === "branch"
+              ? (entry.branch ?? t("settingsPages.storage.result.branches"))
+              : entry.kind === "logs"
+                ? t("settingsPages.storage.result.logs")
+                : t("settingsPages.storage.result.browserArtifacts");
         return (
           <SettingsRow
             key={`${entry.path ?? entry.kind}:${entry.threadId ?? index}`}
@@ -318,7 +320,8 @@ function CleanupSection() {
       rules.worktreeSettledAfterDays !== null ||
       rules.worktreeOnMerge ||
       rules.worktreeOnDelete ||
-      rules.worktreeUnchanged;
+      rules.worktreeUnchanged ||
+      rules.branchOnMerge;
     return (
       settings.storageCleanup.browserArtifactsAfterDays !== null ||
       settings.storageCleanup.logsAfterDays !== null ||
@@ -623,6 +626,19 @@ export function WorktreeCleanupSection() {
                   aria-label={t("settingsPages.storage.merged.title")}
                   checked={settings.worktreeOnMerge}
                   onCheckedChange={(worktreeOnMerge) => updateWorktree({ worktreeOnMerge })}
+                />
+              }
+            />
+            <SettingsRow
+              title={t("settingsPages.storage.branchOnMerge.title")}
+              status={ruleStatus("branchOnMerge")}
+              description={t("settingsPages.storage.branchOnMerge.description")}
+              serverScoped={!isProjectScope}
+              control={
+                <Switch
+                  aria-label={t("settingsPages.storage.branchOnMerge.title")}
+                  checked={settings.branchOnMerge}
+                  onCheckedChange={(branchOnMerge) => updateWorktree({ branchOnMerge })}
                 />
               }
             />
