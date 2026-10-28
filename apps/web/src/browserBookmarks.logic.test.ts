@@ -2,20 +2,25 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   addBookmark,
+  addBookmarkFolder,
   bookmarkFileImport,
   bookmarkedUrls,
   type BrowserBookmarkNode,
   type BrowserBookmarkRoots,
   buildImportedFolder,
   countBookmarks,
+  dissolveBookmarkFolder,
   EMPTY_BOOKMARK_ROOTS,
+  moveBookmarkNode,
   parseNetscapeBookmarksHtml,
   removeBookmarkNode,
   removeBookmarkNodeWithLocation,
   removeBookmarksForUrl,
   replaceImportedFolder,
+  resolveBookmarkDrop,
   restoreRemovedBookmark,
   sanitizePersistedBookmarks,
+  updateBookmarkNode,
 } from "./browserBookmarks.logic";
 
 // What Chrome's bookmark manager writes from "Export bookmarks": unclosed <DT> and <p> tags,
@@ -163,6 +168,29 @@ describe("replaceImportedFolder", () => {
     const roots = replaceImportedFolder(first.roots, other.folder);
     expect(roots.bookmarkBar.map((node) => node.title)).toEqual(["Chrome", "Chrome (Work)"]);
   });
+
+  it("should add a new folder instead of replacing when the imported folder was edited", () => {
+    const first = importChrome(EMPTY_BOOKMARK_ROOTS, 1, "First");
+    const bar = first.roots.bookmarkBar[0];
+    const nested = bar?.kind === "folder" ? bar.children[0] : undefined;
+    const bookmarkId = nested?.kind === "folder" ? nested.children[0]?.id : undefined;
+    const edited = removeBookmarkNode(first.roots, bookmarkId!);
+    const second = importChrome(edited, first.nextId, "Second");
+    expect(second.roots.bookmarkBar).toHaveLength(2);
+    expect(countBookmarks(second.roots.bookmarkBar)).toBe(1);
+  });
+
+  it("should keep replacing the imported folder when it only moved between the two roots", () => {
+    const first = importChrome(EMPTY_BOOKMARK_ROOTS, 1, "First");
+    const moved = moveBookmarkNode(first.roots, first.roots.bookmarkBar[0]!.id, {
+      root: "other",
+      parentId: null,
+      index: 0,
+    });
+    const second = importChrome(moved, first.nextId, "Second");
+    expect(second.roots.bookmarkBar).toHaveLength(0);
+    expect(JSON.stringify(second.roots.other)).toContain("Second");
+  });
 });
 
 describe("bookmarkFileImport", () => {
@@ -227,6 +255,17 @@ describe("restoreRemovedBookmark", () => {
     expect(restored.bookmarkBar.map((node) => node.id)).toEqual(["k", "x"]);
     expect(restoreRemovedBookmark(restored, removedX.removed!)).toBe(restored);
   });
+
+  it("should let a re-import replace the imported folder again when a delete inside it is undone", () => {
+    const first = importChrome(EMPTY_BOOKMARK_ROOTS, 1, "First");
+    const bar = first.roots.bookmarkBar[0];
+    const nested = bar?.kind === "folder" ? bar.children[0] : undefined;
+    const bookmarkId = nested?.kind === "folder" ? nested.children[0]?.id : undefined;
+    const { roots: without, removed } = removeBookmarkNodeWithLocation(first.roots, bookmarkId!);
+    const undone = restoreRemovedBookmark(without, removed!);
+    expect(undone).toEqual(first.roots);
+    expect(importChrome(undone, first.nextId, "Second").roots.bookmarkBar).toHaveLength(1);
+  });
 });
 
 describe("bookmark edits", () => {
@@ -266,6 +305,148 @@ describe("bookmark edits", () => {
   });
 });
 
+describe("bookmark structure", () => {
+  const bookmark = (id: string): BrowserBookmarkNode => ({
+    id,
+    kind: "bookmark",
+    title: id,
+    url: `https://${id}.test/`,
+  });
+  const folder = (id: string, children: BrowserBookmarkNode[]): BrowserBookmarkNode => ({
+    id,
+    kind: "folder",
+    title: id,
+    children,
+  });
+  const ids = (nodes: ReadonlyArray<BrowserBookmarkNode>) => nodes.map((node) => node.id);
+  const sample = (): BrowserBookmarkRoots => ({
+    bookmarkBar: [bookmark("a"), bookmark("b"), folder("f", [folder("g", [bookmark("x")])])],
+    other: [bookmark("c")],
+  });
+
+  it("moveBookmarkNode should count the target index with the node still in place when reordering", () => {
+    expect(
+      ids(
+        moveBookmarkNode(sample(), "a", { root: "bookmarkBar", parentId: null, index: 2 })
+          .bookmarkBar,
+      ),
+    ).toEqual(["b", "a", "f"]);
+    expect(
+      ids(
+        moveBookmarkNode(sample(), "f", { root: "bookmarkBar", parentId: null, index: 0 })
+          .bookmarkBar,
+      ),
+    ).toEqual(["f", "a", "b"]);
+    const roots = sample();
+    expect(moveBookmarkNode(roots, "a", { root: "bookmarkBar", parentId: null, index: 1 })).toBe(
+      roots,
+    );
+  });
+
+  it("moveBookmarkNode should move across roots and into folders when the destination exists", () => {
+    const moved = moveBookmarkNode(sample(), "c", { root: "bookmarkBar", parentId: "g", index: 0 });
+    expect(moved.other).toEqual([]);
+    expect(JSON.stringify(moved.bookmarkBar)).toContain('"children":[{"id":"c"');
+    const roots = sample();
+    expect(moveBookmarkNode(roots, "c", { root: "other", parentId: "missing", index: 0 })).toBe(
+      roots,
+    );
+  });
+
+  it("moveBookmarkNode should leave the tree unchanged when a folder is moved into its own descendant", () => {
+    const roots = sample();
+    expect(moveBookmarkNode(roots, "f", { root: "bookmarkBar", parentId: "g", index: 0 })).toBe(
+      roots,
+    );
+    expect(moveBookmarkNode(roots, "f", { root: "bookmarkBar", parentId: "f", index: 0 })).toBe(
+      roots,
+    );
+  });
+
+  it("moveBookmarkNode should stop an imported folder replacing on re-import when it is moved into a folder", () => {
+    const first = importChrome({ bookmarkBar: [folder("f", [])], other: [] }, 10, "First");
+    const imported = first.roots.bookmarkBar[1]!;
+    const moved = moveBookmarkNode(first.roots, imported.id, {
+      root: "bookmarkBar",
+      parentId: "f",
+      index: 0,
+    });
+    const second = importChrome(moved, first.nextId, "Second");
+    expect(ids(second.roots.bookmarkBar)).toEqual(["f", String(first.nextId)]);
+  });
+
+  it("resolveBookmarkDrop should map before, after, inside, and root drops to destinations", () => {
+    const roots = sample();
+    expect(resolveBookmarkDrop(roots, "c", { id: "b" }, "before")).toEqual({
+      root: "bookmarkBar",
+      parentId: null,
+      index: 1,
+    });
+    expect(resolveBookmarkDrop(roots, "c", { id: "x" }, "after")).toEqual({
+      root: "bookmarkBar",
+      parentId: "g",
+      index: 1,
+    });
+    expect(resolveBookmarkDrop(roots, "c", { id: "f" }, "inside")).toEqual({
+      root: "bookmarkBar",
+      parentId: "f",
+      index: 1,
+    });
+    expect(resolveBookmarkDrop(roots, "a", { root: "other" }, "inside")).toEqual({
+      root: "other",
+      parentId: null,
+      index: 1,
+    });
+    expect(resolveBookmarkDrop(roots, "c", { id: "f" }, "after", new Set(["f"]))).toEqual({
+      root: "bookmarkBar",
+      parentId: "f",
+      index: 0,
+    });
+  });
+
+  it("resolveBookmarkDrop should return null when the drop would put a folder inside itself", () => {
+    const roots = sample();
+    expect(resolveBookmarkDrop(roots, "f", { id: "x" }, "before")).toBeNull();
+    expect(resolveBookmarkDrop(roots, "f", { id: "g" }, "inside")).toBeNull();
+    expect(resolveBookmarkDrop(roots, "f", { id: "f" }, "after")).toBeNull();
+    expect(resolveBookmarkDrop(roots, "f", { id: "g" }, "after", new Set(["g"]))).toBeNull();
+  });
+
+  it("updateBookmarkNode should reject the edit when the url is not http or https", () => {
+    expect(updateBookmarkNode(sample(), "a", { title: "A", url: "ftp://x" })).toBe(
+      "unsupported-url",
+    );
+    const next = updateBookmarkNode(sample(), "x", { title: "  New ", url: "https://new.test" });
+    expect(JSON.stringify(next)).toContain(
+      '{"id":"x","kind":"bookmark","title":"New","url":"https://new.test/"}',
+    );
+  });
+
+  it("updateBookmarkNode should turn an imported folder into an ordinary one when it is renamed", () => {
+    const { roots } = importChrome(EMPTY_BOOKMARK_ROOTS, 1, "A");
+    const renamed = updateBookmarkNode(roots, roots.bookmarkBar[0]!.id, { title: "Mine" });
+    expect(renamed).not.toBe("unsupported-url");
+    const node = (renamed as BrowserBookmarkRoots).bookmarkBar[0];
+    expect(node).toMatchObject({ kind: "folder", title: "Mine" });
+    expect(node && "importSource" in node).toBe(false);
+  });
+
+  it("addBookmarkFolder should insert an empty folder at the destination", () => {
+    const next = addBookmarkFolder(
+      sample(),
+      { root: "other", parentId: null, index: 0 },
+      { id: "n", title: "New" },
+    );
+    expect(next.other[0]).toEqual({ id: "n", kind: "folder", title: "New", children: [] });
+  });
+
+  it("dissolveBookmarkFolder should put the folder's contents where the folder was", () => {
+    expect(ids(dissolveBookmarkFolder(sample(), "f").bookmarkBar)).toEqual(["a", "b", "g"]);
+    const roots = sample();
+    expect(dissolveBookmarkFolder(roots, "a")).toBe(roots);
+  });
+});
+
 describe("sanitizePersistedBookmarks", () => {
   it("should drop malformed nodes and keep ids unique when restoring saved bookmarks", () => {
     const restored = sanitizePersistedBookmarks({
@@ -273,6 +454,14 @@ describe("sanitizePersistedBookmarks", () => {
         { id: "4", kind: "bookmark", title: "A", url: "https://a.test/" },
         { id: "5", kind: "bookmark", title: "Bad", url: "ftp://a.test/" },
         { id: "6", kind: "folder", title: "F", children: [{ id: "7", kind: "nope" }] },
+        {
+          id: "8",
+          kind: "folder",
+          title: "Chrome",
+          children: [],
+          importSource: chromeSource,
+          importDetached: true,
+        },
         "junk",
       ],
       other: "junk",
@@ -282,10 +471,18 @@ describe("sanitizePersistedBookmarks", () => {
       bookmarkBar: [
         { id: "4", kind: "bookmark", title: "A", url: "https://a.test/" },
         { id: "6", kind: "folder", title: "F", children: [] },
+        {
+          id: "8",
+          kind: "folder",
+          title: "Chrome",
+          children: [],
+          importSource: chromeSource,
+          importDetached: true,
+        },
       ],
       other: [],
     });
-    expect(restored.nextId).toBe(7);
+    expect(restored.nextId).toBe(9);
     expect(sanitizePersistedBookmarks(null)).toEqual({ roots: EMPTY_BOOKMARK_ROOTS, nextId: 1 });
   });
 });
