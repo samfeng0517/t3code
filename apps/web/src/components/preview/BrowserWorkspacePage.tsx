@@ -60,7 +60,7 @@ export function BrowserWorkspacePage() {
     event.stopPropagation();
     if (!event.repeat) commands.closeTab(activeTab.id);
   });
-  // oxlint-disable-next-line t3code/react-effect-budget -- subscribes to document keydown for the close shortcut and unsubscribes on cleanup
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to document keydown for the close shortcut and unsubscribes on cleanup
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || isCommandPaletteOpen()) return;
@@ -123,7 +123,7 @@ function BrowserWorkspaceTabView(props: {
   const sessionsReady = !serverBrowser || previewState.listLoaded;
   const needsSession = tab.sessionTabId === null && status === undefined;
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- opens the preview session over IPC when a tab needs one, an external side effect
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opens the preview session over IPC when a tab needs one, an external side effect
   useEffect(() => {
     if (!needsSession || !sessionsReady || !canOperatePreview) return;
     void openBrowserWorkspaceTabSession({

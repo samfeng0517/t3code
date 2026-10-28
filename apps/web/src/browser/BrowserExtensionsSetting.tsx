@@ -28,7 +28,7 @@ export function BrowserExtensionsSetting({ disabled }: { readonly disabled: bool
   const [pending, setPending] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- loads the extension list from the desktop bridge on mount, an external fetch
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- loads the extension list from the desktop bridge on mount, an external fetch
   useEffect(() => {
     void refreshBrowserExtensions();
   }, []);

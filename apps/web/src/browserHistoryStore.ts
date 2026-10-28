@@ -53,7 +53,7 @@ import {
   derivePhysicalProjectKey,
   selectProjectGroupingSettings,
   type ProjectGroupingSettings,
-} from "./logicalProject";
+} from "@t3tools/client-runtime/state/project-grouping";
 import { buildPhysicalToLogicalProjectKeyMap } from "./sidebarProjectGrouping";
 import type { Project } from "./types";
 
@@ -62,7 +62,7 @@ export type { BrowserHistoryEntry } from "./browserHistory.logic";
 const BROWSER_HISTORY_MAX_ENTRIES_PER_PROJECT = 50;
 export const BROWSER_HISTORY_MAX_PROJECTS = 20;
 const BROWSER_HISTORY_MAX_URL_LENGTH = 2048;
-export const BROWSER_HISTORY_MAX_TITLE_LENGTH = 512;
+const BROWSER_HISTORY_MAX_TITLE_LENGTH = 512;
 const MAX_VALID_DATE_MS = 8_640_000_000_000_000;
 const MAX_VISIT_COUNT = 1_000_000;
 
@@ -129,7 +129,7 @@ export function upsertHistoryEntry(
   return next.slice(0, BROWSER_HISTORY_MAX_ENTRIES_PER_PROJECT);
 }
 
-export function evictExcessProjects(
+function evictExcessProjects(
   byProjectKey: Record<string, BrowserHistoryEntry[]>,
 ): Record<string, BrowserHistoryEntry[]> {
   const keys = Object.keys(byProjectKey);

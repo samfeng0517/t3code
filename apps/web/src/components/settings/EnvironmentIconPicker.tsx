@@ -28,9 +28,6 @@ export function resolveEnvironmentIconPickerLock(input: {
   if (input.serverConfig === null) {
     return t("settingsPages.environmentIcon.lock.disconnected");
   }
-  if (input.serverConfig.environment.capabilities.environmentIcon !== true) {
-    return t("settingsPages.environmentIcon.lock.outdated");
-  }
   if (input.operateAccess !== "granted") {
     return t("settingsPages.environmentIcon.lock.noPermission");
   }

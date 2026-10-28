@@ -3,8 +3,6 @@ export const settingsPagesEn = {
   "settingsPages.scope.openAllEnvironments": "Open all environments",
   "settingsPages.environmentIcon.lock.disconnected":
     "Connect to this environment to change its icon.",
-  "settingsPages.environmentIcon.lock.outdated":
-    "This environment's server is too old to keep an icon. Update it to choose one.",
   "settingsPages.environmentIcon.lock.noPermission":
     "Your session on this environment cannot change its settings.",
   "settingsPages.environmentIcon.menu": "Icon",
@@ -258,7 +256,6 @@ export const settingsPagesEn = {
     "Allow T3 Code to read your desktop settings. You'll review any changes here before saving.",
   "settingsPages.captureShortcut.preparing": "Preparing changes…",
   "settingsPages.captureShortcut.review": "Review changes",
-  "settingsPages.captureShortcut.updateApp": "Update T3 Code to finish setting up your shortcut.",
   "settingsPages.captureShortcut.connecting": "Connecting to your desktop…",
   "settingsPages.captureShortcut.restart": "Restart T3 Code to finish connecting your shortcut.",
   "settingsPages.captureShortcut.advanced": "Advanced",
@@ -357,7 +354,6 @@ export const settingsPagesEn = {
   "settingsPages.snapShot.error.appText": "Couldn't allow app text capture",
   "settingsPages.snapShot.error.verify": "Couldn't verify capture access",
   "settingsPages.snapShot.error.close": "Couldn't close capture setup",
-  "settingsPages.snapShot.error.restart": "Restart T3 Code to finish capture setup.",
   "settingsPages.snapShot.error.checkShortcut": "Could not check this shortcut.",
   "settingsPages.snapShot.sound.off": "Off",
   "settingsPages.snapShot.sound.whoosh": "Whoosh",

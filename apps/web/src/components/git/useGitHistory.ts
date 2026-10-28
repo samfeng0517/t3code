@@ -268,13 +268,13 @@ export function useGitHistory(target: GitHistoryTarget): GitHistoryController {
   const stableRetry = useStableCallback(retry);
 
   // Callers mount one hook per target (the Git page keys each tab), so the first load runs once.
-  // oxlint-disable-next-line t3code/react-effect-budget -- starts the first history fetch on mount and drops in-flight pages on unmount
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- starts the first history fetch on mount and drops in-flight pages on unmount
   useEffect(() => {
     void stableLoadFirstPage();
     return stableRestart;
   }, [stableLoadFirstPage, stableRestart]);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- subscribes to window focus, an external event, to pick up changes made outside the app
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to window focus, an external event, to pick up changes made outside the app
   useEffect(() => {
     const listener = () => void stableCheckForChanges();
     window.addEventListener("focus", listener);
@@ -290,7 +290,7 @@ export function useGitHistory(target: GitHistoryTarget): GitHistoryController {
     }
   }
   const previousTurnActivity = useRef(turnActivity);
-  // oxlint-disable-next-line t3code/react-effect-budget -- reacts to turns ending in the external thread store, which writes no handler here
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reacts to turns ending in the external thread store, which writes no handler here
   useEffect(() => {
     const ended = endedTurnThreadKeys(previousTurnActivity.current, turnActivity);
     previousTurnActivity.current = turnActivity;
@@ -300,7 +300,7 @@ export function useGitHistory(target: GitHistoryTarget): GitHistoryController {
   const connected = useEnvironment(environmentId)?.connection.phase === "connected";
   const wasConnected = useRef(connected);
   const retriedAfterConnect = useRef(false);
-  // oxlint-disable-next-line t3code/react-effect-budget -- retries the first load when the environment connection, an external state, comes up
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- retries the first load when the environment connection, an external state, comes up
   useEffect(() => {
     const arrived = !wasConnected.current && connected;
     const retryNow = shouldRetryFirstLoad({
@@ -313,7 +313,7 @@ export function useGitHistory(target: GitHistoryTarget): GitHistoryController {
     if (retryNow) stableRetry();
   }, [connected, stableRetry]);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- retries once when a first load fails after the connection was already up
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- retries once when a first load fails after the connection was already up
   useEffect(() => {
     const retryNow = shouldRetryLateFailure({
       connected,

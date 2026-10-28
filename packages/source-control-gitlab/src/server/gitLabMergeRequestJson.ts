@@ -1,3 +1,4 @@
+import { trimOptionalString as trimmed } from "@t3tools/source-control-core/server/pullRequestUtils";
 import * as Cause from "effect/Cause";
 import * as Exit from "effect/Exit";
 import * as Result from "effect/Result";
@@ -210,11 +211,6 @@ export interface GitLabMergeRequestDetail extends GitLabMergeRequestListItem {
   readonly sourceProjectId?: number;
   /** A fork's merge request can run its pipeline in the fork, which GitLab names by id. */
   readonly headPipeline?: { readonly id: number; readonly projectId: number | null };
-}
-
-function trimmed(value: string | null | undefined): string | null {
-  const text = value?.trim() ?? "";
-  return text.length > 0 ? text : null;
 }
 
 function toActor(raw: Schema.Schema.Type<typeof RawUserSchema> | null | undefined) {

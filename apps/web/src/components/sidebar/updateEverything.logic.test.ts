@@ -104,13 +104,7 @@ describe("collectRestartingMachines", () => {
       return {
         ...base,
         serverConfig: {
-          environment: {
-            ...base.serverConfig!.environment,
-            capabilities: {
-              ...base.serverConfig!.environment.capabilities,
-              threadRestartContinuation: true,
-            },
-          },
+          environment: base.serverConfig!.environment,
           settings: { continueThreadsAfterServerUpdate: enabled },
         },
       };
@@ -156,41 +150,72 @@ describe("runUpdateEverything", () => {
   });
 });
 
-describe("update everything copy", () => {
-  it("summarizes the plan and the result as English lists", () => {
-    const plan = describeUpdateEverything({
-      localVersion: "0.0.50",
+describe("describeUpdateEverything", () => {
+  it("gives each machine one row with its T3 Code and provider updates", () => {
+    const id = EnvironmentId.make;
+    const { rows } = describeUpdateEverything({
+      localVersion: "1.1.0",
+      localMachines: [
+        { environmentId: id("local"), label: "Mainbook" },
+        { environmentId: id("wsl"), label: "Mainbook WSL" },
+      ],
       servers: [
         {
-          environmentId: EnvironmentId.make("alvin"),
+          environmentId: id("npm"),
+          serverLabel: "bb-1",
+          selfUpdate: "respawn",
+          targetVersion: "1.1.0",
+        },
+      ],
+      providerMachines: [
+        { environmentId: id("npm"), label: "bb-1", providers: ["Codex", "Claude"] },
+        { environmentId: id("local"), label: "Mainbook", providers: ["Codex"] },
+        { environmentId: id("manual"), label: "alvin", providers: ["Claude"] },
+      ],
+      skipped: [
+        { environmentId: id("manual"), label: "alvin", reason: "needs a manual update" },
+        { environmentId: id("offline"), label: "TheoRoom", reason: "not connected" },
+      ],
+    });
+
+    expect(
+      rows.map(({ label, app, skipped, providers }) => [label, app, skipped, providers]),
+    ).toEqual([
+      ["Mainbook", "this-app", null, ["Codex"]],
+      ["Mainbook WSL", "this-app", null, []],
+      ["bb-1", "server", null, ["Codex", "Claude"]],
+      ["alvin", null, "needs a manual update", ["Claude"]],
+      ["TheoRoom", null, "not connected", []],
+    ]);
+  });
+});
+
+describe("update everything copy", () => {
+  it("summarizes the plan and the result as English lists", () => {
+    const id = EnvironmentId.make;
+    const { summary } = describeUpdateEverything({
+      localVersion: "0.0.50",
+      localMachines: [],
+      servers: [
+        {
+          environmentId: id("alvin"),
           serverLabel: "alvin",
           selfUpdate: "boot-service",
           targetVersion: "0.0.50",
         },
         {
-          environmentId: EnvironmentId.make("mac"),
+          environmentId: id("mac"),
           serverLabel: "mac",
           selfUpdate: "desktop-managed",
           targetVersion: "0.0.50",
         },
       ],
       providerMachines: [
-        {
-          environmentId: EnvironmentId.make("alvin"),
-          label: "alvin",
-          providers: ["Codex", "Claude"],
-        },
+        { environmentId: id("alvin"), label: "alvin", providers: ["Codex", "Claude"] },
       ],
+      skipped: [],
     });
-    expect(plan).toEqual({
-      summary: "Update this app, 2 servers, and 2 providers",
-      items: "this app, 2 servers, and 2 providers",
-      lines: [
-        "This app: 0.0.50, restarts last",
-        "alvin: server to 0.0.50, Codex, Claude",
-        "mac: desktop app update",
-      ],
-    });
+    expect(summary).toBe("Update this app, 2 servers, and 2 providers");
 
     expect(
       getUpdateEverythingToastView(
