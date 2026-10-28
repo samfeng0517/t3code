@@ -50,6 +50,21 @@ export function useSidebarStageBackdropVariant(
   return resolveSidebarStageBackdropVariant(useEnvironmentStageLabel(), mode);
 }
 
+// Fork preference: the default "artwork" mode shows the Nightly sky on stable builds too.
+export function resolveSidebarHeaderBackdropVariant(
+  stageLabel: string | null,
+  mode: EnvironmentIdentificationMode = "artwork",
+): SidebarStageBackdropVariant | null {
+  const variant = resolveSidebarStageBackdropVariant(stageLabel, mode);
+  return mode === "artwork" ? (variant ?? "nightly") : variant;
+}
+
+export function useSidebarHeaderBackdropVariant(
+  mode: EnvironmentIdentificationMode,
+): SidebarStageBackdropVariant | null {
+  return resolveSidebarHeaderBackdropVariant(useEnvironmentStageLabel(), mode);
+}
+
 export function SidebarStageBackdrop({ variant }: { variant: SidebarStageBackdropVariant }) {
   return (
     <div

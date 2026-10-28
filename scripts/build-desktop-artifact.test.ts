@@ -39,6 +39,7 @@ import {
   preflightWindowsDesktopBuild,
   renderMacPasskeyEntitlements,
   resolveMacWebAuthnEntitlements,
+  resolveLocalMacSigningIdentity,
   resolveMacPasskeySigningConfiguration,
   resolveMergedStageDependencies,
   resolveBuildOptions,
@@ -1408,6 +1409,21 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       ),
     ),
   );
+
+  it("resolveLocalMacSigningIdentity should sign for distribution when given a Developer ID Application identity", () => {
+    assert.deepStrictEqual(
+      resolveLocalMacSigningIdentity(" Developer ID Application: Example Dev (ABC1234567) "),
+      { identity: "Example Dev (ABC1234567)", type: "distribution" },
+    );
+  });
+
+  it("resolveLocalMacSigningIdentity should sign for development when given an Apple Development identity", () => {
+    assert.deepStrictEqual(
+      resolveLocalMacSigningIdentity("Apple Development: Example Dev (XYZ9876543)"),
+      { identity: "Example Dev (XYZ9876543)", type: "development" },
+    );
+    assert.strictEqual(resolveLocalMacSigningIdentity("  "), undefined);
+  });
 
   it("derives macOS passkey signing configuration from the Clerk publishable key", () => {
     const configuration = resolveMacPasskeySigningConfiguration({

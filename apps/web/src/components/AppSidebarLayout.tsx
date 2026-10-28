@@ -44,7 +44,7 @@ import { SidebarBrandWidthProbe } from "./sidebar/SidebarChrome";
 import { isAppModalPage } from "./sidebar/mainAppLocation";
 import type { SidebarRouteReveal } from "./sidebar/routeReveal";
 import { BrowserWorkspaceController } from "../browser/BrowserWorkspaceController";
-import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
+import { useSidebarHeaderBackdropVariant } from "./SidebarStageBackdrop";
 import {
   clampThreadSidebarWidth,
   resolveInitialThreadSidebarWidth,
@@ -320,7 +320,7 @@ function SidebarControl() {
   const { toggleSidebar, isMobile, mobileSheetMounted } = useSidebar();
   const isSidebarVisible = useSidebarVisibility();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
-  const stageBackdropVariant = useSidebarStageBackdropVariant(environmentIdentificationMode);
+  const stageBackdropVariant = useSidebarHeaderBackdropVariant(environmentIdentificationMode);
   const shortcutLabel = shortcutLabelForCommand(keybindings, "sidebar.toggle", {
     context: { usagePageOpen },
   });

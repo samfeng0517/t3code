@@ -1245,6 +1245,22 @@ function normalizePasskeyRpDomain(value: string): string {
   return parsed.hostname;
 }
 
+// 1Password only connects to browsers signed for distribution, so Developer ID is
+// accepted alongside Apple Development. electron-builder rejects the type prefix.
+export function resolveLocalMacSigningIdentity(identity: string | undefined) {
+  const trimmed = identity?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const developerIdPrefix = /^Developer ID Application:\s*/u;
+  return developerIdPrefix.test(trimmed)
+    ? { identity: trimmed.replace(developerIdPrefix, ""), type: "distribution" as const }
+    : {
+        identity: trimmed.replace(/^Apple Development:\s*/u, ""),
+        type: "development" as const,
+      };
+}
+
 export function resolveMacPasskeySigningConfiguration(
   env: Readonly<Record<string, string | undefined>>,
 ): MacPasskeySigningConfiguration {
@@ -2822,13 +2838,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     const repoRoot = yield* RepoRoot;
     // An unsigned build is ad-hoc signed, whose identity changes every build, so
     // macOS privacy grants (e.g. reading other apps' data) never stick. A local
-    // Apple Development certificate keeps one identity across rebuilds.
-    // electron-builder rejects the "Apple Development:" prefix in the name.
-    const devSigningIdentity = signed
+    // certificate keeps one identity across rebuilds.
+    const localSigning = signed
       ? undefined
-      : loadRepoEnv({ repoRoot })
-          .T3CODE_MACOS_DEV_SIGNING_IDENTITY?.trim()
-          .replace(/^Apple Development:\s*/u, "");
+      : resolveLocalMacSigningIdentity(loadRepoEnv({ repoRoot }).T3CODE_MACOS_DEV_SIGNING_IDENTITY);
     buildConfig.mac = {
       target: target === "dmg" ? [target, "zip"] : [target],
       icon: "icon.icns",
@@ -2867,7 +2880,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
         },
       ],
       ...(signed ? { sign: path.join(repoRoot, "scripts/sign-macos.ts") } : {}),
-      ...(devSigningIdentity ? { identity: devSigningIdentity, type: "development" } : {}),
+      ...localSigning,
       ...(macPasskeySigning
         ? {
             entitlements: macPasskeySigning.entitlementsPath,
