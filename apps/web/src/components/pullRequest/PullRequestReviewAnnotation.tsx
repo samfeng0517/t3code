@@ -141,11 +141,8 @@ export function ReviewThreadCard({
   onReacted: () => void;
 }) {
   const [expanded, setExpanded] = useState(!thread.isResolved);
-  const [replying, setReplying] = useState(false);
-  const [reply, setReply] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
-  const sendingRef = useRef(false);
   const [loadedPage, setLoadedPage] = useState<
     (PullRequestThreadCommentsResult & { readonly threadId: string }) | null
   >(null);
@@ -174,15 +171,8 @@ export function ReviewThreadCard({
     }
   };
 
-  const send = async () => {
-    const trimmed = reply.trim();
-    if (trimmed.length === 0 || pending || sendingRef.current) return;
-    sendingRef.current = true;
-    const result = await settlePromise(() => onReply(trimmed));
-    sendingRef.current = false;
-    if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-    if (!result.value) return;
-    // Replies return no comment; retain loaded data and reopen pagination for a later read.
+  // Replies return no comment; retain loaded data and reopen pagination for a later read.
+  const reopenPagination = () =>
     setLoadedPage((previous) =>
       previous?.threadId === thread.id
         ? {
@@ -191,9 +181,6 @@ export function ReviewThreadCard({
           }
         : previous,
     );
-    setReply("");
-    setReplying(false);
-  };
   const loadMore = async () => {
     if (nextCommentsCursor === null || loadingMore) return;
     setLoadingMore(true);
@@ -322,45 +309,78 @@ export function ReviewThreadCard({
           ) : null}
 
           {canReply ? (
-            replying ? (
-              <div className="mt-2">
-                <Textarea
-                  autoFocus
-                  size="sm"
-                  value={reply}
-                  placeholder="Reply"
-                  aria-label="Reply to this conversation"
-                  onChange={(event) => setReply(event.target.value)}
-                  onKeyDown={(event) =>
-                    submitKeys({
-                      value: reply,
-                      pending,
-                      onSubmit: () => void send(),
-                      onCancel: () => setReplying(false),
-                    })(event)
-                  }
-                />
-                <div className="mt-2 flex justify-end gap-2">
-                  <Button size="xs" variant="ghost" onClick={() => setReplying(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    size="xs"
-                    disabled={pending || reply.trim().length === 0}
-                    onClick={() => void send()}
-                  >
-                    Reply
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <Button size="xs" variant="ghost" className="mt-2" onClick={() => setReplying(true)}>
-                Reply
-              </Button>
-            )
+            <PullRequestThreadReply pending={pending} onReply={onReply} onSent={reopenPagination} />
           ) : null}
         </>
       ) : null}
+    </div>
+  );
+}
+
+/** The collapsed "Reply" button and its composer, shared by code annotations and the timeline. */
+export function PullRequestThreadReply({
+  pending,
+  onReply,
+  onSent,
+}: {
+  pending: boolean;
+  onReply: (body: string) => Promise<boolean>;
+  onSent?: () => void;
+}) {
+  const [replying, setReplying] = useState(false);
+  const [reply, setReply] = useState("");
+  const sendingRef = useRef(false);
+  const [sending, setSending] = useState(false);
+  const busy = pending || sending;
+
+  const send = async () => {
+    const trimmed = reply.trim();
+    if (trimmed.length === 0 || busy || sendingRef.current) return;
+    sendingRef.current = true;
+    setSending(true);
+    const result = await settlePromise(() => onReply(trimmed));
+    sendingRef.current = false;
+    setSending(false);
+    if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+    if (!result.value) return;
+    onSent?.();
+    setReply("");
+    setReplying(false);
+  };
+
+  if (!replying) {
+    return (
+      <Button size="xs" variant="ghost" className="mt-2" onClick={() => setReplying(true)}>
+        Reply
+      </Button>
+    );
+  }
+  return (
+    <div className="mt-2">
+      <Textarea
+        autoFocus
+        size="sm"
+        value={reply}
+        placeholder="Reply"
+        aria-label="Reply to this conversation"
+        onChange={(event) => setReply(event.target.value)}
+        onKeyDown={(event) =>
+          submitKeys({
+            value: reply,
+            pending: busy,
+            onSubmit: () => void send(),
+            onCancel: () => setReplying(false),
+          })(event)
+        }
+      />
+      <div className="mt-2 flex justify-end gap-2">
+        <Button size="xs" variant="ghost" onClick={() => setReplying(false)}>
+          Cancel
+        </Button>
+        <Button size="xs" disabled={busy || reply.trim().length === 0} onClick={() => void send()}>
+          Reply
+        </Button>
+      </div>
     </div>
   );
 }

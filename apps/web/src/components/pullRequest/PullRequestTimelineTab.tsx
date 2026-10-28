@@ -46,6 +46,7 @@ import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { PullRequestMoreReplies } from "./PullRequestMoreReplies";
 import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
 import { PullRequestReactionBar } from "./PullRequestReactions";
+import { PullRequestThreadReply } from "./PullRequestReviewAnnotation";
 import {
   PullRequestActorAvatar,
   PullRequestDiffStat,
@@ -373,6 +374,7 @@ function ReviewThreadEvent({
   cwd,
   onOpen,
   reactions,
+  onReply,
 }: {
   event: PullRequestTimelineEvent;
   thread: PullRequestTimelineThread;
@@ -380,6 +382,7 @@ function ReviewThreadEvent({
   cwd: string;
   onOpen: (url: string) => void;
   reactions: ReactionSurface;
+  onReply: ((body: string) => Promise<boolean>) | null;
 }) {
   const dismissed = pullRequestReviewOutcome(event.reviewState) === "dismissed";
   const [expanded, setExpanded] = useState(!thread.isResolved && !dismissed);
@@ -457,6 +460,11 @@ function ReviewThreadEvent({
       {thread.hasMoreReplies ? (
         <div className="px-2">
           <PullRequestMoreReplies {...thread} />
+        </div>
+      ) : null}
+      {expanded && onReply !== null ? (
+        <div className="px-2">
+          <PullRequestThreadReply pending={false} onReply={onReply} />
         </div>
       ) : null}
     </div>
@@ -646,6 +654,22 @@ export function PullRequestTimelineTab({
   const events = buildPullRequestTimeline(detail);
   const term = sourceControlClients.get(detail.provider).changeRequest.singular;
   const newestCommitAt = newestPullRequestCommitAt(detail.commits);
+  const replyToThread = useAtomCommand(pullRequestEnvironment.replyToThread, {
+    reportFailure: false,
+  });
+  const canReply = detail.capabilities.review.reply && detail.viewerPermissions.comment;
+  const reply = (threadId: string) => async (body: string) => {
+    const result = await replyToThread({
+      environmentId,
+      input: { ...reference, threadId, body },
+    });
+    if (result._tag === "Failure") {
+      toastManager.add({ type: "error", title: "Reply could not be posted" });
+      return false;
+    }
+    onRefresh();
+    return true;
+  };
   const reactions: ReactionSurface = {
     canReact: detail.capabilities.reactions === true,
     environmentId,
@@ -695,6 +719,7 @@ export function PullRequestTimelineTab({
                   cwd={detail.workspaceRoot}
                   onOpen={openOnHost}
                   reactions={reactions}
+                  onReply={canReply ? reply(event.thread.id) : null}
                 />
               );
             }

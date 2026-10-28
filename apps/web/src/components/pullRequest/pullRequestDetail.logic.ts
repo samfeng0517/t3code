@@ -478,7 +478,7 @@ export interface PullRequestReplyAvailability {
 
 export interface PullRequestTimelineThread
   extends
-    Pick<PullRequestReviewThread, "path" | "line" | "isResolved" | "isOutdated">,
+    Pick<PullRequestReviewThread, "id" | "path" | "line" | "isResolved" | "isOutdated">,
     PullRequestReplyAvailability {
   readonly replies: ReadonlyArray<PullRequestTimelineEvent>;
 }
@@ -702,6 +702,7 @@ export function buildPullRequestTimeline(
       return {
         ...commentTimelineEvent(item.root),
         thread: {
+          id: item.thread.id,
           path: item.thread.path,
           line: item.thread.line,
           isResolved: item.thread.isResolved,
