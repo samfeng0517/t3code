@@ -288,4 +288,58 @@ it.layer(NodeServices.layer)("GitWorkflowService", (it) => {
       assert.equal(error.detail, "Unknown remote.");
     }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-push-tag-unknown-"))),
   );
+  it.effect(
+    "deleteRemoteBranch should delete the branch on the remote and its tracking ref when it exists",
+    () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const { cwd } = yield* makeRepoWithUnmergedFeature("t3-delete-remote-branch-");
+        yield* withBareRemote(cwd, "t3-delete-remote-branch-remote-");
+        yield* runGit(cwd, ["push", "origin", "main", "feature"]);
+        yield* runGit(cwd, ["remote", "set-head", "origin", "main"]);
+
+        yield* workflow.deleteRemoteBranch({ cwd, remoteName: "origin", branchName: "feature" });
+
+        assert.notInclude(
+          yield* runGit(cwd, ["ls-remote", "--heads", "origin"]),
+          "refs/heads/feature",
+        );
+        assert.equal(yield* runGit(cwd, ["branch", "--remotes", "--list", "origin/feature"]), "");
+        assert.include(yield* runGit(cwd, ["branch", "--list", "feature"]), "feature");
+      }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-delete-remote-branch-"))),
+  );
+  it.effect(
+    "deleteRemoteBranch should refuse the remote's advertised default branch when the local remote HEAD points elsewhere",
+    () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const { cwd } = yield* makeRepoWithUnmergedFeature("t3-delete-remote-stale-head-");
+        yield* withBareRemote(cwd, "t3-delete-remote-stale-head-remote-");
+        yield* runGit(cwd, ["push", "origin", "main", "feature"]);
+        yield* runGit(cwd, ["remote", "set-head", "origin", "feature"]);
+
+        const error = yield* workflow
+          .deleteRemoteBranch({ cwd, remoteName: "origin", branchName: "main" })
+          .pipe(Effect.flip);
+
+        assert.equal(error.detail, "Refusing to delete the remote's default branch.");
+        assert.include(yield* runGit(cwd, ["ls-remote", "--heads", "origin"]), "refs/heads/main");
+      }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-delete-remote-stale-head-"))),
+  );
+  it.effect("deleteRemoteBranch should refuse when the branch is the remote's default branch", () =>
+    Effect.gen(function* () {
+      const workflow = yield* GitWorkflowService.GitWorkflowService;
+      const { cwd } = yield* makeRepoWithUnmergedFeature("t3-delete-remote-default-");
+      yield* withBareRemote(cwd, "t3-delete-remote-default-remote-");
+      yield* runGit(cwd, ["push", "origin", "main"]);
+      yield* runGit(cwd, ["remote", "set-head", "origin", "main"]);
+
+      const error = yield* workflow
+        .deleteRemoteBranch({ cwd, remoteName: "origin", branchName: "main" })
+        .pipe(Effect.flip);
+
+      assert.equal(error.detail, "Refusing to delete the remote's default branch.");
+      assert.include(yield* runGit(cwd, ["ls-remote", "--heads", "origin"]), "refs/heads/main");
+    }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-delete-remote-default-"))),
+  );
 });

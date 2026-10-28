@@ -71,6 +71,7 @@ interface RefRow {
   readonly objectType: string;
   readonly peeledType: string;
   readonly refName: string;
+  readonly symref: string;
 }
 
 interface WorktreeRecord {
@@ -91,7 +92,7 @@ interface HistorySnapshot {
 
 function parseRefRows(stdout: string): ReadonlyArray<RefRow> {
   return stdout.split("\n").flatMap((line) => {
-    const [objectName, peeledName, objectType, refName, peeledType] = line.split("\0");
+    const [objectName, peeledName, objectType, refName, peeledType, symref] = line.split("\0");
     if (!objectName || !objectType || !refName) return [];
     return [
       {
@@ -100,6 +101,7 @@ function parseRefRows(stdout: string): ReadonlyArray<RefRow> {
         objectType,
         peeledType: peeledType ?? "",
         refName,
+        symref: symref ?? "",
       },
     ];
   });
@@ -299,7 +301,7 @@ export const make = Effect.gen(function* () {
             "for-each-ref",
             // `*objecttype` (beyond the four core fields) tells an annotated tag on a
             // commit from one on a tree or blob, which the graph must skip.
-            "--format=%(objectname)%00%(*objectname)%00%(objecttype)%00%(refname)%00%(*objecttype)",
+            "--format=%(objectname)%00%(*objectname)%00%(objecttype)%00%(refname)%00%(*objecttype)%00%(symref)",
             "refs/heads",
             "refs/remotes",
             "refs/tags",
@@ -503,6 +505,7 @@ export const make = Effect.gen(function* () {
         string,
         Array<{ readonly name: string; readonly fullName: string; readonly hash: string }>
       >();
+      const remoteDefaults = new Map<string, string>();
       const branches: Array<GitHistoryRefsResult["branches"][number]> = [];
       const tags: Array<GitHistoryRefsResult["tags"][number]> = [];
 
@@ -521,7 +524,14 @@ export const make = Effect.gen(function* () {
           const separator = fullName.indexOf("/");
           const remote = parsed?.remoteName ?? fullName.slice(0, separator);
           const name = parsed?.branchName ?? fullName.slice(separator + 1);
-          if (separator < 0 || name === "HEAD") continue;
+          if (separator < 0) continue;
+          if (name === "HEAD") {
+            const prefix = `refs/remotes/${remote}/`;
+            if (row.symref.startsWith(prefix)) {
+              remoteDefaults.set(remote, row.symref.slice(prefix.length));
+            }
+            continue;
+          }
           const group = remotes.get(remote) ?? [];
           group.push({ name, fullName, hash: row.objectName });
           remotes.set(remote, group);
@@ -548,6 +558,7 @@ export const make = Effect.gen(function* () {
         branches,
         remotes: [...remotes].map(([remote, remoteBranches]) => ({
           remote,
+          defaultBranch: remoteDefaults.get(remote) ?? null,
           branches: remoteBranches,
         })),
         remoteNames,

@@ -84,6 +84,7 @@ it("RPC authorization should require source-control write for Git page branch an
     WS_METHODS.gitCreateTag,
     WS_METHODS.gitDeleteTag,
     WS_METHODS.gitPushTag,
+    WS_METHODS.gitDeleteRemoteBranch,
   ]) {
     expect(RPC_REQUIRED_SCOPES[method]).toBe(AuthSourceControlWriteScope);
     expect(clientRpcRequiredScopes(method, undefined)).toEqual([AuthSourceControlWriteScope]);
@@ -110,6 +111,7 @@ it("RPC authorization should require source-control write for Git page branch an
     WS_METHODS.gitCreateTag,
     WS_METHODS.gitDeleteTag,
     WS_METHODS.gitPushTag,
+    WS_METHODS.gitDeleteRemoteBranch,
   ]) {
     expect(WsRpcGroup.requests.get(method)?.middlewares.has(RpcScopeAuthorization)).toBe(true);
   }

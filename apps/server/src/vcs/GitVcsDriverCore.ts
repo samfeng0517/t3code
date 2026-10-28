@@ -4920,6 +4920,47 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     },
   );
 
+  const deleteRemoteBranch: GitVcsDriver.GitVcsDriver["Service"]["deleteRemoteBranch"] = Effect.fn(
+    "deleteRemoteBranch",
+  )(function* (input) {
+    const operation = "GitVcsDriver.deleteRemoteBranch";
+    const ref = `refs/heads/${input.branchName}`;
+    const args = ["push", "--delete", "--", input.remoteName, ref];
+    const fail = (detail: string) =>
+      new GitCommandError({ ...gitCommandContext({ operation, cwd: input.cwd, args }), detail });
+    const validName =
+      !input.branchName.startsWith("-") &&
+      (yield* executeGit(operation, input.cwd, ["check-ref-format", ref], {
+        allowNonZeroExit: true,
+        timeoutMs: 5_000,
+      })).exitCode === 0;
+    if (!validName) return yield* fail("Not a valid branch name.");
+    const remoteNames = yield* listRemoteNames(input.cwd);
+    if (!remoteNames.includes(input.remoteName)) return yield* fail("Unknown remote.");
+    // The local remote HEAD can be stale or missing, so the remote's own answer counts too.
+    const localDefault = yield* resolveDefaultBranchName(input.cwd, input.remoteName);
+    const advertised = yield* executeGit(
+      operation,
+      input.cwd,
+      ["ls-remote", "--symref", "--", input.remoteName, "HEAD"],
+      { allowNonZeroExit: true, timeoutMs: 20_000 },
+    ).pipe(
+      Effect.map((result) => /^ref: refs\/heads\/(.+)\tHEAD\r?$/m.exec(result.stdout)?.[1] ?? null),
+      Effect.orElseSucceed(() => null),
+    );
+    if (localDefault === input.branchName || advertised === input.branchName) {
+      return yield* fail("Refusing to delete the remote's default branch.");
+    }
+    yield* executeGitWithStableDiagnostics(operation, input.cwd, args, { timeoutMs: null }).pipe(
+      // The push-rejection copy suggests pushing from a terminal, which misleads for a delete.
+      Effect.catchIf(
+        (error) => error.reason === "push_rejected_by_remote",
+        () =>
+          fail("The remote refused to delete this branch, for example because it is protected."),
+      ),
+    );
+  });
+
   const initRepo: GitVcsDriver.GitVcsDriver["Service"]["initRepo"] = (input) =>
     executeGit("GitVcsDriver.initRepo", input.cwd, ["init"], {
       timeoutMs: 10_000,
@@ -5090,6 +5131,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       return yield* withListRefsInvalidation(input.cwd, deleteTag(input));
     }),
     pushTag,
+    deleteRemoteBranch: Effect.fnUntraced(function* (input) {
+      return yield* withListRefsInvalidation(input.cwd, deleteRemoteBranch(input));
+    }),
     initRepo: initRepoWithListRefsInvalidation,
     listLocalBranchNames,
     listWorktreePaths,

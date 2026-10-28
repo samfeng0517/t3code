@@ -33,6 +33,8 @@ export interface GitMenuContext {
   readonly inUseBy: string | null;
   /** The branch is checked out at the repository root. */
   readonly isCurrentBranch: boolean;
+  /** The remote branch is the one its remote's HEAD points at. */
+  readonly isRemoteDefaultBranch: boolean;
   readonly remoteNames: ReadonlyArray<string>;
 }
 
@@ -64,7 +66,15 @@ function writeItems(
       ];
     }
     case "remote":
-      return [{ id: "checkout", label: t("git.menu.checkout") }];
+      return [
+        { id: "checkout", label: t("git.menu.checkout") },
+        {
+          id: "delete",
+          label: t("git.menu.delete"),
+          destructive: true,
+          disabled: context.isRemoteDefaultBranch,
+        },
+      ];
     case "tag": {
       const [onlyRemote, ...otherRemotes] = context.remoteNames;
       const label = t("git.menu.pushTag");

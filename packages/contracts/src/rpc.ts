@@ -163,6 +163,7 @@ import {
   GitCreateTagInput,
   GitDeleteTagInput,
   GitPushTagInput,
+  GitDeleteRemoteBranchInput,
 } from "./git.ts";
 import {
   GitCommitDetailInput,
@@ -492,6 +493,7 @@ export const WS_METHODS = {
   gitCreateTag: "git.createTag",
   gitDeleteTag: "git.deleteTag",
   gitPushTag: "git.pushTag",
+  gitDeleteRemoteBranch: "git.deleteRemoteBranch",
 
   reviewGetDiffPreview: "review.getDiffPreview",
   reviewGetDiffFileContents: "review.getDiffFileContents",
@@ -1614,6 +1616,11 @@ const WsGitPushTagRpc = Rpc.make(WS_METHODS.gitPushTag, {
   error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
 });
 
+const WsGitDeleteRemoteBranchRpc = Rpc.make(WS_METHODS.gitDeleteRemoteBranch, {
+  payload: GitDeleteRemoteBranchInput,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
 const WsReviewGetDiffPreviewRpc = Rpc.make(WS_METHODS.reviewGetDiffPreview, {
   payload: ReviewDiffPreviewInput,
   success: ReviewDiffPreviewResult,
@@ -2207,6 +2214,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsGitCreateTagRpc,
   WsGitDeleteTagRpc,
   WsGitPushTagRpc,
+  WsGitDeleteRemoteBranchRpc,
   WsReviewGetDiffPreviewRpc,
   WsReviewGetDiffFileContentsRpc,
   WsTerminalOpenRpc,

@@ -436,6 +436,7 @@ describe("GitHistoryService", () => {
           assert.deepEqual(refs.remotes, [
             {
               remote: "origin",
+              defaultBranch: "main",
               branches: [
                 { name: "feature", fullName: "origin/feature", hash: feature },
                 { name: "main", fullName: "origin/main", hash: root },

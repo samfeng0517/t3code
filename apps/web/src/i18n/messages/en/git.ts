@@ -64,6 +64,8 @@ export const gitEn = {
   "git.dialog.cancel": "Cancel",
   "git.confirm.deleteTag": "Delete local tag {name}? The tag on the remote is not affected.",
   "git.confirm.deleteBranch": "Delete branch {name}?",
+  "git.confirm.deleteRemoteBranch":
+    "Delete branch {name} on {remote}? It disappears for everyone. This does not delete your local branch.",
   "git.confirm.forceDeleteBranch":
     "{name} has unmerged commits. After a force delete it can only be recovered from the reflog. Delete anyway?",
   "git.confirm.checkoutActive":
@@ -75,6 +77,7 @@ export const gitEn = {
   "git.toast.createdTag": "Created tag {name}",
   "git.toast.renamed": "Renamed {old} to {new}",
   "git.toast.deletedBranch": "Deleted branch {name}",
+  "git.toast.deletedRemoteBranch": "Deleted remote branch {name}",
   "git.toast.deletedTag": "Deleted tag {name}",
   "git.toast.pushedTag": "Pushed tag {name} to {remote}",
   "git.toast.copiedHash": "Copied commit hash",

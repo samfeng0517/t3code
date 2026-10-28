@@ -76,5 +76,12 @@ export function createGitEnvironmentAtoms<R, E>(
       concurrency: vcsCommandConcurrency,
       onSettled: invalidateRefs,
     }),
+    deleteRemoteBranch: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:git:delete-remote-branch",
+      tag: WS_METHODS.gitDeleteRemoteBranch,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+      onSettled: invalidateRefs,
+    }),
   };
 }

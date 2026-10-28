@@ -66,6 +66,8 @@ export const gitZhTW: Readonly<Record<keyof typeof gitEn, string>> = {
   "git.dialog.cancel": "取消",
   "git.confirm.deleteTag": "刪除本機 tag {name}？remote 上的 tag 不受影響。",
   "git.confirm.deleteBranch": "刪除 branch {name}？",
+  "git.confirm.deleteRemoteBranch":
+    "刪除 {remote} 上的 branch {name}？其他人也會看不到它。這個動作不會刪除本機 branch。",
   "git.confirm.forceDeleteBranch":
     "{name} 有尚未 merge 的 commit，強制刪除後只能從 reflog 找回。仍要刪除？",
   "git.confirm.checkoutActive":
@@ -77,6 +79,7 @@ export const gitZhTW: Readonly<Record<keyof typeof gitEn, string>> = {
   "git.toast.createdTag": "已建立 tag {name}",
   "git.toast.renamed": "已將 {old} 改名為 {new}",
   "git.toast.deletedBranch": "已刪除 branch {name}",
+  "git.toast.deletedRemoteBranch": "已刪除遠端 branch {name}",
   "git.toast.deletedTag": "已刪除 tag {name}",
   "git.toast.pushedTag": "已將 tag {name} push 到 {remote}",
   "git.toast.copiedHash": "已複製 commit hash",

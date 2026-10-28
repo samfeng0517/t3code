@@ -10,6 +10,7 @@ import {
   type GitCreateTagInput,
   type GitDeleteTagInput,
   type GitPushTagInput,
+  type GitDeleteRemoteBranchInput,
   type VcsDeleteBranchInput,
   type VcsRenameBranchInput,
   type VcsRenameBranchResult,
@@ -148,6 +149,9 @@ export class GitWorkflowService extends Context.Service<
     readonly createTag: (input: GitCreateTagInput) => Effect.Effect<void, GitCommandError>;
     readonly deleteTag: (input: GitDeleteTagInput) => Effect.Effect<void, GitCommandError>;
     readonly pushTag: (input: GitPushTagInput) => Effect.Effect<void, GitCommandError>;
+    readonly deleteRemoteBranch: (
+      input: GitDeleteRemoteBranchInput,
+    ) => Effect.Effect<void, GitCommandError>;
     readonly renameBranch: (input: {
       readonly exactName?: boolean;
       readonly cwd: string;
@@ -557,6 +561,11 @@ export const make = Effect.gen(function* () {
     pushTag: Effect.fn("GitWorkflowService.pushTag")(function (input) {
       return ensureGitCommand("GitWorkflowService.pushTag", input.cwd).pipe(
         Effect.andThen(git.pushTag(input)),
+      );
+    }),
+    deleteRemoteBranch: Effect.fn("GitWorkflowService.deleteRemoteBranch")(function (input) {
+      return ensureGitCommand("GitWorkflowService.deleteRemoteBranch", input.cwd).pipe(
+        Effect.andThen(git.deleteRemoteBranch(input)),
       );
     }),
     renameBranch: Effect.fn("GitWorkflowService.renameBranch")(function (input) {

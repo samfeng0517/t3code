@@ -33,6 +33,21 @@ const PUSH_TAG_PREFIX = "push-tag:";
 
 const isNotFullyMerged = Schema.is(GitBranchNotFullyMergedError);
 
+/** Splits `origin/feature` by the refs' own remote list, since remote names can contain `/`. */
+function remoteBranchOf(refs: GitHistoryRefsResult | null, fullName: string) {
+  for (const remote of refs?.remotes ?? []) {
+    const branch = remote.branches.find((candidate) => candidate.fullName === fullName);
+    if (branch !== undefined) {
+      return {
+        remoteName: remote.remote,
+        branchName: branch.name,
+        isDefault: remote.defaultBranch === branch.name,
+      };
+    }
+  }
+  return null;
+}
+
 export interface GitRefNamePrompt {
   readonly request: GitRefNameRequest;
   readonly finish: (choice: GitRefNameChoice | null) => void;
@@ -55,6 +70,10 @@ export function useGitRefActions(input: {
   const createTagCommand = useAtomCommand(gitEnvironment.createTag, commandOptions);
   const deleteTagCommand = useAtomCommand(gitEnvironment.deleteTag, commandOptions);
   const pushTagCommand = useAtomCommand(gitEnvironment.pushTag, commandOptions);
+  const deleteRemoteBranchCommand = useAtomCommand(
+    gitEnvironment.deleteRemoteBranch,
+    commandOptions,
+  );
   const historyRefsCommand = useAtomCommand(gitEnvironment.historyRefs, commandOptions);
   const { copyToClipboard } = useCopyToClipboard({
     onCopy: () => toastManager.add({ type: "success", title: t("git.toast.copiedHash") }),
@@ -199,6 +218,24 @@ export function useGitRefActions(input: {
     );
   };
 
+  const deleteRemoteBranch = async (cwd: string, fullName: string) => {
+    const remote = remoteBranchOf(refs, fullName);
+    if (remote === null) return;
+    const { remoteName, branchName } = remote;
+    if (
+      !(await confirm(
+        t("git.confirm.deleteRemoteBranch", { remote: remoteName, name: branchName }),
+        true,
+      ))
+    )
+      return;
+    await writes.run(
+      "delete-remote-branch",
+      () => deleteRemoteBranchCommand({ environmentId, input: { cwd, remoteName, branchName } }),
+      () => t("git.toast.deletedRemoteBranch", { name: fullName }),
+    );
+  };
+
   const deleteTag = async (cwd: string, name: string) => {
     if (!(await confirm(t("git.confirm.deleteTag", { name }), true))) return;
     await writes.run(
@@ -223,6 +260,9 @@ export function useGitRefActions(input: {
     if (action === "create-tag") return createTag(cwd, target.hash);
     if (action === "rename" && target.kind === "local") return renameBranch(cwd, target.name);
     if (action === "delete" && target.kind === "local") return deleteBranch(cwd, target.name);
+    if (action === "delete" && target.kind === "remote") {
+      return deleteRemoteBranch(cwd, target.fullName);
+    }
     if (action === "delete" && target.kind === "tag") return deleteTag(cwd, target.name);
     if (action.startsWith(PUSH_TAG_PREFIX) && target.kind === "tag") {
       return pushTag(cwd, target.name, action.slice(PUSH_TAG_PREFIX.length));
@@ -252,6 +292,8 @@ export function useGitRefActions(input: {
       pending: writes.pending !== null,
       inUseBy,
       isCurrentBranch: target.kind === "local" && target.name === refs.head.branch,
+      isRemoteDefaultBranch:
+        target.kind === "remote" && remoteBranchOf(refs, target.fullName)?.isDefault === true,
       remoteNames: refs.remoteNames,
     });
     const clicked = await settlePromise(() => api.contextMenu.show(items, position));

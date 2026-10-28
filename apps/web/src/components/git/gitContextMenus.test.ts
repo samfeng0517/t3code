@@ -10,6 +10,7 @@ const context = {
   pending: false,
   inUseBy: null,
   isCurrentBranch: false,
+  isRemoteDefaultBranch: false,
   remoteNames: ["origin"],
 };
 
@@ -98,8 +99,25 @@ describe("buildGitMenu", () => {
       );
       expect(items.map((item) => [item.id, item.disabled === true])).toEqual([
         ["checkout", true],
+        ["delete", true],
         ["copy-hash", false],
       ]);
     }
+  });
+
+  it("buildGitMenu should offer a destructive Delete when the target is a remote branch", () => {
+    const items = buildGitMenu({ kind: "remote", fullName: "origin/feature", hash: HASH }, context);
+    expect(items.map((item) => item.id)).toEqual(["checkout", "delete", "copy-hash"]);
+    const remove = items.find((item) => item.id === "delete");
+    expect(remove?.destructive).toBe(true);
+    expect(remove?.disabled).toBeFalsy();
+  });
+
+  it("buildGitMenu should disable Delete when the remote branch is its remote's default branch", () => {
+    const items = buildGitMenu(
+      { kind: "remote", fullName: "origin/main", hash: HASH },
+      { ...context, isRemoteDefaultBranch: true },
+    );
+    expect(items.find((item) => item.id === "delete")?.disabled).toBe(true);
   });
 });

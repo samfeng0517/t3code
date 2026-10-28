@@ -239,6 +239,13 @@ export const GitPushTagInput = Schema.Struct({
 });
 export type GitPushTagInput = typeof GitPushTagInput.Type;
 
+export const GitDeleteRemoteBranchInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  remoteName: TrimmedNonEmptyStringSchema,
+  branchName: TrimmedNonEmptyStringSchema,
+});
+export type GitDeleteRemoteBranchInput = typeof GitDeleteRemoteBranchInput.Type;
+
 export const VcsSwitchRefInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
   refName: TrimmedNonEmptyStringSchema,

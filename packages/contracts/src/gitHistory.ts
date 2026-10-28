@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import * as Effect from "effect/Effect";
 
 import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { GitCommandError, GitObjectHash } from "./git.ts";
@@ -68,6 +69,10 @@ export type GitHistoryRemoteBranch = typeof GitHistoryRemoteBranch.Type;
 
 export const GitHistoryRemote = Schema.Struct({
   remote: Schema.String,
+  /** The branch `refs/remotes/<remote>/HEAD` points at, when known. */
+  defaultBranch: Schema.NullOr(Schema.String).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   branches: Schema.Array(GitHistoryRemoteBranch),
 });
 export type GitHistoryRemote = typeof GitHistoryRemote.Type;

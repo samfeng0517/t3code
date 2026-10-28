@@ -185,6 +185,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.gitCreateTag]: "git",
   [WS_METHODS.gitDeleteTag]: "git",
   [WS_METHODS.gitPushTag]: "git",
+  [WS_METHODS.gitDeleteRemoteBranch]: "git",
   [WS_METHODS.vcsListRefs]: "vcs",
   [WS_METHODS.vcsCreateWorktree]: "vcs",
   [WS_METHODS.vcsRemoveWorktree]: "vcs",

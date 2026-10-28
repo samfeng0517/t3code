@@ -211,7 +211,11 @@ describe("buildRefLabels", () => {
         { name: "other", hash: "h2", upstream: null },
       ],
       remotes: [
-        { remote: "origin", branches: [{ name: "main", fullName: "origin/main", hash: "h1" }] },
+        {
+          remote: "origin",
+          defaultBranch: "main",
+          branches: [{ name: "main", fullName: "origin/main", hash: "h1" }],
+        },
       ],
       remoteNames: ["origin"],
       tags: [{ name: "v1", hash: "h1" }],

@@ -23,6 +23,7 @@ import {
   type GitCreateTagInput,
   type GitDeleteTagInput,
   type GitPushTagInput,
+  type GitDeleteRemoteBranchInput,
   type ReviewDiffPreviewInput,
   type ReviewDiffPreviewResult,
   type ReviewDiffFileContentsInput,
@@ -482,6 +483,10 @@ export class GitVcsDriver extends Context.Service<
     /** Deletes the local tag only; remotes keep theirs. */
     readonly deleteTag: (input: GitDeleteTagInput) => Effect.Effect<void, GitCommandError>;
     readonly pushTag: (input: GitPushTagInput) => Effect.Effect<void, GitCommandError>;
+    /** Deletes the branch on the remote; refuses the remote's default branch. */
+    readonly deleteRemoteBranch: (
+      input: GitDeleteRemoteBranchInput,
+    ) => Effect.Effect<void, GitCommandError>;
     readonly initRepo: (input: VcsInitInput) => Effect.Effect<void, GitCommandError>;
     readonly listLocalBranchNames: (cwd: string) => Effect.Effect<string[], GitCommandError>;
   }
