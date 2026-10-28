@@ -21,7 +21,7 @@ export const sidebarZhTW: Readonly<Record<keyof typeof sidebarEn, string>> = {
   "sidebar.usage.pace.under": "用得比時間慢：剩下的時間還有餘裕",
   "sidebar.usage.resetsIn": "{duration}後重設",
   "sidebar.usage.duration.minutes": "{minutes} 分鐘",
-  "sidebar.usage.duration.hours": "{hours} 小時 {minutes} 分鐘",
+  "sidebar.usage.duration.hours": "{hours} 小時 {minutes} 分",
   "sidebar.usage.duration.days": "{days} 天 {hours} 小時",
 
   "sidebar.header.title": "對話串",
