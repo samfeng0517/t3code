@@ -54,7 +54,6 @@ export const composerZhTW: Readonly<Record<keyof typeof composerEn, string>> = {
   "composer.modeToggle.build": "建置",
   "composer.modeToggle.planTooltip": "規劃模式：點一下以回到一般建置模式",
   "composer.modeToggle.defaultTooltip": "預設模式：點一下以進入規劃模式",
-  "composer.runtimeMode.ariaLabel": "執行模式",
   "composer.runtimeMode.approval-required.label": "監督",
   "composer.runtimeMode.approval-required.description": "執行指令與修改檔案前先詢問。",
   "composer.runtimeMode.auto-accept-edits.label": "自動接受編輯",
@@ -120,7 +119,6 @@ export const composerZhTW: Readonly<Record<keyof typeof composerEn, string>> = {
   "composer.compactMenu.trigger": "更多輸入框控制項",
   "composer.compactMenu.mode": "模式",
   "composer.compactMenu.chat": "對話",
-  "composer.compactMenu.access": "存取權限",
   "composer.traits.default": "預設",
   "composer.traits.ultrathinkInPrompt":
     "你的提示文字中包含「ultrathink」。請移除後才能變更這個選項。",

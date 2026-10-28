@@ -67,7 +67,6 @@ export const settingsEn = {
   "settings.restore.label.followSystem": "Follow system",
   "settings.restore.label.themeMix": "Theme mix",
   "settings.restore.label.threadNotifications": "Thread notifications",
-  "settings.restore.label.visibleThreads": "Visible threads",
   "settings.restore.label.projectGrouping": "Project Grouping",
   "settings.restore.label.workingSection": "Working section",
   "settings.restore.label.diffWhitespace": "Diff whitespace changes",
@@ -151,10 +150,9 @@ export const settingsEn = {
   "settings.appearance.fontSmoothing.resetLabel": "font smoothing",
   "settings.appearance.wordWrap.title": "Word wrap",
   "settings.appearance.wordWrap.description":
-    "Wrap long lines in code blocks, tables, diffs, and file previews by default.",
+    "Wrap long lines in code blocks, diffs, and file previews by default.",
   "settings.appearance.wordWrap.resetLabel": "word wrapping",
-  "settings.appearance.wordWrap.ariaLabel":
-    "Wrap code, tables, diffs, and file previews by default",
+  "settings.appearance.wordWrap.ariaLabel": "Wrap code, diffs, and file previews by default",
   "settings.general.section.organization": "Organization",
   "settings.general.section.behavior": "Behavior",
   "settings.general.section.projectsAndThreads": "Projects & threads",
@@ -203,7 +201,7 @@ export const settingsEn = {
     "Snooze usage-limit stops until reset. Pair with resume to continue on wake.",
   "settings.general.workingShelf.title": "Working section",
   "settings.general.workingShelf.description":
-    "Fold working and monitoring threads into a Working section. They return to the top of the inbox when they need you.",
+    "Fold working and monitoring threads into a Working section. They return to the top of the inbox when they need you. The boring sidebar in Labs has no Working section.",
   "settings.general.workingShelf.resetLabel": "working section",
   "settings.general.compactIdleThreads.title": "Compact idle threads",
   "settings.general.compactIdleThreads.description":
@@ -289,10 +287,6 @@ export const settingsEn = {
   "settings.general.composerRichText.title": "Rich text composer",
   "settings.general.composerRichText.description": "Show formatted Markdown as you type.",
   "settings.general.composerRichText.resetLabel": "rich text composer",
-  "settings.general.composerCollapse.title": "Collapse composer on scroll",
-  "settings.general.composerCollapse.description":
-    "Rest the composer of an existing thread into a single line when you scroll the conversation. Focus the composer or start typing to expand it again.",
-  "settings.general.composerCollapse.resetLabel": "collapse composer on scroll",
   "settings.general.sendShortcut.title": "Send shortcut",
   "settings.general.sendShortcut.description":
     "Choose when Enter sends a prompt or inserts a new line",
@@ -456,9 +450,6 @@ export const settingsEn = {
   "settings.general.legacyContextWindow.title": "Context window indicator (legacy)",
   "settings.general.legacyContextWindow.description":
     "Shows context window usage as a circular indicator in the composer.",
-  "settings.general.legacySidebar.title": "Sidebar (legacy)",
-  "settings.general.legacySidebar.description":
-    "Restore per-project thread trees instead of the default flat sidebar.",
 
   "settings.archived.toast.unarchiveFailed": "Failed to unarchive thread",
   "settings.archived.toast.deleteFailed": "Failed to delete thread",

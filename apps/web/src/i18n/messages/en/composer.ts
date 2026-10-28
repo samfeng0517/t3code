@@ -54,7 +54,6 @@ export const composerEn = {
   "composer.modeToggle.build": "Build",
   "composer.modeToggle.planTooltip": "Plan mode. Click to return to normal build mode",
   "composer.modeToggle.defaultTooltip": "Default mode. Click to enter plan mode",
-  "composer.runtimeMode.ariaLabel": "Runtime mode",
   "composer.runtimeMode.approval-required.label": "Supervised",
   "composer.runtimeMode.approval-required.description": "Ask before commands and file changes.",
   "composer.runtimeMode.auto-accept-edits.label": "Auto-accept edits",
@@ -125,7 +124,6 @@ export const composerEn = {
   "composer.compactMenu.trigger": "More composer controls",
   "composer.compactMenu.mode": "Mode",
   "composer.compactMenu.chat": "Chat",
-  "composer.compactMenu.access": "Access",
   "composer.traits.default": "Default",
   "composer.traits.ultrathinkInPrompt":
     'Your prompt contains "ultrathink" in the text. Remove it to change this option.',
