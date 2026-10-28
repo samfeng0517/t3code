@@ -45,6 +45,21 @@ export function useSidebarStageBackdropVariant(enabled = true): SidebarStageBack
   return resolveSidebarStageBackdropVariant(useEnvironmentStageLabel(), enabled);
 }
 
+// Fork preference: the sidebar header shows the Nightly sky on stable builds too.
+export function resolveSidebarHeaderBackdropVariant(
+  stageLabel: string | null,
+  enabled = true,
+): SidebarStageBackdropVariant | null {
+  if (!enabled) return null;
+  return resolveSidebarStageBackdropVariant(stageLabel) ?? "nightly";
+}
+
+export function useSidebarHeaderBackdropVariant(
+  enabled = true,
+): SidebarStageBackdropVariant | null {
+  return resolveSidebarHeaderBackdropVariant(useEnvironmentStageLabel(), enabled);
+}
+
 export function SidebarStageBackdrop({ variant }: { variant: SidebarStageBackdropVariant }) {
   return (
     <div
