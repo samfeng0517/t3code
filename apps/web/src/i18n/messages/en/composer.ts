@@ -237,6 +237,11 @@ export const composerEn = {
   "composer.contextWindow.totalProcessed": "Total processed",
   "composer.contextWindow.cost": "Cost",
   "composer.contextWindow.compact": "Compact context",
+  "composer.contextWindow.compactsAt": "Compacts automatically at about {tokens} tokens.",
+  "composer.contextWindow.compactsForModel":
+    "Context for {model} compacts automatically when needed.",
+  "composer.contextWindow.compactsWhenNeeded": "Context compacts automatically when needed.",
+  "composer.contextWindow.panelLabel": "Context",
   "composer.header.projectSettings": "Project settings",
   "composer.header.breadcrumb": "Thread breadcrumb",
   "composer.header.newThreadIn": "New thread in {project}",

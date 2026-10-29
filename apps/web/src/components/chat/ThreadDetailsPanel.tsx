@@ -18,7 +18,9 @@ import ProjectScriptsControl, {
 } from "../ProjectScriptsControl";
 import { memo, type ComponentProps } from "react";
 import { useT } from "~/i18n";
+import type { ContextWindowSnapshot } from "~/lib/contextWindow";
 import { ThreadDetailsCard } from "./ThreadDetailsCard";
+import { ThreadDetailsContextRow } from "./ThreadDetailsContextRow";
 import { OpenInPicker } from "./OpenInPicker";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
@@ -66,6 +68,11 @@ interface ThreadDetailsPanelProps extends Pick<
     input: NewProjectScriptInput,
   ) => Promise<ProjectScriptActionResult>;
   onDeleteProjectScript: (scriptId: string) => Promise<ProjectScriptActionResult>;
+  contextWindow: ContextWindowSnapshot | null;
+  contextModelDisplayName: string | null;
+  onCompactContext?: (() => void) | undefined;
+  compactDisabled?: boolean | undefined;
+  compactDisabledReason?: string | null | undefined;
 }
 
 export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
@@ -107,6 +114,15 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
     >
       {(density) => (
         <>
+          {props.contextWindow ? (
+            <ThreadDetailsContextRow
+              usage={props.contextWindow}
+              modelDisplayName={props.contextModelDisplayName}
+              onCompact={props.onCompactContext}
+              compactDisabled={props.compactDisabled}
+              compactDisabledReason={props.compactDisabledReason}
+            />
+          ) : null}
           <ThreadDetailsSection
             headingId="thread-details-workspace-heading"
             title={t("threadDetails.sections.workspace")}

@@ -9,6 +9,8 @@ import {
   type ProviderInstanceEntry,
 } from "../../providerInstances";
 import { getDisplayModelName, type ModelEsque } from "./providerIconUtils";
+import { t as globalT, type Translate } from "~/i18n";
+import type { ContextWindowSnapshot } from "~/lib/contextWindow";
 
 // Fallback TTL: Claude's 1h cache plus slack.
 const CLAUDE_RESUME_COMPACTION_FALLBACK_MS = 70 * 60_000;
@@ -102,13 +104,29 @@ export function resolveContextWindowModelDisplayName(
 export function formatContextWindowCompactionMessage(
   modelDisplayName: string | null | undefined,
   autoCompactThreshold?: number | null,
+  t: Translate = globalT,
 ): string {
   if (typeof autoCompactThreshold === "number" && autoCompactThreshold > 0) {
-    return `Compacts automatically at about ${autoCompactThreshold.toLocaleString("en-US")} tokens.`;
+    return t("composer.contextWindow.compactsAt", {
+      tokens: autoCompactThreshold.toLocaleString("en-US"),
+    });
   }
   return modelDisplayName
-    ? `Context for ${modelDisplayName} compacts automatically when needed.`
-    : "Context compacts automatically when needed.";
+    ? t("composer.contextWindow.compactsForModel", { model: modelDisplayName })
+    : t("composer.contextWindow.compactsWhenNeeded");
+}
+
+export type ContextWindowTone = "normal" | "warning" | "critical";
+
+/** Warns as usage nears where the provider compacts, or the window's end when it does not say. */
+export function contextWindowTone(
+  usage: Pick<ContextWindowSnapshot, "usedTokens" | "maxTokens" | "autoCompactThreshold">,
+): ContextWindowTone {
+  const limit = usage.autoCompactThreshold ?? usage.maxTokens;
+  if (!limit || limit <= 0) return "normal";
+  const ratio = usage.usedTokens / limit;
+  if (ratio >= 0.95) return "critical";
+  return ratio >= 0.8 ? "warning" : "normal";
 }
 
 export function shouldReserveContextWindowMeter(input: {

@@ -9,7 +9,7 @@ import { Minimize2Icon } from "lucide-react";
 import { useT } from "~/i18n";
 import { composerFloatingLayerProps } from "./composerEventScope";
 
-function formatPercentage(value: number | null): string | null {
+export function formatContextWindowPercentage(value: number | null): string | null {
   if (value === null || !Number.isFinite(value)) {
     return null;
   }
@@ -17,6 +17,12 @@ function formatPercentage(value: number | null): string | null {
     return `${value.toFixed(1).replace(/\.0$/, "")}%`;
   }
   return `${Math.round(value)}%`;
+}
+
+function contextWindowUsageColor(normalizedPercentage: number): string {
+  return normalizedPercentage > 90
+    ? "var(--color-error)"
+    : "color-mix(in oklab, var(--color-muted-foreground) 72%, transparent)";
 }
 
 export function ContextWindowMeter(props: {
@@ -28,17 +34,12 @@ export function ContextWindowMeter(props: {
 }) {
   const { usage, modelDisplayName, onCompact, compactDisabled, compactDisabledReason } = props;
   const t = useT();
-  const usedPercentage = formatPercentage(usage.usedPercentage);
+  const usedPercentage = formatContextWindowPercentage(usage.usedPercentage);
   const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
   const radius = 9.75;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference * (1 - normalizedPercentage / 100);
-  const totalProcessedTokens = usage.totalProcessedTokens ?? null;
-  const showTotalProcessed = totalProcessedTokens !== null && totalProcessedTokens > 0;
-  const isOverloaded = normalizedPercentage > 90;
-  const usageColor = isOverloaded
-    ? "var(--color-error)"
-    : "color-mix(in oklab, var(--color-muted-foreground) 72%, transparent)";
+  const usageColor = contextWindowUsageColor(normalizedPercentage);
 
   return (
     <Popover>
@@ -99,84 +100,13 @@ export function ContextWindowMeter(props: {
         width="sm"
         className="text-left whitespace-normal"
       >
-        <div className="flex flex-col gap-2 p-(--floating-content-inset)">
-          <div className="flex items-center justify-between gap-3">
-            <div className="font-medium text-muted-foreground text-xs">
-              {t("composer.contextWindow.title")}
-            </div>
-            {usage.maxTokens !== null && usedPercentage ? (
-              <div className="text-secondary-label text-2xs tabular-nums">
-                <span>{usedPercentage}</span>
-                <span className="mx-1">·</span>
-                <span>
-                  {formatContextWindowTokens(usage.usedTokens)}/
-                  {formatContextWindowTokens(usage.maxTokens ?? null)}
-                </span>
-              </div>
-            ) : (
-              <div className="text-secondary-label text-2xs tabular-nums">
-                {formatContextWindowTokens(usage.usedTokens)}
-              </div>
-            )}
-          </div>
-          {usage.maxTokens !== null ? (
-            <div
-              className="h-1.5 w-full overflow-hidden rounded-full bg-muted/60"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round(normalizedPercentage)}
-              aria-label={t("composer.contextWindow.usage")}
-            >
-              <div
-                className="h-full rounded-full transition-[width,background-color] duration-500 ease-out motion-reduce:transition-none"
-                style={{ width: `${normalizedPercentage}%`, backgroundColor: usageColor }}
-              />
-            </div>
-          ) : null}
-          {showTotalProcessed ? (
-            <div className="flex items-center justify-between gap-3 text-2xs leading-4">
-              <span className="text-secondary-label">
-                {t("composer.contextWindow.totalProcessed")}
-              </span>
-              <span className="font-medium tabular-nums text-secondary-label">
-                {formatContextWindowTokens(totalProcessedTokens)}
-              </span>
-            </div>
-          ) : null}
-          {usage.cost != null ? (
-            <div className="flex items-center justify-between gap-3 text-2xs leading-4">
-              <span className="text-secondary-label">{t("composer.contextWindow.cost")}</span>
-              <span className="font-medium tabular-nums text-secondary-label">
-                {formatContextWindowCost(usage.cost)}
-              </span>
-            </div>
-          ) : null}
-          {usage.compactsAutomatically ? (
-            <div className="mt-1 text-pretty text-secondary-label text-2xs font-medium">
-              {formatContextWindowCompactionMessage(modelDisplayName, usage.autoCompactThreshold)}
-            </div>
-          ) : null}
-          {onCompact ? (
-            <>
-              <Button
-                size="xs"
-                variant="outline"
-                className="mt-1 w-full justify-center"
-                disabled={compactDisabled}
-                onClick={onCompact}
-              >
-                <Minimize2Icon aria-hidden="true" />
-                {t("composer.contextWindow.compact")}
-              </Button>
-              {compactDisabled && compactDisabledReason ? (
-                <div className="text-pretty text-secondary-label text-2xs">
-                  {compactDisabledReason}
-                </div>
-              ) : null}
-            </>
-          ) : null}
-        </div>
+        <ContextWindowDetails
+          usage={usage}
+          modelDisplayName={modelDisplayName}
+          onCompact={onCompact}
+          compactDisabled={compactDisabled}
+          compactDisabledReason={compactDisabledReason}
+        />
       </PopoverPopup>
     </Popover>
   );
@@ -184,4 +114,97 @@ export function ContextWindowMeter(props: {
 
 export function ContextWindowMeterPlaceholder() {
   return <span aria-hidden="true" className="size-7 shrink-0" />;
+}
+
+/** The breakdown behind every context usage surface: composer meter and thread details row. */
+export function ContextWindowDetails(props: {
+  usage: ContextWindowSnapshot;
+  modelDisplayName?: string | null | undefined;
+  onCompact?: (() => void) | undefined;
+  compactDisabled?: boolean | undefined;
+  compactDisabledReason?: string | null | undefined;
+}) {
+  const { usage, modelDisplayName, onCompact, compactDisabled, compactDisabledReason } = props;
+  const t = useT();
+  const usedPercentage = formatContextWindowPercentage(usage.usedPercentage);
+  const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
+  const totalProcessedTokens = usage.totalProcessedTokens ?? null;
+  const showTotalProcessed = totalProcessedTokens !== null && totalProcessedTokens > 0;
+  const usageColor = contextWindowUsageColor(normalizedPercentage);
+  return (
+    <div className="flex flex-col gap-2 p-(--floating-content-inset)">
+      <div className="flex items-center justify-between gap-3">
+        <div className="font-medium text-muted-foreground text-xs">
+          {t("composer.contextWindow.title")}
+        </div>
+        {usage.maxTokens !== null && usedPercentage ? (
+          <div className="text-secondary-label text-2xs tabular-nums">
+            <span>{usedPercentage}</span>
+            <span className="mx-1">·</span>
+            <span>
+              {formatContextWindowTokens(usage.usedTokens)}/
+              {formatContextWindowTokens(usage.maxTokens ?? null)}
+            </span>
+          </div>
+        ) : (
+          <div className="text-secondary-label text-2xs tabular-nums">
+            {formatContextWindowTokens(usage.usedTokens)}
+          </div>
+        )}
+      </div>
+      {usage.maxTokens !== null ? (
+        <div
+          className="h-1.5 w-full overflow-hidden rounded-full bg-muted/60"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(normalizedPercentage)}
+          aria-label={t("composer.contextWindow.usage")}
+        >
+          <div
+            className="h-full rounded-full transition-[width,background-color] duration-500 ease-out motion-reduce:transition-none"
+            style={{ width: `${normalizedPercentage}%`, backgroundColor: usageColor }}
+          />
+        </div>
+      ) : null}
+      {showTotalProcessed ? (
+        <div className="flex items-center justify-between gap-3 text-2xs leading-4">
+          <span className="text-secondary-label">{t("composer.contextWindow.totalProcessed")}</span>
+          <span className="font-medium tabular-nums text-secondary-label">
+            {formatContextWindowTokens(totalProcessedTokens)}
+          </span>
+        </div>
+      ) : null}
+      {usage.cost != null ? (
+        <div className="flex items-center justify-between gap-3 text-2xs leading-4">
+          <span className="text-secondary-label">{t("composer.contextWindow.cost")}</span>
+          <span className="font-medium tabular-nums text-secondary-label">
+            {formatContextWindowCost(usage.cost)}
+          </span>
+        </div>
+      ) : null}
+      {usage.compactsAutomatically ? (
+        <div className="mt-1 text-pretty text-secondary-label text-2xs font-medium">
+          {formatContextWindowCompactionMessage(modelDisplayName, usage.autoCompactThreshold, t)}
+        </div>
+      ) : null}
+      {onCompact ? (
+        <>
+          <Button
+            size="xs"
+            variant="outline"
+            className="mt-1 w-full justify-center"
+            disabled={compactDisabled}
+            onClick={onCompact}
+          >
+            <Minimize2Icon aria-hidden="true" />
+            {t("composer.contextWindow.compact")}
+          </Button>
+          {compactDisabled && compactDisabledReason ? (
+            <div className="text-pretty text-secondary-label text-2xs">{compactDisabledReason}</div>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
 }
