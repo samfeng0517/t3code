@@ -45,7 +45,7 @@ index b4242b0b847d33d8544832bfb2d8723a884a3072..a04d3f505ad2ed693dd31ae0d39eb054
 +    // T3 Code: stdout chunks are not message boundaries; a frame can arrive
 +    // split or several at once. Buffer and frame them, and drop a host that
 +    // sends invalid JSON instead of throwing out of the main process.
-+    this.pending = Buffer.alloc(0);
++    this.received = Buffer.alloc(0);
      this.receive = (data) => {
 -      const length = data.readUInt32LE(0);
 -      const message = JSON.parse(data.subarray(4, 4 + length).toString());
@@ -54,12 +54,12 @@ index b4242b0b847d33d8544832bfb2d8723a884a3072..a04d3f505ad2ed693dd31ae0d39eb054
 -        this.sender.send(`crx-native-msg-${this.connectionId}`, message);
 -      } else {
 -        this.resolveResponse?.(message);
-+      this.pending = Buffer.concat([this.pending, data]);
-+      while (this.pending.length >= 4) {
-+        const length = this.pending.readUInt32LE(0);
-+        if (this.pending.length < 4 + length) return;
-+        const body = this.pending.subarray(4, 4 + length);
-+        this.pending = this.pending.subarray(4 + length);
++      this.received = Buffer.concat([this.received, data]);
++      while (this.received.length >= 4) {
++        const length = this.received.readUInt32LE(0);
++        if (this.received.length < 4 + length) return;
++        const body = this.received.subarray(4, 4 + length);
++        this.received = this.received.subarray(4 + length);
 +        let message;
 +        try {
 +          message = JSON.parse(body.toString());
@@ -198,7 +198,7 @@ index dc598ce8f74c1e813c4014ecf8fc6ca5809f4ba5..08a8620117f20cfcacb9297b1fd76478
 +    // T3 Code: stdout chunks are not message boundaries; a frame can arrive
 +    // split or several at once. Buffer and frame them, and drop a host that
 +    // sends invalid JSON instead of throwing out of the main process.
-+    this.pending = Buffer.alloc(0);
++    this.received = Buffer.alloc(0);
      this.receive = (data) => {
 -      const length = data.readUInt32LE(0);
 -      const message = JSON.parse(data.subarray(4, 4 + length).toString());
@@ -207,12 +207,12 @@ index dc598ce8f74c1e813c4014ecf8fc6ca5809f4ba5..08a8620117f20cfcacb9297b1fd76478
 -        this.sender.send(`crx-native-msg-${this.connectionId}`, message);
 -      } else {
 -        this.resolveResponse?.(message);
-+      this.pending = Buffer.concat([this.pending, data]);
-+      while (this.pending.length >= 4) {
-+        const length = this.pending.readUInt32LE(0);
-+        if (this.pending.length < 4 + length) return;
-+        const body = this.pending.subarray(4, 4 + length);
-+        this.pending = this.pending.subarray(4 + length);
++      this.received = Buffer.concat([this.received, data]);
++      while (this.received.length >= 4) {
++        const length = this.received.readUInt32LE(0);
++        if (this.received.length < 4 + length) return;
++        const body = this.received.subarray(4, 4 + length);
++        this.received = this.received.subarray(4 + length);
 +        let message;
 +        try {
 +          message = JSON.parse(body.toString());
