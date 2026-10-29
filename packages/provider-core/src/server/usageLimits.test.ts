@@ -112,11 +112,21 @@ describe("resolveUsageLimitsAfterProbe", () => {
     expect(resolveUsageLimitsAfterProbe({ published: live, probed: newer })).toEqual(newer);
   });
 
-  it("keeps the last good windows through a failed probe but not an unsupported one", () => {
+  it("should keep the last good read and windows streamed since a failure when a probe fails but not when the account is unsupported", () => {
     const failed = { checkedAt, windows: [], unavailable: { reason: "probeFailed" as const } };
     const unsupported = { checkedAt, windows: [], unavailable: { reason: "unsupported" as const } };
+    const streamedOnly = { ...published, unavailable: { reason: "probeFailed" as const } };
     expect(resolveUsageLimitsAfterProbe({ published, probed: failed })).toBe(published);
+    expect(resolveUsageLimitsAfterProbe({ published: streamedOnly, probed: failed })).toBe(
+      streamedOnly,
+    );
     expect(resolveUsageLimitsAfterProbe({ published, probed: unsupported })).toBe(unsupported);
     expect(resolveUsageLimitsAfterProbe({ published: undefined, probed: failed })).toBe(failed);
+    expect(
+      resolveUsageLimitsAfterProbe({
+        published: { ...failed, checkedAt: "2026-09-03T11:00:00.000Z" },
+        probed: failed,
+      }),
+    ).toBe(failed);
   });
 });

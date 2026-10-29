@@ -104,7 +104,13 @@ export function resolveUsageLimitsAfterProbe(input: {
   readonly probed: ServerProviderUsageLimits | undefined;
 }): ServerProviderUsageLimits | undefined {
   const { published, probed } = input;
-  if (probed?.unavailable?.reason === "probeFailed" && published && !published.unavailable) {
+  // A failed read keeps the last good read, and windows streamed from turns since an earlier failure.
+  if (
+    probed?.unavailable?.reason === "probeFailed" &&
+    published &&
+    (!published.unavailable ||
+      (published.unavailable.reason === "probeFailed" && published.windows.length > 0))
+  ) {
     return published;
   }
   if (
