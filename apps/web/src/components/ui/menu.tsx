@@ -8,6 +8,7 @@ import { Input, type InputProps } from "./input";
 import { Spinner } from "./spinner";
 
 const Menu = MenuPrimitive.Root;
+const MenuCreateHandle = MenuPrimitive.createHandle;
 
 function MenuTrigger({ className, children, ...props }: MenuPrimitive.Trigger.Props) {
   return (
@@ -359,6 +360,7 @@ function MenuSubPopup({
 
 export {
   Menu,
+  MenuCreateHandle,
   Menu as DropdownMenu,
   MenuTrigger,
   MenuTrigger as DropdownMenuTrigger,

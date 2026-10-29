@@ -8,7 +8,6 @@ import type {
   PullRequestFilesViewedResult,
   PullRequestRef,
 } from "@t3tools/contracts";
-import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 
 import { t } from "~/i18n";
@@ -239,7 +238,7 @@ const filesViewedStore = createFilesViewedStore({
   subscribeAnswers: (target, onAnswer) =>
     appAtomRegistry.subscribe(
       filesViewedAtom(target),
-      (result) => onAnswer(Option.getOrNull(AsyncResult.value(result))),
+      (result) => onAnswer(AsyncResult.getOrElse(result, () => null)),
       { immediate: true },
     ),
   send: ({ environmentId, reference }, files) =>

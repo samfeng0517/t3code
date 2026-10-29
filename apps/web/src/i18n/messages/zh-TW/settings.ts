@@ -65,7 +65,6 @@ export const settingsZhTW: Readonly<Record<keyof typeof settingsEn, string>> = {
   "settings.restore.label.followSystem": "跟隨系統",
   "settings.restore.label.themeMix": "主題混搭",
   "settings.restore.label.threadNotifications": "對話串通知",
-  "settings.restore.label.visibleThreads": "顯示的對話串數量",
   "settings.restore.label.projectGrouping": "專案分組",
   "settings.restore.label.workingSection": "進行中區段",
   "settings.restore.label.diffWhitespace": "差異空白字元變更",
@@ -139,10 +138,9 @@ export const settingsZhTW: Readonly<Record<keyof typeof settingsEn, string>> = {
     "使用較細的灰階文字平滑處理，取代 macOS 預設值。",
   "settings.appearance.fontSmoothing.resetLabel": "字型平滑處理",
   "settings.appearance.wordWrap.title": "自動換行",
-  "settings.appearance.wordWrap.description":
-    "預設在程式碼區塊、表格、差異與檔案預覽中將長行自動換行。",
+  "settings.appearance.wordWrap.description": "預設在程式碼區塊、差異與檔案預覽中將長行自動換行。",
   "settings.appearance.wordWrap.resetLabel": "自動換行",
-  "settings.appearance.wordWrap.ariaLabel": "預設為程式碼、表格、差異與檔案預覽自動換行",
+  "settings.appearance.wordWrap.ariaLabel": "預設為程式碼、差異與檔案預覽自動換行",
   "settings.general.section.organization": "整理",
   "settings.general.section.behavior": "行為",
   "settings.general.section.projectsAndThreads": "專案與對話串",
@@ -189,7 +187,7 @@ export const settingsZhTW: Readonly<Record<keyof typeof settingsEn, string>> = {
     "對話串因用量上限停下時，先收起來，到重設時間再回到清單。這個選項只負責收起來；要自動繼續，請一併開啟上一項。",
   "settings.general.workingShelf.title": "進行中區段",
   "settings.general.workingShelf.description":
-    "將執行中與監看中的對話串收進「進行中」區段。需要你處理時，它們會回到收件匣頂端。",
+    "將執行中與監看中的對話串收進「進行中」區段。需要你處理時，它們會回到收件匣頂端。實驗室中的簡易側邊欄沒有「進行中」區段。",
   "settings.general.workingShelf.resetLabel": "進行中區段",
   "settings.general.compactIdleThreads.title": "壓縮閒置的對話串",
   "settings.general.compactIdleThreads.description":
@@ -269,10 +267,6 @@ export const settingsZhTW: Readonly<Record<keyof typeof settingsEn, string>> = {
   "settings.general.composerRichText.title": "格式化文字輸入框",
   "settings.general.composerRichText.description": "輸入時即顯示格式化的 Markdown。",
   "settings.general.composerRichText.resetLabel": "格式化文字輸入框",
-  "settings.general.composerCollapse.title": "捲動時收合輸入框",
-  "settings.general.composerCollapse.description":
-    "捲動對話時，將既有對話串的輸入框收合成單行。點選輸入框或開始輸入即可再次展開。",
-  "settings.general.composerCollapse.resetLabel": "捲動時收合輸入框",
   "settings.general.sendShortcut.title": "送出快捷鍵",
   "settings.general.sendShortcut.description": "選擇 Enter 何時送出提示詞、何時插入新行",
   "settings.general.sendShortcut.resetLabel": "送出快捷鍵",
@@ -420,9 +414,6 @@ export const settingsZhTW: Readonly<Record<keyof typeof settingsEn, string>> = {
     "恢復 Build/Plan、/plan、/default 與 Shift+Tab。關閉時使用建置模式。",
   "settings.general.legacyContextWindow.title": "脈絡視窗指示器（舊版）",
   "settings.general.legacyContextWindow.description": "在輸入框中以圓形指示器顯示脈絡視窗用量。",
-  "settings.general.legacySidebar.title": "側邊欄（舊版）",
-  "settings.general.legacySidebar.description":
-    "恢復依專案分組的對話串樹狀結構，取代預設的扁平側邊欄。",
 
   "settings.archived.toast.unarchiveFailed": "無法取消封存對話串",
   "settings.archived.toast.deleteFailed": "無法刪除對話串",

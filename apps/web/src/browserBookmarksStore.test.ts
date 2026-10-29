@@ -69,6 +69,22 @@ describe("useBrowserBookmarksStore", () => {
     expect(store().bookmarkBar.map((node) => node.title)).toEqual(["A", "C"]);
   });
 
+  it("restoreSnapshot should undo a dissolve only when nothing changed after it", () => {
+    const store = useBrowserBookmarksStore.getState();
+    store.importFolder({ nodes, importSource: chrome, title: "Chrome" });
+    const folderId = useBrowserBookmarksStore.getState().bookmarkBar[0]!.id;
+    const first = store.dissolveFolder(folderId);
+    if (!first.ok || first.snapshot === null) throw new Error("dissolve failed");
+    expect(store.restoreSnapshot(first.snapshot)).toBe("restored");
+    expect(useBrowserBookmarksStore.getState().bookmarkBar[0]!.id).toBe(folderId);
+
+    const second = store.dissolveFolder(folderId);
+    if (!second.ok || second.snapshot === null) throw new Error("dissolve failed");
+    store.addBookmark("https://later.test/", "Later");
+    expect(store.restoreSnapshot(second.snapshot)).toBe("changed");
+    expect(store.dissolveFolder("missing")).toEqual({ ok: true, snapshot: null });
+  });
+
   it("should tell an unsupported page apart from a full storage when bookmarking", () => {
     const store = () => useBrowserBookmarksStore.getState();
     expect(store().addBookmark("about:blank", "Blank")).toBe("unsupported-url");

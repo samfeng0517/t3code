@@ -22,7 +22,9 @@ export function bookmarkDisplayTitle(node: BrowserBookmarkNode): string {
   return node.title || hostOf(node.url);
 }
 
-function reportSaveFailed(reason: "storage-full" | "unsupported-url" = "storage-full"): void {
+export function reportSaveFailed(
+  reason: "storage-full" | "unsupported-url" = "storage-full",
+): void {
   toastManager.add({
     type: "error",
     title: getMessage("browser.bookmarks.saveFailed"),
@@ -66,6 +68,32 @@ export function deleteBookmarkWithUndo(node: BrowserBookmarkNode): void {
       onClick: () => {
         toastManager.close(toastId);
         if (!useBrowserBookmarksStore.getState().restoreRemoved(removed)) reportSaveFailed();
+      },
+    },
+  });
+}
+
+/** Ungrouping can scatter a large import across a list, so it offers an undo too. */
+export function dissolveFolderWithUndo(node: BrowserBookmarkNode): void {
+  const result = useBrowserBookmarksStore.getState().dissolveFolder(node.id);
+  if (!result.ok) {
+    reportSaveFailed();
+    return;
+  }
+  const { snapshot } = result;
+  if (snapshot === null) return;
+  const toastId = toastManager.add({
+    type: "success",
+    title: getMessage("browser.bookmarks.dissolved", { title: bookmarkDisplayTitle(node) }),
+    actionProps: {
+      children: getMessage("browser.newTab.undo"),
+      onClick: () => {
+        toastManager.close(toastId);
+        const restored = useBrowserBookmarksStore.getState().restoreSnapshot(snapshot);
+        if (restored === "storage-full") reportSaveFailed();
+        else if (restored === "changed") {
+          toastManager.add({ type: "error", title: getMessage("browser.bookmarks.undoFailed") });
+        }
       },
     },
   });

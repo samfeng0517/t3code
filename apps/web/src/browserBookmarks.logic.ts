@@ -20,6 +20,8 @@ export interface BrowserBookmarkFolder {
   readonly title: string;
   readonly children: ReadonlyArray<BrowserBookmarkNode>;
   readonly importSource?: BrowserBookmarkImportSource;
+  /** Set once the user edits an imported folder, so importing that source again adds a new one. */
+  readonly importDetached?: true;
 }
 
 export type BrowserBookmarkNode = BrowserBookmark | BrowserBookmarkFolder;
@@ -221,6 +223,7 @@ export function buildImportedFolder(input: {
 
 const sameImportSource = (node: BrowserBookmarkNode, source: BrowserBookmarkImportSource) =>
   node.kind === "folder" &&
+  node.importDetached !== true &&
   node.importSource?.sourceId === source.sourceId &&
   node.importSource.profileId === source.profileId;
 
@@ -245,7 +248,15 @@ export function addBookmark(
   return { ...roots, bookmarkBar: [...roots.bookmarkBar, node] };
 }
 
-/** Rebuilds only the branches that change, so untouched folders keep their identity. */
+const detachImport = (folder: BrowserBookmarkFolder): BrowserBookmarkFolder =>
+  folder.importSource && folder.importDetached !== true
+    ? { ...folder, importDetached: true }
+    : folder;
+
+/**
+ * Rebuilds only the branches that change, so untouched folders keep their identity. A folder
+ * whose contents change stops being replaced by a re-import of its source.
+ */
 function filterNodes(
   nodes: ReadonlyArray<BrowserBookmarkNode>,
   keep: (node: BrowserBookmarkNode) => boolean,
@@ -261,7 +272,7 @@ function filterNodes(
       const children = filterNodes(node.children, keep);
       if (children !== node.children) {
         changed = true;
-        next.push({ ...node, children });
+        next.push({ ...detachImport(node), children });
         continue;
       }
     }
@@ -291,13 +302,15 @@ export interface RemovedBookmark {
   readonly root: keyof BrowserBookmarkRoots;
   readonly parentId: string | null;
   readonly index: number;
+  /** Imported folders the delete detached; the undo makes them replaceable by a re-import again. */
+  readonly reattachIds: ReadonlyArray<string>;
 }
 
 function locateNode(
   nodes: ReadonlyArray<BrowserBookmarkNode>,
   id: string,
   parentId: string | null,
-): Omit<RemovedBookmark, "root"> | null {
+): Omit<RemovedBookmark, "root" | "reattachIds"> | null {
   for (const [index, node] of nodes.entries()) {
     if (node.id === id) return { node, parentId, index };
     if (node.kind === "folder") {
@@ -308,31 +321,77 @@ function locateNode(
   return null;
 }
 
+function attachedImportAncestors(
+  nodes: ReadonlyArray<BrowserBookmarkNode>,
+  id: string,
+): string[] | null {
+  for (const node of nodes) {
+    if (node.id === id) return [];
+    if (node.kind !== "folder") continue;
+    const found = attachedImportAncestors(node.children, id);
+    if (found === null) continue;
+    return node.importSource && node.importDetached !== true ? [node.id, ...found] : found;
+  }
+  return null;
+}
+
 export function removeBookmarkNodeWithLocation(
   roots: BrowserBookmarkRoots,
   id: string,
 ): { roots: BrowserBookmarkRoots; removed: RemovedBookmark | null } {
   for (const root of ["bookmarkBar", "other"] as const) {
     const found = locateNode(roots[root], id, null);
-    if (found) return { roots: removeBookmarkNode(roots, id), removed: { ...found, root } };
+    if (found) {
+      const reattachIds = attachedImportAncestors(roots[root], id) ?? [];
+      return { roots: removeBookmarkNode(roots, id), removed: { ...found, root, reattachIds } };
+    }
   }
   return { roots, removed: null };
 }
 
-function insertIntoFolder(
+function reattachImports(
+  nodes: ReadonlyArray<BrowserBookmarkNode>,
+  ids: ReadonlySet<string>,
+): ReadonlyArray<BrowserBookmarkNode> {
+  return nodes.map((node) => {
+    if (node.kind !== "folder") return node;
+    const children = reattachImports(node.children, ids);
+    if (!ids.has(node.id)) return children === node.children ? node : { ...node, children };
+    const { importDetached: _detached, ...attached } = node;
+    return { ...attached, children };
+  });
+}
+
+type EditChildren = (
+  children: ReadonlyArray<BrowserBookmarkNode>,
+) => ReadonlyArray<BrowserBookmarkNode>;
+
+function editFolderChildren(
   nodes: ReadonlyArray<BrowserBookmarkNode>,
   parentId: string,
-  insert: (children: ReadonlyArray<BrowserBookmarkNode>) => ReadonlyArray<BrowserBookmarkNode>,
+  edit: EditChildren,
 ): ReadonlyArray<BrowserBookmarkNode> | null {
   for (const [index, node] of nodes.entries()) {
     if (node.kind !== "folder") continue;
     if (node.id === parentId) {
-      return nodes.toSpliced(index, 1, { ...node, children: insert(node.children) });
+      return nodes.toSpliced(index, 1, { ...detachImport(node), children: edit(node.children) });
     }
-    const children = insertIntoFolder(node.children, parentId, insert);
-    if (children) return nodes.toSpliced(index, 1, { ...node, children });
+    const children = editFolderChildren(node.children, parentId, edit);
+    if (children) return nodes.toSpliced(index, 1, { ...detachImport(node), children });
   }
   return null;
+}
+
+/** Edits one list in place; every folder on the way down counts as edited. */
+function editChildren(
+  roots: BrowserBookmarkRoots,
+  root: BrowserBookmarkRootKey,
+  parentId: string | null,
+  edit: EditChildren,
+): BrowserBookmarkRoots | null {
+  const children =
+    parentId === null ? edit(roots[root]) : editFolderChildren(roots[root], parentId, edit);
+  return children === null ? null : { ...roots, [root]: children };
 }
 
 /**
@@ -350,14 +409,176 @@ export function restoreRemovedBookmark(
     return roots;
   const insertAt = (children: ReadonlyArray<BrowserBookmarkNode>, index: number) =>
     children.toSpliced(Math.min(index, children.length), 0, removed.node);
-  const rootNodes = roots[removed.root];
-  const restored =
-    removed.parentId === null
-      ? insertAt(rootNodes, removed.index)
-      : (insertIntoFolder(rootNodes, removed.parentId, (children) =>
-          insertAt(children, removed.index),
-        ) ?? insertAt(rootNodes, rootNodes.length));
-  return { ...roots, [removed.root]: restored };
+  const restored = editChildren(roots, removed.root, removed.parentId, (children) =>
+    insertAt(children, removed.index),
+  ) ?? { ...roots, [removed.root]: insertAt(roots[removed.root], roots[removed.root].length) };
+  if (removed.reattachIds.length === 0) return restored;
+  const ids = new Set(removed.reattachIds);
+  return { ...restored, [removed.root]: reattachImports(restored[removed.root], ids) };
+}
+
+export type BrowserBookmarkRootKey = keyof BrowserBookmarkRoots;
+
+/** A slot in a list: `parentId` null means the root list itself. */
+export interface BookmarkDestination {
+  readonly root: BrowserBookmarkRootKey;
+  readonly parentId: string | null;
+  readonly index: number;
+}
+
+export function findBookmarkNode(
+  roots: BrowserBookmarkRoots,
+  id: string,
+): (BookmarkDestination & { readonly node: BrowserBookmarkNode }) | null {
+  for (const root of ["bookmarkBar", "other"] as const) {
+    const found = locateNode(roots[root], id, null);
+    if (found) return { ...found, root };
+  }
+  return null;
+}
+
+function containsId(nodes: ReadonlyArray<BrowserBookmarkNode>, id: string): boolean {
+  return nodes.some(
+    (node) => node.id === id || (node.kind === "folder" && containsId(node.children, id)),
+  );
+}
+
+/** A folder cannot go into itself or anything inside it. */
+function canMoveBookmarkNode(
+  roots: BrowserBookmarkRoots,
+  id: string,
+  parentId: string | null,
+): boolean {
+  if (parentId === null) return true;
+  if (parentId === id) return false;
+  const found = findBookmarkNode(roots, id);
+  return found?.node.kind !== "folder" || !containsId(found.node.children, parentId);
+}
+
+const insertNode = (
+  children: ReadonlyArray<BrowserBookmarkNode>,
+  index: number,
+  node: BrowserBookmarkNode,
+) => children.toSpliced(Math.max(0, Math.min(index, children.length)), 0, node);
+
+/**
+ * `destination.index` counts positions with the node still in place, as a drop indicator sees
+ * them. An imported folder keeps its import only while it stays at the top of a root.
+ */
+export function moveBookmarkNode(
+  roots: BrowserBookmarkRoots,
+  id: string,
+  destination: BookmarkDestination,
+): BrowserBookmarkRoots {
+  const from = findBookmarkNode(roots, id);
+  if (from === null || !canMoveBookmarkNode(roots, id, destination.parentId)) return roots;
+  const sameList = from.root === destination.root && from.parentId === destination.parentId;
+  const index =
+    sameList && from.index < destination.index ? destination.index - 1 : destination.index;
+  if (sameList && index === from.index) return roots;
+  const node =
+    from.node.kind === "folder" && destination.parentId !== null
+      ? detachImport(from.node)
+      : from.node;
+  return (
+    editChildren(removeBookmarkNode(roots, id), destination.root, destination.parentId, (list) =>
+      insertNode(list, index, node),
+    ) ?? roots
+  );
+}
+
+/**
+ * Renaming an imported folder makes it an ordinary one with that name. `url` applies only to a
+ * bookmark; a url the in-app browser cannot open returns `"unsupported-url"`.
+ */
+export function updateBookmarkNode(
+  roots: BrowserBookmarkRoots,
+  id: string,
+  patch: { readonly title: string; readonly url?: string },
+): BrowserBookmarkRoots | "unsupported-url" {
+  const found = findBookmarkNode(roots, id);
+  if (found === null) return roots;
+  let next: BrowserBookmarkNode;
+  if (found.node.kind === "bookmark") {
+    const url = patch.url === undefined ? found.node.url : normalizeBookmarkUrl(patch.url);
+    if (url === null) return "unsupported-url";
+    next = { id, kind: "bookmark", title: cleanTitle(patch.title), url };
+  } else {
+    next = { id, kind: "folder", title: cleanTitle(patch.title), children: found.node.children };
+  }
+  return (
+    editChildren(roots, found.root, found.parentId, (list) =>
+      list.toSpliced(found.index, 1, next),
+    ) ?? roots
+  );
+}
+
+export function addBookmarkFolder(
+  roots: BrowserBookmarkRoots,
+  destination: BookmarkDestination,
+  folder: { readonly id: string; readonly title: string },
+): BrowserBookmarkRoots {
+  const node: BrowserBookmarkFolder = {
+    id: folder.id,
+    kind: "folder",
+    title: cleanTitle(folder.title),
+    children: [],
+  };
+  return (
+    editChildren(roots, destination.root, destination.parentId, (list) =>
+      insertNode(list, destination.index, node),
+    ) ?? roots
+  );
+}
+
+/** Puts a folder's contents where the folder was, then drops the folder. */
+export function dissolveBookmarkFolder(
+  roots: BrowserBookmarkRoots,
+  id: string,
+): BrowserBookmarkRoots {
+  const found = findBookmarkNode(roots, id);
+  if (found?.node.kind !== "folder") return roots;
+  const { children } = found.node;
+  return (
+    editChildren(roots, found.root, found.parentId, (list) =>
+      list.toSpliced(found.index, 1, ...children),
+    ) ?? roots
+  );
+}
+
+export type BookmarkDropPosition = "before" | "after" | "inside";
+
+/**
+ * Where a dragged node lands when dropped on `overId`, or null when that drop is not allowed.
+ * An open folder's lower edge sits above its first child, so "after" it means first inside it.
+ */
+export function resolveBookmarkDrop(
+  roots: BrowserBookmarkRoots,
+  activeId: string,
+  over: { readonly root: BrowserBookmarkRootKey } | { readonly id: string },
+  position: BookmarkDropPosition,
+  openFolderIds: ReadonlySet<string> = new Set(),
+): BookmarkDestination | null {
+  if ("root" in over) {
+    return { root: over.root, parentId: null, index: roots[over.root].length };
+  }
+  if (over.id === activeId) return null;
+  const target = findBookmarkNode(roots, over.id);
+  if (target === null) return null;
+  const folder = target.node.kind === "folder" ? target.node : null;
+  const destination: BookmarkDestination =
+    folder && (position === "inside" || (position === "after" && openFolderIds.has(folder.id)))
+      ? {
+          root: target.root,
+          parentId: folder.id,
+          index: position === "inside" ? folder.children.length : 0,
+        }
+      : {
+          root: target.root,
+          parentId: target.parentId,
+          index: position === "after" ? target.index + 1 : target.index,
+        };
+  return canMoveBookmarkNode(roots, activeId, destination.parentId) ? destination : null;
 }
 
 export function removeBookmarksForUrl(
@@ -446,6 +667,9 @@ function sanitizeNodes(raw: unknown, seen: Set<string>, depth: number): BrowserB
         title: cleanTitle(title),
         children: sanitizeNodes(candidate.children, seen, depth + 1),
         ...(importSource ? { importSource } : {}),
+        ...(importSource && candidate.importDetached === true
+          ? { importDetached: true as const }
+          : {}),
       });
     }
   }
