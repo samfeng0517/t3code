@@ -848,10 +848,6 @@ export const settingsPagesZhTW: Readonly<Record<keyof typeof settingsPagesEn, st
   "settingsPages.integrations.devices.checking": "檢查中…",
   "settingsPages.integrations.devices.checkVersions": "檢查版本",
   "settingsPages.integrations.devices.hub.title": "裝置中心",
-  "settingsPages.integrations.devices.platform.title": "模擬器支援",
-  "settingsPages.integrations.devices.platform.statusFor":
-    "{name} 的狀態。選擇環境以檢查其模擬器支援。",
-  "settingsPages.integrations.devices.refresh": "重新整理",
   "settingsPages.integrations.devices.agentAccess.title": "代理裝置存取",
   "settingsPages.integrations.browserAccess.title": "代理瀏覽器存取",
   "settingsPages.integrations.browserAccess.projectDescription":

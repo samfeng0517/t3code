@@ -7,6 +7,7 @@ export const settingsEn = {
   "settings.section.snap-shot": "SnapShots",
   "settings.section.providers": "Providers",
   "settings.section.scheduled-tasks": "Scheduled tasks",
+  "settings.section.secrets": "Secrets",
   "settings.section.source-control": "Source control",
   "settings.section.connections": "Environments",
   "settings.section.archived": "Archive",
@@ -413,8 +414,6 @@ export const settingsEn = {
   "settings.general.version.button.downloading": "Downloading…",
   "settings.general.version.button.upToDate": "Up to Date",
   "settings.general.version.button.check": "Check for Updates",
-  "settings.general.update.changeTrackFailed.title": "Could not change update track",
-  "settings.general.update.changeTrackFailed.description": "Update track change failed.",
   "settings.general.update.downloadFailed.title": "Could not download update",
   "settings.general.update.downloadFailed.description": "Download failed.",
   "settings.general.update.confirmFailed.title": "Could not confirm update",
@@ -426,8 +425,6 @@ export const settingsEn = {
   "settings.general.update.checkFailed.unavailable":
     "Automatic updates are not available in this build.",
   "settings.general.updateTrack.title": "Update track",
-  "settings.general.updateTrack.description":
-    "Use stable releases or nightly builds. Switch back anytime.",
   "settings.general.updateTrack.hostedDescription": "Switches the hosted app release channel.",
   "settings.general.updateTrack.option.stable": "Stable",
   "settings.general.updateTrack.option.nightly": "Nightly",

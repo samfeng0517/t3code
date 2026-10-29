@@ -205,7 +205,7 @@ export const sidebarEn = {
   "sidebar.update.autoUpdatesUnavailable": "Automatic updates are not available in this build.",
   "sidebar.update.checkFailedDetail": "Update check failed.",
   "sidebar.update.everythingFailed": "Could not update everything",
-  "sidebar.update.releaseNotesLabel": "Nightly update release notes",
+  "sidebar.update.releaseNotesLabel": "Update release notes",
   "sidebar.update.readyToDownload": "Update ready to download",
   "sidebar.update.viewRelease": "View release on GitHub",
   "sidebar.update.moreChanges.one": "{count} more change on GitHub",

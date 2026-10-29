@@ -48,6 +48,14 @@ interface UpdateEverythingDialogProps {
   readonly rows: ReadonlyArray<UpdateEverythingRow>;
   readonly restarts: ReadonlyArray<RestartingMachine>;
   readonly onConfirm: () => void;
+  /** Overrides the "Update N machines?" title, for an update-track switch. */
+  readonly title?: string;
+  readonly confirmLabel?: string;
+  readonly notes?: ReadonlyArray<string>;
+  /** Shown in place of running-thread counts; disables the confirm button. */
+  readonly disabledReason?: string | null;
+  /** The confirmed work is starting; it cannot be cancelled from here. */
+  readonly busy?: boolean;
 }
 
 type UpdateEverythingDialogContentProps = Omit<
@@ -90,6 +98,11 @@ function UpdateEverythingDialogContent({
   restarts,
   onConfirm,
   cancelRef,
+  title,
+  confirmLabel,
+  notes = [],
+  disabledReason = null,
+  busy = false,
 }: UpdateEverythingDialogContentProps) {
   const t = useT();
   const stopped = useAtomValue(
@@ -123,12 +136,13 @@ function UpdateEverythingDialogContent({
     <>
       <AlertDialogHeader className="shrink-0">
         <AlertDialogTitle>
-          {t(
-            updating.length === 1
-              ? "shell.updateDialog.title.one"
-              : "shell.updateDialog.title.other",
-            { count: updating.length },
-          )}
+          {title ??
+            t(
+              updating.length === 1
+                ? "shell.updateDialog.title.one"
+                : "shell.updateDialog.title.other",
+              { count: updating.length },
+            )}
         </AlertDialogTitle>
         <AlertDialogDescription>
           {version !== null ? (
@@ -149,6 +163,11 @@ function UpdateEverythingDialogContent({
       </AlertDialogHeader>
       <ScrollArea scrollFade>
         <div className="flex flex-col gap-3 px-6 pb-4">
+          {notes.map((note) => (
+            <p key={note} className="text-muted-foreground text-sm">
+              {note}
+            </p>
+          ))}
           {/* Machine names truncate first. Provider lists wrap between names, never inside one. */}
           <div className="grid grid-cols-[minmax(4rem,max-content)_max-content_minmax(min-content,1fr)_max-content] gap-x-4 text-sm">
             <div className="col-span-full grid grid-cols-subgrid border-b pb-1.5 text-muted-foreground text-xs">
@@ -217,7 +236,11 @@ function UpdateEverythingDialogContent({
         </div>
       </ScrollArea>
       <AlertDialogFooter>
-        {running > 0 ? (
+        {disabledReason !== null ? (
+          <p className="self-center text-sm max-sm:order-1 max-sm:text-center sm:mr-auto">
+            {disabledReason}
+          </p>
+        ) : running > 0 ? (
           <p className="self-center text-muted-foreground text-sm max-sm:order-1 max-sm:text-center sm:mr-auto">
             {stopped === 0
               ? t("sidebar.updateDialog.interruptedAllResume", { threads })
@@ -226,10 +249,12 @@ function UpdateEverythingDialogContent({
                 : t("sidebar.updateDialog.interruptedSomeResume", { threads, continuing })}
           </p>
         ) : null}
-        <AlertDialogClose ref={cancelRef} render={<Button variant="outline" />}>
+        <AlertDialogClose ref={cancelRef} render={<Button variant="outline" disabled={busy} />}>
           {t("common.cancel")}
         </AlertDialogClose>
-        <Button onClick={onConfirm}>{t("sidebar.updateDialog.confirm")}</Button>
+        <Button disabled={disabledReason !== null || busy} onClick={onConfirm}>
+          {confirmLabel ?? t("sidebar.updateDialog.confirm")}
+        </Button>
       </AlertDialogFooter>
     </>
   );

@@ -2,8 +2,7 @@ import { DeviceHostUpdates } from "../device/DeviceHostUpdates";
 import { DeviceToolVersions } from "../device/DeviceToolVersions";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 import { ScopedSwitch } from "./ScopedSwitch";
-import { DeviceHostsSettings } from "./DeviceHostsSettings";
-import { EasDeviceHostsSettings } from "./EasDeviceHostsSettings";
+import { DeviceSourcesSettings } from "./DeviceSourcesSettings";
 import {
   AuthSettingsWriteScope,
   BrowserImportFailureReason,
@@ -44,7 +43,6 @@ import { useRef, useState } from "react";
 import { BrowserExtensionsSetting } from "~/browser/BrowserExtensionsSetting";
 import { BrowserNotificationPermissionsSetting } from "~/browser/BrowserNotificationPermissionsSetting";
 import { ScreenRotationIcon } from "~/browser/ScreenRotationIcon";
-import { AnimatedHeight } from "~/components/AnimatedHeight";
 import { resolveEnvironmentOptionLabel } from "~/components/BranchToolbar.logic";
 import { previewBridge } from "~/components/preview/previewBridge";
 import { cn, randomUUID } from "~/lib/utils";
@@ -60,11 +58,6 @@ import {
   AgentDeviceSetupStatus,
   DeviceHubSetupStatus,
   deviceHubReadiness,
-  PlatformStatus,
-  platformSetupStatus,
-  deviceHubDescriptionKey,
-  agentDeviceDescriptionKey,
-  DeviceHostDiagnostics,
 } from "~/components/device/DeviceSetup";
 import { t as translate, useT, type Translate } from "~/i18n";
 import { isElectron } from "../../env";
@@ -869,15 +862,23 @@ function DeviceIntegrationSettings() {
   const connected = selected?.connection.phase === "connected" && selected.serverConfig !== null;
   const environmentId = connected ? selected.environmentId : null;
 
+  const { state } = useDeviceState(environmentId);
+
   return (
-    <SettingsSection id="devices" title={t("settingsPages.integrations.devices.section")}>
-      <DeviceIntegrationControls
-        key={`${environmentId}:${JSON.stringify(search)}`}
-        environmentId={environmentId}
-        enabled={settings.enableDeviceSupport}
-        agentAccessEnabled={settings.enableAgentDeviceAccess}
+    <>
+      <SettingsSection id="devices" title={t("settingsPages.integrations.devices.section")}>
+        <DeviceIntegrationControls
+          key={`${environmentId}:${JSON.stringify(search)}`}
+          environmentId={environmentId}
+          enabled={settings.enableDeviceSupport}
+          agentAccessEnabled={settings.enableAgentDeviceAccess}
+        />
+      </SettingsSection>
+      <DeviceSourcesSettings
+        supportsEas={state.supportsEasHosts === true}
+        supportsSimlock={state.supportsSimlockHosts === true}
       />
-    </SettingsSection>
+    </>
   );
 }
 
@@ -904,20 +905,7 @@ function DeviceIntegrationControls({
   const [pending, setPending] = useState<
     "hub" | "check" | "agent" | "update-hub" | "update-agent" | null
   >(null);
-  const { ready: hubReady, busy } = deviceHubReadiness(state);
-  const localPlatformsUnavailable = state.hosts.some(
-    (host) => host.kind === "local" && !host.platforms.some((platform) => platform.available),
-  );
-  const [platformsRevealed, setPlatformsRevealed] = useState(false);
-  if (platformsRevealed && !enabled) setPlatformsRevealed(false);
-  if (
-    enabled &&
-    !platformsRevealed &&
-    (hubReady || localPlatformsUnavailable) &&
-    pending !== "hub"
-  ) {
-    setPlatformsRevealed(true);
-  }
+  const { busy } = deviceHubReadiness(state);
 
   const update = async (
     kind: NonNullable<typeof pending>,
@@ -1023,14 +1011,18 @@ function DeviceIntegrationControls({
         title={t("settingsPages.integrations.devices.hub.title")}
         serverScoped
         settingKeys={["enableDeviceSupport"]}
-        description={t(deviceHubDescriptionKey)}
-        control={
+        description={
           <>
+            Open simulators and emulators in the Device panel. Hub:{" "}
             <DeviceToolVersions
               action={versionActions("hub")}
               kind="hub"
               tools={state.hosts.find((host) => host.kind === "local")?.tools}
             />
+          </>
+        }
+        control={
+          <>
             {pending === "hub" ? <DeviceHubSetupStatus state={state} pending compact /> : null}
             <ScopedSwitch
               settingKeys={["enableDeviceSupport"]}
@@ -1054,75 +1046,23 @@ function DeviceIntegrationControls({
           </>
         }
       />
-      <AnimatedHeight>
-        {platformsRevealed ? (
-          <SettingsRow
-            {...searchableSetting("device-platform-support")}
-            title={t("settingsPages.integrations.devices.platform.title")}
-            description={
-              connectedEnvironments.length > 1
-                ? t("settingsPages.integrations.devices.platform.statusFor", {
-                    name: String(
-                      connectedEnvironments.find(
-                        (environment) => environment.environmentId === environmentId,
-                      )?.label,
-                    ),
-                  })
-                : undefined
-            }
-            status={
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-x-5 gap-y-2">
-                  <PlatformStatus
-                    compact
-                    platform="iOS"
-                    status={platformSetupStatus(state, "ios", t)}
-                  />
-                  <PlatformStatus
-                    compact
-                    platform="Android"
-                    status={platformSetupStatus(state, "android", t)}
-                  />
-                </div>
-                {/* Remote hosts report their own warnings in the device host list below. */}
-                <DeviceHostDiagnostics
-                  hosts={state.hosts.filter((host) => host.kind === "local")}
-                  hostStatuses={state.hostStatuses}
-                />
-              </div>
-            }
-            control={
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={!environmentId || !enabled || busy || pending !== null}
-                onClick={() => {
-                  if (!environmentId) return;
-                  setPending("check");
-                  void list({ environmentId, input: {} }).finally(() => setPending(null));
-                }}
-              >
-                {pending === "check"
-                  ? t("settingsPages.integrations.devices.checking")
-                  : t("settingsPages.integrations.devices.refresh")}
-              </Button>
-            }
-          />
-        ) : null}
-      </AnimatedHeight>
       <SettingsRow
         {...searchableSetting("agent-device-access")}
         title={t("settingsPages.integrations.devices.agentAccess.title")}
         serverScoped
         settingKeys={["enableAgentDeviceAccess"]}
-        description={t(agentDeviceDescriptionKey)}
-        control={
+        description={
           <>
+            New agent sessions can open and drive these devices. agent-device:{" "}
             <DeviceToolVersions
               action={versionActions("agent")}
               kind="agent"
               tools={state.hosts.find((host) => host.kind === "local")?.tools}
             />
+          </>
+        }
+        control={
+          <>
             {pending === "agent" ? <AgentDeviceSetupStatus state={state} pending compact /> : null}
             <ScopedSwitch
               settingKeys={["enableAgentDeviceAccess"]}
@@ -1149,8 +1089,6 @@ function DeviceIntegrationControls({
           environmentId={environmentId}
         />
       ) : null}
-      <DeviceHostsSettings environmentId={environmentId} />
-      {state.supportsEasHosts ? <EasDeviceHostsSettings environmentId={environmentId} /> : null}
     </>
   );
 }

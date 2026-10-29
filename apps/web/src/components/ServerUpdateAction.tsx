@@ -7,6 +7,7 @@ import {
 import type { AsyncResult } from "effect/reactivity";
 import { environmentSession } from "~/state/session";
 import type {
+  DesktopUpdateChannel,
   EnvironmentId,
   ServerInstallation,
   ServerSelfUpdateCapability,
@@ -27,6 +28,8 @@ import { serverEnvironment, updateOutdatedServer } from "~/state/server";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { manualServerUpdateCommand } from "~/versionSkew";
+import { useServerConfigs } from "~/state/entities";
+import { crossesReleaseTrack } from "@t3tools/shared/cliRelease";
 import { Button } from "./ui/button";
 import { toastManager } from "./ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -51,6 +54,29 @@ export function serverUpdateStageLabel(stage: ServerUpdateStage): string {
   return translateNow(UPDATE_STAGE_LABEL_KEYS[stage]);
 }
 
+const CROSS_TRACK_NOTE = "Switch tracks in About → Update track";
+
+/** Hosts refuse a Stable/Nightly crossing outside a track switch, which checks the database first. */
+function refusedCrossing(
+  target: {
+    readonly selfUpdate: ServerSelfUpdateCapability | null;
+    readonly targetVersion: string;
+    readonly channel?: DesktopUpdateChannel | undefined;
+  },
+  serverVersion: string | undefined,
+): boolean {
+  return (
+    target.channel === undefined &&
+    target.selfUpdate !== null &&
+    serverVersion !== undefined &&
+    crossesReleaseTrack(serverVersion, target.targetVersion)
+  );
+}
+
+function CrossTrackNote() {
+  return <span className="text-muted-foreground text-xs">{CROSS_TRACK_NOTE}</span>;
+}
+
 function updateFailureMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
@@ -64,6 +90,12 @@ export interface ServerUpdateTarget {
   readonly installation?: ServerInstallation | undefined;
   readonly desktopAppUpdate?: boolean;
   readonly targetVersion: string;
+  /** Set only by a track switch; the host's desktop app moves to this track. */
+  readonly channel?: DesktopUpdateChannel;
+  /** A track switch's checked release migration; the host re-checks its own database. */
+  readonly targetDatabaseMigration?: number;
+  /** The host already runs its track's newest build and only saves the track. */
+  readonly trackOnly?: boolean;
 }
 
 type UpdateButtonProps = Pick<ComponentProps<typeof Button>, "variant" | "size" | "className"> & {
@@ -92,7 +124,13 @@ export function useServerUpdate() {
     pendingUpdateEnvironmentIds.add(environmentId);
     const result = await updateServer({
       environmentId,
-      input: { targetVersion },
+      input: {
+        targetVersion,
+        ...(target.channel === undefined ? {} : { channel: target.channel }),
+        ...(target.targetDatabaseMigration === undefined
+          ? {}
+          : { targetDatabaseMigration: target.targetDatabaseMigration }),
+      },
     });
     pendingUpdateEnvironmentIds.delete(environmentId);
     if (result._tag === "Failure") {
@@ -134,13 +172,15 @@ export function ServerUpdatesAction({
 }) {
   const t = useT();
   const update = useServerUpdate();
+  const serverConfigs = useServerConfigs();
   const pending = useRef(false);
   const [isPending, setIsPending] = useState(false);
   if (!APP_SELF_UPDATE_ENABLED) return null;
   const eligible = targets.filter(
     (target) =>
       target.selfUpdate !== null &&
-      (target.selfUpdate !== "desktop-managed" || target.desktopAppUpdate),
+      (target.selfUpdate !== "desktop-managed" || target.desktopAppUpdate) &&
+      !refusedCrossing(target, serverConfigs.get(target.environmentId)?.environment.serverVersion),
   );
   const handleUpdate = async () => {
     if (pending.current) return;
@@ -220,6 +260,7 @@ export function ServerUpdateAction({
   installation,
   desktopAppUpdate = false,
   targetVersion,
+  channel,
   label,
   variant = "outline",
   size = "xs",
@@ -228,6 +269,7 @@ export function ServerUpdateAction({
 }: ServerUpdateTarget & UpdateButtonProps) {
   const t = useT();
   const isDesktopAppUpdate = selfUpdate === "desktop-managed";
+  const serverVersion = useServerConfigs().get(environmentId)?.environment.serverVersion;
   const sessionStateAtom = environmentSession.sessionStateAtom(environmentId);
   const canUpdate = canUpdateServer(useAtomValue(sessionStateAtom));
   const update = useServerUpdate();
@@ -289,6 +331,10 @@ export function ServerUpdateAction({
         {t("onboarding.serverUpdate.desktopOnMachine")}
       </span>
     );
+  }
+
+  if (refusedCrossing({ selfUpdate, targetVersion, channel }, serverVersion)) {
+    return <CrossTrackNote />;
   }
 
   const manualCommand =
@@ -385,6 +431,9 @@ export function OutdatedServerUpdateAction({
     });
   };
   if (!APP_SELF_UPDATE_ENABLED) return <ForkBuildUpdateHint />;
+  if (fromVersion !== undefined && crossesReleaseTrack(fromVersion, targetVersion)) {
+    return <CrossTrackNote />;
+  }
   return (
     <Button size="xs" variant="outline" onClick={() => void handleUpdate()}>
       {label ?? t("onboarding.serverUpdate.update")}

@@ -34,6 +34,7 @@ import { AdvancedSettings } from "./AdvancedSettings";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
 import { TypographySection } from "./TypographySettings";
 import { type Translate, useT } from "../../i18n";
+import { ThreadDetailsItemsRow } from "./ThreadDetailsItemsRow";
 
 // The default "artwork" follows the running channel, so it is labeled as that channel's art,
 // or as "None" on Latest. The other channel's art is offered as a fixed choice.
@@ -303,6 +304,7 @@ export function AppearanceSettingsPanel() {
             </div>
           }
         />
+        <ThreadDetailsItemsRow />
         <SettingsRow
           {...searchableSetting("effort-display")}
           description="Show reasoning effort in the composer as its name, such as High, or as bars."

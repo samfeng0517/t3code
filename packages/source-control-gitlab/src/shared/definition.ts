@@ -19,7 +19,8 @@ import { icon } from "./icon.ts";
 const CHECKOUT_COMMAND = /^glab\s+mr\s+checkout\s+(.+)$/i;
 // `/-/merge_requests/` is GitLab's own route, so a self-hosted server is recognized by it
 // whatever its hostname.
-const CHANGE_REQUEST_REFERENCE = /^https:\/\/[^/\s]+\/.+\/-\/merge_requests\/(\d+)(?:[/?#].*)?$/i;
+const CHANGE_REQUEST_REFERENCE =
+  /^https?:\/\/[^/?#\s]+\/[^/?#\s]+(?:\/[^/?#\s]+)+\/-\/merge_requests\/(\d+)(?:[/?#].*)?$/i;
 
 // Self-managed GitLab runs on any hostname and nests projects in groups.
 const CHANGE_REQUEST_PATH = /^\/([^/]+(?:\/[^/]+)+)\/-\/merge_requests\/(\d+)(?:\/|$)/u;

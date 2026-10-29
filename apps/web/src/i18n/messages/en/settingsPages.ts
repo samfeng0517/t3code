@@ -902,10 +902,6 @@ export const settingsPagesEn = {
   "settingsPages.integrations.devices.checking": "Checking…",
   "settingsPages.integrations.devices.checkVersions": "Check versions",
   "settingsPages.integrations.devices.hub.title": "Device hub",
-  "settingsPages.integrations.devices.platform.title": "Simulator support",
-  "settingsPages.integrations.devices.platform.statusFor":
-    "Status for {name}. Select an environment to inspect its simulator support.",
-  "settingsPages.integrations.devices.refresh": "Refresh",
   "settingsPages.integrations.devices.agentAccess.title": "Agent device access",
   "settingsPages.integrations.browserAccess.title": "Agent browser access",
   "settingsPages.integrations.browserAccess.projectDescription":

@@ -204,7 +204,7 @@ export const sidebarZhTW: Readonly<Record<keyof typeof sidebarEn, string>> = {
   "sidebar.update.autoUpdatesUnavailable": "此版本無法使用自動更新。",
   "sidebar.update.checkFailedDetail": "檢查更新失敗。",
   "sidebar.update.everythingFailed": "無法全部更新",
-  "sidebar.update.releaseNotesLabel": "Nightly 更新版本說明",
+  "sidebar.update.releaseNotesLabel": "更新版本說明",
   "sidebar.update.readyToDownload": "更新已可下載",
   "sidebar.update.viewRelease": "在 GitHub 上查看此版本",
   "sidebar.update.moreChanges.one": "在 GitHub 上查看另外 {count} 項變更",
