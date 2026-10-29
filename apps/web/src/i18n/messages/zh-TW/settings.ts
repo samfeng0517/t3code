@@ -181,12 +181,12 @@ export const settingsZhTW: Readonly<Record<keyof typeof settingsEn, string>> = {
   "settings.general.projectOrder.option.updated_at": "最後一則使用者訊息",
   "settings.general.projectOrder.option.created_at": "建立時間",
   "settings.general.projectOrder.option.manual": "手動",
-  "settings.general.autoResumeLimitedThreads.title": "用量上限重設後繼續",
+  "settings.general.autoResumeLimitedThreads.title": "重設後自動繼續",
   "settings.general.autoResumeLimitedThreads.description":
-    "在回報的重設時間，繼續因用量上限而停止的對話串。每個對話串都可以取消已排定的繼續作業。",
-  "settings.general.snoozeLimitedThreads.title": "延後到上限重設",
+    "對話串因用量上限停下時，到重設時間自動請 agent 從中斷處繼續。可以在各對話串取消。",
+  "settings.general.snoozeLimitedThreads.title": "停下時先收起來",
   "settings.general.snoozeLimitedThreads.description":
-    "將因用量上限而停止的對話串延後到重設時間。搭配繼續功能，即可在喚醒時接著執行。",
+    "對話串因用量上限停下時，先收起來，到重設時間再回到清單。這個選項只負責收起來；要自動繼續，請一併開啟上一項。",
   "settings.general.workingShelf.title": "進行中區段",
   "settings.general.workingShelf.description":
     "將執行中與監看中的對話串收進「進行中」區段。需要你處理時，它們會回到收件匣頂端。",
