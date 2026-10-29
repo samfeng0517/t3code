@@ -37,6 +37,7 @@ import { projectEnvironment } from "~/state/projects";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
+import { useT } from "~/i18n";
 
 export const ProposedPlanCard = memo(function ProposedPlanCard({
   planMarkdown,
@@ -53,6 +54,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   workspaceRoot: string | undefined;
   findActive?: boolean;
 }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const canWriteFiles = useEnvironmentScope(environmentId, AuthFilesystemWriteScope);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
@@ -67,13 +69,14 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Could not copy plan",
-          description: error instanceof Error ? error.message : "An error occurred while copying.",
+          title: t("chatView.proposedPlan.couldNotCopy"),
+          description:
+            error instanceof Error ? error.message : t("chatView.proposedPlan.copyErrorFallback"),
         }),
       );
     },
   });
-  const title = proposedPlanTitle(planMarkdown) ?? "Proposed plan";
+  const title = proposedPlanTitle(planMarkdown) ?? t("chatView.proposedPlan.defaultTitle");
   const lineCount = planMarkdown.split("\n").length;
   const canCollapse = planMarkdown.length > 900 || lineCount > 20;
   const displayedPlanMarkdown = stripDisplayedPlanMarkdown(planMarkdown);
@@ -101,8 +104,8 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Workspace path is unavailable",
-          description: "This thread does not have a workspace path to save into.",
+          title: t("chatView.proposedPlan.workspacePathUnavailable"),
+          description: t("chatView.proposedPlan.noWorkspacePath"),
         }),
       );
       return;
@@ -118,7 +121,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
     if (!relativePath) {
       toastManager.add({
         type: "warning",
-        title: "Enter a workspace path",
+        title: t("chatView.proposedPlan.enterWorkspacePath"),
       });
       return;
     }
@@ -139,7 +142,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         setIsSaveDialogOpen(false);
         toastManager.add({
           type: "success",
-          title: "Plan saved to workspace",
+          title: t("chatView.proposedPlan.savedToWorkspace"),
           description: result.value.relativePath,
         });
         return;
@@ -149,8 +152,9 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Could not save plan",
-            description: error instanceof Error ? error.message : "An error occurred while saving.",
+            title: t("chatView.proposedPlan.couldNotSave"),
+            description:
+              error instanceof Error ? error.message : t("chatView.proposedPlan.saveErrorFallback"),
           }),
         );
       }
@@ -161,7 +165,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
     <div className="rounded-2xl border border-border/80 bg-card/70 p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Badge variant="secondary">Plan</Badge>
+          <Badge variant="secondary">{t("chatView.proposedPlan.badge")}</Badge>
           {}
           <h3 data-thread-find-text="true" className="truncate text-sm font-medium text-foreground">
             {title}
@@ -169,20 +173,30 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         </div>
         <Menu>
           <MenuTrigger
-            render={<Button aria-label="Plan actions" size="icon-xs" variant="outline" />}
+            render={
+              <Button
+                aria-label={t("chatView.proposedPlan.actions")}
+                size="icon-xs"
+                variant="outline"
+              />
+            }
           >
             <EllipsisIcon aria-hidden="true" className="size-4" />
           </MenuTrigger>
           <MenuPopup align="end">
             <MenuItem onClick={handleCopyPlan}>
-              {isCopied ? "Copied!" : "Copy to clipboard"}
+              {isCopied
+                ? t("chatView.proposedPlan.copied")
+                : t("chatView.proposedPlan.copyToClipboard")}
             </MenuItem>
-            <MenuItem onClick={handleDownload}>Download as markdown</MenuItem>
+            <MenuItem onClick={handleDownload}>
+              {t("chatView.proposedPlan.downloadAsMarkdown")}
+            </MenuItem>
             <MenuItem
               onClick={openSaveDialog}
               disabled={!canWriteFiles || !workspaceRoot || isSavingToWorkspace}
             >
-              Save to workspace
+              {t("chatView.proposedPlan.saveToWorkspace")}
             </MenuItem>
           </MenuPopup>
         </Menu>
@@ -225,7 +239,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
               data-scroll-anchor-ignore
               onClick={() => setExpanded((value) => !value)}
             >
-              {expanded ? "Collapse plan" : "Expand plan"}
+              {expanded ? t("chatView.proposedPlan.collapse") : t("chatView.proposedPlan.expand")}
             </Button>
           </div>
         ) : null}
@@ -272,19 +286,24 @@ function SavePlanToWorkspaceForm({
   onCancel: () => void;
   onSave: (path: string) => void;
 }) {
+  const t = useT();
   const [savePath, setSavePath] = useState(initialPath);
   const savePathInputId = useId();
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Save plan to workspace</DialogTitle>
+        <DialogTitle>{t("chatView.proposedPlan.saveDialogTitle")}</DialogTitle>
         <DialogDescription>
-          Enter a path relative to <code>{workspaceRoot ?? "the workspace"}</code>.
+          {t("chatView.proposedPlan.pathHintPrefix")}
+          <code>{workspaceRoot ?? t("chatView.proposedPlan.theWorkspace")}</code>
+          {t("chatView.proposedPlan.pathHintSuffix")}
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
         <label htmlFor={savePathInputId} className="grid gap-1.5">
-          <span className="text-xs font-medium text-foreground">Workspace path</span>
+          <span className="text-xs font-medium text-foreground">
+            {t("chatView.proposedPlan.workspacePath")}
+          </span>
           <Input
             id={savePathInputId}
             value={savePath}
@@ -297,10 +316,10 @@ function SavePlanToWorkspaceForm({
       </DialogPanel>
       <DialogFooter>
         <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}>
-          Cancel
+          {t("common.cancel")}
         </Button>
         <Button size="sm" onClick={() => onSave(savePath)} disabled={!canWriteFiles || saving}>
-          {saving ? "Saving..." : "Save"}
+          {saving ? t("chatView.proposedPlan.saving") : t("chatView.proposedPlan.save")}
         </Button>
       </DialogFooter>
     </>

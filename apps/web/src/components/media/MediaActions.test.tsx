@@ -75,6 +75,7 @@ vi.mock("../ui/toast", () => ({
   },
 }));
 
+import { setLanguagePreference } from "../../i18n/languagePreferenceStore";
 import { MediaActions, useMediaActions, type MediaActionSource } from "./MediaActions";
 
 const environmentId = EnvironmentId.make("media-environment");
@@ -119,6 +120,7 @@ function openMenu(source: MediaActionSource) {
 }
 
 beforeEach(() => {
+  setLanguagePreference("en");
   state.sessions.clear();
   state.sessions.set(environmentId, denied);
   state.mint

@@ -2,6 +2,7 @@ import { DownloadIcon, PlusIcon } from "lucide-react";
 import type { ChangeEvent, DragEvent, UIEvent } from "react";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import { useRef, useState } from "react";
+import { t as globalT, useT, type Translate } from "~/i18n";
 import { cn } from "../../lib/utils";
 import {
   getCustomThemes,
@@ -34,15 +35,18 @@ const MAX_THEME_FILE_BYTES = 256 * 1024;
 /** Highlighting rebuilds markup per keystroke; fall back to plain text for oversized pastes. */
 const MAX_HIGHLIGHTED_JSON_LENGTH = 20_000;
 
-function formatByteSize(bytes: number): string {
+function formatByteSize(bytes: number, t: Translate): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${bytes} bytes`;
+  return t("settingsMisc.themeImport.bytes", { count: bytes });
 }
 
-function describeOversizedThemeFile(bytes: number): string | null {
+function describeOversizedThemeFile(bytes: number, t: Translate = globalT): string | null {
   if (bytes <= MAX_THEME_FILE_BYTES) return null;
-  return `That file is ${formatByteSize(bytes)}. Theme files are only a few KB, so this one was not read (limit ${formatByteSize(MAX_THEME_FILE_BYTES)}).`;
+  return t("settingsMisc.themeImport.oversized", {
+    size: formatByteSize(bytes, t),
+    limit: formatByteSize(MAX_THEME_FILE_BYTES, t),
+  });
 }
 
 function escapeJsonHtml(value: string): string {
@@ -94,6 +98,7 @@ function ThemeJsonEditor({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const t = useT();
   const highlightRef = useRef<HTMLPreElement>(null);
   const isPlainText = value.length > MAX_HIGHLIGHTED_JSON_LENGTH;
   const highlightedJson = isPlainText ? "" : highlightJson(value);
@@ -117,7 +122,7 @@ function ThemeJsonEditor({
         </pre>
       )}
       <textarea
-        aria-label="Theme JSON"
+        aria-label={t("settingsMisc.themeImport.jsonAria")}
         className={cn(
           "relative z-10 block min-h-44 w-full resize-y overflow-auto bg-transparent p-3 font-mono text-xs leading-5 caret-foreground outline-none placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground",
           isPlainText ? "text-foreground" : "text-transparent",
@@ -151,6 +156,7 @@ export function ThemeImportDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useT();
   // Each opening is a fresh session: its body remounts with clean state, and
   // closing aborts every read, search, and install the session started.
   const [session, setSession] = useState(() => ({
@@ -178,7 +184,7 @@ export function ThemeImportDialog({
     >
       <DialogPopup className="max-w-3xl overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Add a theme</DialogTitle>
+          <DialogTitle>{t("settingsMisc.themeImport.title")}</DialogTitle>
         </DialogHeader>
         <ThemeImportBody
           key={session.id}
@@ -201,6 +207,7 @@ function ThemeImportBody({
   session: AbortController;
   onClose: () => void;
 }) {
+  const t = useT();
   const { signal } = session;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [json, setJson] = useState("");
@@ -215,7 +222,7 @@ function ThemeImportBody({
     requestId === importRequestRef.current && !signal.aborted;
 
   const readThemeFile = async (file: ImportableThemeFile) => {
-    const oversized = describeOversizedThemeFile(file.size);
+    const oversized = describeOversizedThemeFile(file.size, t);
     if (oversized) {
       setError(oversized);
       return;
@@ -227,7 +234,7 @@ function ThemeImportBody({
     if (!isCurrentRequest(requestId)) return;
     setIsReading(false);
     if (fileText._tag === "Failure") {
-      setError("Could not read that file. Paste the JSON below instead.");
+      setError(t("settingsMisc.themeImport.readFailed"));
       return;
     }
     setJson(fileText.value);
@@ -250,9 +257,9 @@ function ThemeImportBody({
     const failures: string[] = [];
     const parsed: Array<{ theme: ThemeDefinition; sourceName: string }> = [];
     for (const file of files) {
-      const oversized = describeOversizedThemeFile(file.size);
+      const oversized = describeOversizedThemeFile(file.size, t);
       if (oversized) {
-        failures.push(`${file.name}: too large`);
+        failures.push(t("settingsMisc.themeImport.tooLarge", { name: file.name }));
         continue;
       }
       try {
@@ -263,7 +270,7 @@ function ThemeImportBody({
         });
       } catch (cause) {
         failures.push(
-          `${file.name}: ${cause instanceof Error ? cause.message : "not a theme file"}`,
+          `${file.name}: ${cause instanceof Error ? cause.message : t("settingsMisc.themeImport.notThemeFile")}`,
         );
       }
     }
@@ -279,7 +286,7 @@ function ThemeImportBody({
         installed.push(installCustomTheme(theme));
       } catch (cause) {
         failures.push(
-          `${theme.label}: ${cause instanceof Error ? cause.message : "could not install"}`,
+          `${theme.label}: ${cause instanceof Error ? cause.message : t("settingsMisc.themeImport.couldNotInstall")}`,
         );
       }
     }
@@ -356,7 +363,7 @@ function ThemeImportBody({
       if (getCustomThemes().some((existing) => existing.id === candidate.id)) continue;
       return candidate;
     }
-    throw new Error(`Too many copies of "${theme.label}".`);
+    throw new Error(t("settingsMisc.themeImport.tooManyCopies", { name: theme.label }));
   };
 
   const resolveConflicts = (mode: "update" | "copy") => {
@@ -382,7 +389,9 @@ function ThemeImportBody({
             : installCustomTheme(versionedCopy(theme, preferredName)),
         );
       } catch (cause) {
-        failures.push(`${theme.label}: ${cause instanceof Error ? cause.message : "failed"}`);
+        failures.push(
+          `${theme.label}: ${cause instanceof Error ? cause.message : t("settingsMisc.themeImport.failed")}`,
+        );
       }
     }
     if (resolved.length > 0) onImportedMany(resolved, { updated: mode === "update" });
@@ -392,7 +401,7 @@ function ThemeImportBody({
   };
 
   const handleSubmit = () => {
-    const oversized = describeOversizedThemeFile(json.length);
+    const oversized = describeOversizedThemeFile(json.length, t);
     if (oversized) {
       setError(oversized);
       return;
@@ -412,12 +421,12 @@ function ThemeImportBody({
         try {
           removeCustomTheme(installedTheme.id);
         } catch {}
-        setError("Theme added, but it could not be selected. Try again.");
+        setError(t("settingsMisc.themeImport.notSelectable"));
         return;
       }
       onClose();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "That theme file is invalid.");
+      setError(cause instanceof Error ? cause.message : t("settingsMisc.themeImport.invalidFile"));
     }
   };
 
@@ -434,7 +443,7 @@ function ThemeImportBody({
       <div className="flex items-center gap-3" aria-hidden>
         <div className="h-px flex-1 bg-border" />
         <span className="text-muted-foreground text-2xs uppercase tracking-wider">
-          or import a file
+          {t("settingsMisc.themeImport.orImportFile")}
         </span>
         <div className="h-px flex-1 bg-border" />
       </div>
@@ -465,17 +474,17 @@ function ThemeImportBody({
             type="file"
           />
         );
-        const chooseButton = (label = "Choose files") => (
+        const chooseButton = (label = t("settingsMisc.themeImport.chooseFiles")) => (
           <Button disabled={isReading} size="sm" variant="outline" onClick={openFilePicker}>
             <DownloadIcon />
-            {isReading ? "Reading…" : label}
+            {isReading ? t("settingsMisc.themeImport.reading") : label}
           </Button>
         );
         const editorSection = () => (
           <div className="space-y-2">
             <div className="flex items-baseline justify-between gap-3">
               <label className="text-sm font-medium" htmlFor="theme-json-editor">
-                Theme JSON
+                {t("settingsMisc.themeImport.themeJson")}
               </label>
             </div>
             <ThemeJsonEditor id="theme-json-editor" onChange={setJson} value={json} />
@@ -485,23 +494,25 @@ function ThemeImportBody({
           return (
             <div className="space-y-3">
               <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
-                <p className="text-sm font-medium">Already installed</p>
+                <p className="text-sm font-medium">
+                  {t("settingsMisc.themeImport.alreadyInstalled")}
+                </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {conflicts.map((theme) => theme.label).join(", ")}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" onClick={() => resolveConflicts("update")}>
-                  Update existing
+                  {t("settingsMisc.themeImport.updateExisting")}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => resolveConflicts("copy")}>
-                  Keep both
+                  {t("settingsMisc.themeImport.keepBoth")}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setConflicts(null)}>
-                  Back
+                  {t("common.back")}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => onClose()}>
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
               </div>
             </div>
@@ -517,9 +528,9 @@ function ThemeImportBody({
               {...dropHandlers}
             >
               <div className="min-w-0">
-                <p className="text-sm font-medium">Theme file</p>
+                <p className="text-sm font-medium">{t("settingsMisc.themeImport.themeFile")}</p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {fileName ?? "Drop T3 Code or VS Code .json files"}
+                  {fileName ?? t("settingsMisc.themeImport.dropFiles")}
                 </p>
               </div>
               {chooseButton()}
@@ -528,11 +539,11 @@ function ThemeImportBody({
             {editorSection()}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button variant="ghost" onClick={() => onClose()}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button disabled={!json.trim() || isReading} onClick={handleSubmit}>
                 <PlusIcon />
-                Add theme
+                {t("settingsMisc.themeImport.add")}
               </Button>
             </div>
           </div>

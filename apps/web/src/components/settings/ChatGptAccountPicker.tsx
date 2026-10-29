@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ProviderAuthMethod } from "@t3tools/contracts";
+import { useT } from "~/i18n";
 import { RadioGroup, Radio } from "../ui/radio-group";
 import {
   Dialog,
@@ -22,6 +23,7 @@ export function ChatGptAccountPicker({
   onClose: () => void;
   onSelect: (methodId: string) => void;
 }) {
+  const t = useT();
   const profiles = methods.filter((method) => method.id.startsWith("chatgpt-profile:"));
   const [selection, setSelection] = useState<string | null>(null);
   const selectedMethodId =
@@ -39,14 +41,12 @@ export function ChatGptAccountPicker({
     >
       <DialogPopup>
         <DialogHeader>
-          <DialogTitle>Reconnect ChatGPT</DialogTitle>
-          <DialogDescription>
-            On OpenAI, sign in with the account you choose here.
-          </DialogDescription>
+          <DialogTitle>{t("providerSetup.chatGptPicker.title")}</DialogTitle>
+          <DialogDescription>{t("providerSetup.chatGptPicker.description")}</DialogDescription>
         </DialogHeader>
         <div className="px-6 pb-6">
           <RadioGroup
-            aria-label="ChatGPT account to connect"
+            aria-label={t("providerSetup.chatGptPicker.ariaLabel")}
             value={selectedMethodId}
             onValueChange={(value) => setSelection(value)}
           >
@@ -61,7 +61,9 @@ export function ChatGptAccountPicker({
             ))}
             <label className="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 text-sm">
               <Radio value="chatgpt-change-account" />
-              <span className="font-medium">Use a different account</span>
+              <span className="font-medium">
+                {t("providerSetup.chatGptPicker.differentAccount")}
+              </span>
             </label>
           </RadioGroup>
         </div>

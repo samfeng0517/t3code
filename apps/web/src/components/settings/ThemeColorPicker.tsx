@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from "react";
-import { t, useT, type MessageKey } from "~/i18n";
+import { t as globalT, useT, type MessageKey, type Translate } from "~/i18n";
 import { isThemeColor, themeColorToHex, type ThemeColorRole } from "../../themePalette";
 import { cn } from "../../lib/utils";
 import { hexToHsv, hsvToHex, type HsvColor } from "../../lib/color";
@@ -7,7 +7,7 @@ import { ColorHueSlider, ColorSaturationValuePlane } from "../ui/color-picker";
 import { Input } from "../ui/input";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-export function getThemeRoleLabel(role: ThemeColorRole): string {
+export function getThemeRoleLabel(role: ThemeColorRole, t: Translate = globalT): string {
   const labels: Partial<Record<ThemeColorRole, MessageKey>> = {
     canvas: "settingsPages.themeColor.role.canvas",
     toolbar: "settingsPages.themeColor.role.toolbar",
@@ -322,7 +322,7 @@ export const ThemeColorField = memo(function ThemeColorField({
   label?: string;
 }) {
   const translate = useT();
-  const label = customLabel ?? getThemeRoleLabel(role);
+  const label = customLabel ?? getThemeRoleLabel(role, translate);
   const isColorValue = isThemeColor(value);
   const swatchValue = isColorValue ? value : "#000000";
   const editorValue = value.trim().toLowerCase().startsWith("oklch(")

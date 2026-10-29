@@ -3,6 +3,7 @@ import { useRef, useState, type ComponentProps } from "react";
 
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { getClientSettings } from "../../hooks/useSettings";
+import { useT } from "../../i18n";
 import {
   serializeTableElementToCsv,
   serializeTableElementToMarkdown,
@@ -15,6 +16,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { reportMarkdownActionFailure } from "./markdownActionFailure";
 
 export function MarkdownTable({ children, ...props }: ComponentProps<"table">) {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [expanded, setExpanded] = useState(() => getClientSettings().wordWrap);
   const { copyToClipboard, isCopied: copied } = useCopyToClipboard<"markdown" | "csv">({
@@ -22,8 +24,8 @@ export function MarkdownTable({ children, ...props }: ComponentProps<"table">) {
     onError: (cause, format) =>
       reportMarkdownActionFailure({ operation: "copy-table", format }, cause),
   });
-  const expandLabel = expanded ? "Collapse table cells" : "Expand table cells";
-  const copyLabel = copied ? "Copied" : "Copy table";
+  const expandLabel = expanded ? t("timeline.table.collapse") : t("timeline.table.expand");
+  const copyLabel = copied ? t("workspace.file.copied") : t("timeline.table.copy");
 
   const handleCopy = (format: "markdown" | "csv") => {
     const table = containerRef.current?.querySelector("table");
@@ -85,8 +87,10 @@ export function MarkdownTable({ children, ...props }: ComponentProps<"table">) {
             <TooltipPopup side="top">{copyLabel}</TooltipPopup>
           </Tooltip>
           <MenuPopup align="end">
-            <MenuItem onClick={() => handleCopy("markdown")}>Copy as Markdown</MenuItem>
-            <MenuItem onClick={() => handleCopy("csv")}>Copy as CSV</MenuItem>
+            <MenuItem onClick={() => handleCopy("markdown")}>
+              {t("timeline.table.copyAsMarkdown")}
+            </MenuItem>
+            <MenuItem onClick={() => handleCopy("csv")}>{t("timeline.table.copyAsCsv")}</MenuItem>
           </MenuPopup>
         </Menu>
       </div>

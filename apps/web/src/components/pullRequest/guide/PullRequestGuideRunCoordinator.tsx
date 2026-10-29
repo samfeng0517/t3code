@@ -5,6 +5,7 @@ import * as Option from "effect/Option";
 import { AsyncResult, type AtomRegistry } from "effect/reactivity";
 
 import { getClientSettings } from "~/hooks/useSettings";
+import { t } from "~/i18n";
 import { observedPullRequestTitle, pullRequestEnvironment } from "~/state/pullRequests";
 import {
   hasDesktopNotifications,
@@ -90,7 +91,10 @@ function watchGuideRun(
     const looking = document.visibilityState === "visible" && document.hasFocus();
     if (looking && isGuideShown(runKey)) return;
 
-    const title = failure === null ? "Review guide ready" : "Review guide failed";
+    const title =
+      failure === null
+        ? t("pullRequestDetail.guide.runReady")
+        : t("pullRequestDetail.guide.runFailed");
     const body =
       watch.title ??
       observedPullRequestTitle(registry, watch.environmentId, watch.reference) ??
@@ -130,7 +134,7 @@ function watchGuideRun(
             ),
         },
         actionProps: {
-          children: "Open guide",
+          children: t("pullRequestDetail.guide.openGuide"),
           onClick: () => {
             toastManager.close(toastId);
             open();

@@ -8,6 +8,7 @@ import type {
 import { SmilePlusIcon } from "lucide-react";
 import { useState } from "react";
 
+import { useT, type MessageKey, type Translate } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 
@@ -18,8 +19,6 @@ import {
   applyPendingPullRequestReactions,
   PULL_REQUEST_REACTION_ORDER,
   pullRequestReactionEmoji,
-  pullRequestReactionName,
-  pullRequestReactionTooltip,
   pullRequestReactionsSignature,
 } from "@t3tools/client-runtime/pull-request-reactions";
 
@@ -27,6 +26,65 @@ const PILL_CLASS =
   "inline-flex h-6 shrink-0 items-center gap-1 rounded-full border px-2 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
 
 const EMPTY_PENDING: ReadonlyMap<PullRequestReactionContent, boolean> = new Map();
+
+const REACTION_NAME_KEYS: Record<PullRequestReactionContent, MessageKey> = {
+  "thumbs-up": "pullRequestDetail.reactions.name.thumbs-up",
+  "thumbs-down": "pullRequestDetail.reactions.name.thumbs-down",
+  laugh: "pullRequestDetail.reactions.name.laugh",
+  hooray: "pullRequestDetail.reactions.name.hooray",
+  confused: "pullRequestDetail.reactions.name.confused",
+  heart: "pullRequestDetail.reactions.name.heart",
+  rocket: "pullRequestDetail.reactions.name.rocket",
+  eyes: "pullRequestDetail.reactions.name.eyes",
+};
+
+const NAMED_ACTOR_LIMIT = 3;
+
+function joinNames(parts: ReadonlyArray<string>, t: Translate): string {
+  if (parts.length <= 1) return parts[0] ?? "";
+  if (parts.length === 2) {
+    return t("pullRequestDetail.reactions.joinTwo", {
+      first: parts[0] ?? "",
+      second: parts[1] ?? "",
+    });
+  }
+  return t("pullRequestDetail.reactions.joinMany", {
+    head: parts.slice(0, -1).join(t("pullRequestDetail.reactions.separator")),
+    last: parts.at(-1) ?? "",
+  });
+}
+
+function countRemainder(count: number, named: boolean, t: Translate): string {
+  if (named) {
+    return t(
+      count === 1
+        ? "pullRequestDetail.reactions.otherOne"
+        : "pullRequestDetail.reactions.otherMany",
+      { count },
+    );
+  }
+  return t(
+    count === 1
+      ? "pullRequestDetail.reactions.personOne"
+      : "pullRequestDetail.reactions.personMany",
+    { count },
+  );
+}
+
+function reactionTooltip(reaction: PullRequestReaction, t: Translate): string {
+  const viewerHasRoom = reaction.actors.length < reaction.count;
+  const names =
+    reaction.viewerHasReacted && viewerHasRoom
+      ? [t("pullRequestDetail.reactions.you"), ...reaction.actors]
+      : [...reaction.actors];
+  const shown = names.slice(0, Math.min(NAMED_ACTOR_LIMIT, reaction.count));
+  const others = Math.max(0, reaction.count - shown.length);
+  const parts = [...shown, ...(others > 0 ? [countRemainder(others, shown.length > 0, t)] : [])];
+  return t("pullRequestDetail.reactions.tooltip", {
+    names: joinNames(parts, t),
+    reaction: t(REACTION_NAME_KEYS[reaction.content]),
+  });
+}
 
 export function PullRequestReactionBar({
   reactions,
@@ -46,6 +104,7 @@ export function PullRequestReactionBar({
   readonly onRefresh: () => void;
   readonly className?: string | undefined;
 }) {
+  const t = useT();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pending, setPending] = useState<{
     readonly signature: string;
@@ -76,7 +135,7 @@ export function PullRequestReactionBar({
         next.delete(content);
         return { signature: current.signature, values: next };
       });
-      toastManager.add({ type: "error", title: "The reaction could not be saved" });
+      toastManager.add({ type: "error", title: t("pullRequestDetail.reactions.saveFailed") });
       return;
     }
     onRefresh();
@@ -93,7 +152,10 @@ export function PullRequestReactionBar({
               <button
                 type="button"
                 aria-pressed={reaction.viewerHasReacted}
-                aria-label={`${pullRequestReactionName(reaction.content)}, ${reaction.count}`}
+                aria-label={t("pullRequestDetail.reactions.countAria", {
+                  name: t(REACTION_NAME_KEYS[reaction.content]),
+                  count: reaction.count,
+                })}
                 disabled={!canReact}
                 className={cn(
                   PILL_CLASS,
@@ -109,7 +171,7 @@ export function PullRequestReactionBar({
             <span aria-hidden>{pullRequestReactionEmoji(reaction.content)}</span>
             <span className="tabular-nums">{reaction.count}</span>
           </TooltipTrigger>
-          <TooltipPopup side="top">{pullRequestReactionTooltip(reaction)}</TooltipPopup>
+          <TooltipPopup side="top">{reactionTooltip(reaction, t)}</TooltipPopup>
         </Tooltip>
       ))}
 
@@ -119,7 +181,7 @@ export function PullRequestReactionBar({
             render={
               <button
                 type="button"
-                aria-label="Add a reaction"
+                aria-label={t("pullRequestDetail.reactions.add")}
                 className={cn(
                   PILL_CLASS,
                   "border-border/70 px-1.5 text-muted-foreground hover:border-primary/60 hover:text-foreground",
@@ -139,7 +201,7 @@ export function PullRequestReactionBar({
                     key={content}
                     type="button"
                     aria-pressed={reacted}
-                    aria-label={pullRequestReactionName(content)}
+                    aria-label={t(REACTION_NAME_KEYS[content])}
                     className={cn(
                       "flex size-7 items-center justify-center rounded-md text-base outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                       reacted && "bg-primary/10",

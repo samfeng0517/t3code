@@ -44,24 +44,24 @@ function environmentIdentificationOptions(
   const none = t("settings.appearance.environmentIdentification.option.none");
   if (stageVariant === "dev") {
     return [
-      ["artwork", "Dev artwork"],
-      ["nightly-artwork", "Nightly artwork"],
+      ["artwork", t("settingsMisc.appearance.devArtwork")],
+      ["nightly-artwork", t("settingsMisc.appearance.nightlyArtwork")],
       ["pill", pill],
       ["none", none],
     ];
   }
   if (stageVariant === "nightly") {
     return [
-      ["artwork", "Nightly artwork"],
-      ["dev-artwork", "Dev artwork"],
+      ["artwork", t("settingsMisc.appearance.nightlyArtwork")],
+      ["dev-artwork", t("settingsMisc.appearance.devArtwork")],
       ["pill", pill],
       ["none", none],
     ];
   }
   return [
     ["artwork", none],
-    ["nightly-artwork", "Nightly artwork"],
-    ["dev-artwork", "Dev artwork"],
+    ["nightly-artwork", t("settingsMisc.appearance.nightlyArtwork")],
+    ["dev-artwork", t("settingsMisc.appearance.devArtwork")],
   ];
 }
 
@@ -73,9 +73,9 @@ function environmentIdentificationFallbackLabel(
     case "artwork":
       return t("settings.appearance.environmentIdentification.option.artwork");
     case "nightly-artwork":
-      return "Nightly artwork";
+      return t("settingsMisc.appearance.nightlyArtwork");
     case "dev-artwork":
-      return "Dev artwork";
+      return t("settingsMisc.appearance.devArtwork");
     case "pill":
       return t("settings.appearance.environmentIdentification.option.pill");
     case "none":
@@ -390,7 +390,7 @@ export function AppearanceSettingsPanel() {
             description={
               environmentStageVariant
                 ? t("settings.appearance.environmentIdentification.description")
-                : "Show Dev or Nightly artwork in the sidebar header."
+                : t("settingsMisc.appearance.environmentArtwork")
             }
             resetAction={
               settings.environmentIdentificationMode !== DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE ? (

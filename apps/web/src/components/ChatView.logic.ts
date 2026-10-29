@@ -98,6 +98,7 @@ import { derivePhase, type TimelineEntry } from "../session-logic";
 import type { PreviewMiniPlayerSource } from "../previewMiniPlayerStore";
 import type { DesktopPreviewOverlay } from "../previewStateStore";
 import type { RightPanelSurface } from "../rightPanelStore";
+import { t as globalT, type Translate } from "../i18n";
 import {
   NO_PROVIDER_MODEL_SELECTION,
   resolveSelectableProviderInstanceEntry,
@@ -115,6 +116,7 @@ export const ENVIRONMENT_RECONNECT_WARNING_GRACE_MS = 2_000;
 export function agentControlledBrowserCloseConfirmation(
   surfaces: readonly RightPanelSurface[],
   desktopByTabId: Readonly<Record<string, Pick<DesktopPreviewOverlay, "controller"> | undefined>>,
+  t: Translate = globalT,
 ): string | null {
   const activeBrowserCount = surfaces.filter(
     (surface) =>
@@ -125,13 +127,13 @@ export function agentControlledBrowserCloseConfirmation(
   if (activeBrowserCount === 0) return null;
   if (activeBrowserCount === 1) {
     return [
-      "Close browser while the agent is using it?",
-      "The agent is actively controlling this browser. Closing it may interrupt the current browser action.",
+      t("chatView.closeBrowser.singleTitle"),
+      t("chatView.closeBrowser.singleDescription"),
     ].join("\n");
   }
   return [
-    `Close ${activeBrowserCount} browsers while the agent is using them?`,
-    "The agent is actively controlling these browsers. Closing them may interrupt the current browser actions.",
+    t("chatView.closeBrowser.manyTitle", { count: activeBrowserCount }),
+    t("chatView.closeBrowser.manyDescription"),
   ].join("\n");
 }
 
@@ -560,26 +562,27 @@ export function getAntigravitySendBlockReason(
     | null
     | undefined,
   model: string,
+  t: Translate = globalT,
 ): string | null {
   if (provider?.driver !== "antigravity") return null;
   if (!provider.installed) {
-    return "Install Antigravity in provider settings before sending.";
+    return t("chatView.antigravity.install");
   }
   if (provider.auth.status === "unauthenticated") {
-    return "Sign in to Antigravity in provider settings before sending.";
+    return t("chatView.antigravity.signIn");
   }
   const slug = model.trim();
-  if (slug.length === 0) return "Choose an Antigravity model before sending.";
+  if (slug.length === 0) return t("chatView.antigravity.chooseModel");
   if (provider.auth.status === "unknown") return null;
   if (provider.models.length === 0) {
-    return "Refresh Antigravity models in provider settings before sending.";
+    return t("chatView.antigravity.refreshModels");
   }
   if (
     provider.status === "ready" &&
     slug !== ANTIGRAVITY_DEFAULT_MODEL &&
     !provider.models.some((entry) => entry.slug === slug || entry.aliases?.includes(slug))
   ) {
-    return "That Antigravity model is no longer available. Choose another model.";
+    return t("chatView.antigravity.modelUnavailable");
   }
   return null;
 }
@@ -649,7 +652,7 @@ export async function resolveFileAttachmentUrl(input: {
   });
   if (result._tag === "Failure") throw squashAtomCommandFailure(result);
   const url = resolveAssetUrl(input.httpBaseUrl, result.value.relativeUrl);
-  if (url === null) throw new Error("The environment returned an invalid attachment URL.");
+  if (url === null) throw new Error(globalT("chatView.attachments.invalidUrl"));
   return url;
 }
 
@@ -662,7 +665,7 @@ export async function prepareRevertedMessageAttachments(input: {
   return Promise.all(
     (input.message.attachments ?? []).map(async (attachment) => {
       if (attachment.type !== "image" && attachment.type !== "file") {
-        throw new Error("This message has an attachment that cannot be restored.");
+        throw new Error(globalT("chatView.attachments.cannotRestore"));
       }
       const result = await input.createAssetUrl({
         environmentId: input.environmentId,
@@ -677,9 +680,10 @@ export async function prepareRevertedMessageAttachments(input: {
       });
       if (result._tag === "Failure") throw squashAtomCommandFailure(result);
       const url = resolveAssetUrl(input.httpBaseUrl, result.value.relativeUrl);
-      if (url === null) throw new Error("The environment returned an invalid attachment URL.");
+      if (url === null) throw new Error(globalT("chatView.attachments.invalidUrl"));
       const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-      if (!response.ok) throw new Error(`Could not restore attachment: ${attachment.name}`);
+      if (!response.ok)
+        throw new Error(globalT("chatView.attachments.couldNotRestore", { name: attachment.name }));
       return new File([await response.blob()], attachment.name, { type: attachment.mimeType });
     }),
   );
@@ -777,16 +781,23 @@ export function buildExpiredTerminalContextToastCopy(
   variant: "omitted" | "empty",
 ): { title: string; description: string } {
   const count = Math.max(1, Math.floor(expiredTerminalContextCount));
-  const noun = count === 1 ? "Expired terminal context" : "Expired terminal contexts";
   if (variant === "empty") {
     return {
-      title: `${noun} won't be sent`,
-      description: "Remove it or re-add it to include terminal output.",
+      title: globalT(
+        count === 1
+          ? "chatView.expiredTerminal.emptyTitleOne"
+          : "chatView.expiredTerminal.emptyTitleMany",
+      ),
+      description: globalT("chatView.expiredTerminal.emptyDescription"),
     };
   }
   return {
-    title: `${noun} omitted from message`,
-    description: "Re-add it if you want that terminal output included.",
+    title: globalT(
+      count === 1
+        ? "chatView.expiredTerminal.omittedTitleOne"
+        : "chatView.expiredTerminal.omittedTitleMany",
+    ),
+    description: globalT("chatView.expiredTerminal.omittedDescription"),
   };
 }
 
@@ -911,13 +922,16 @@ export function deriveLockedProvider(input: {
   return narrowedThreadProvider ?? narrowedSelectedProvider ?? null;
 }
 
-export function getStartedThreadModelChangeBlockReason(input: {
-  hasStartedSession: boolean;
-  supportsProviderSwitchingViaHandoff?: boolean;
-  currentModelSelection: ModelSelection;
-  currentProviderInstanceId?: ModelSelection["instanceId"] | null | undefined;
-  nextModelSelection: ModelSelection;
-}): { title: string; description: string } | null {
+export function getStartedThreadModelChangeBlockReason(
+  input: {
+    hasStartedSession: boolean;
+    supportsProviderSwitchingViaHandoff?: boolean;
+    currentModelSelection: ModelSelection;
+    currentProviderInstanceId?: ModelSelection["instanceId"] | null | undefined;
+    nextModelSelection: ModelSelection;
+  },
+  t: Translate = globalT,
+): { title: string; description: string } | null {
   if (!input.hasStartedSession) {
     return null;
   }
@@ -932,8 +946,8 @@ export function getStartedThreadModelChangeBlockReason(input: {
     return null;
   }
   return {
-    title: "Start a new chat to switch providers",
-    description: "This thread does not support switching providers after it has started.",
+    title: t("chatView.providerSwitch.title"),
+    description: t("chatView.providerSwitch.description"),
   };
 }
 
@@ -978,7 +992,7 @@ export async function waitForRevertedMessage(
     return latest === undefined || run.ordinal > latest.ordinal ? run : latest;
   }, undefined);
   if (witness === undefined) {
-    throw new Error("The thread has changed. Select a message to rewind again.");
+    throw new Error(globalT("chatView.rewind.threadChanged"));
   }
   return new Promise<void>((resolve, reject) => {
     let settled = false;
@@ -1020,7 +1034,7 @@ export async function waitForRevertedMessage(
     };
     unsubscribe = appAtomRegistry.subscribe(threadAtom, inspect);
     timeout = globalThis.setTimeout(() => {
-      finish(new Error("Timed out waiting for the thread to rewind."));
+      finish(new Error(globalT("chatView.rewind.timedOut")));
     }, timeoutMs);
     Promise.resolve()
       .then(revert)
@@ -1270,7 +1284,7 @@ export type LocalThreadErrorEntry = {
 };
 
 export function chatActionErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "An error occurred.";
+  return error instanceof Error ? error.message : globalT("common.errorOccurred");
 }
 
 export function releaseChatTimelineAnchor<T extends { readonly messageId: MessageId | null }>(
@@ -1332,14 +1346,17 @@ export function makeModelDisabledReason(
     Parameters<typeof getStartedThreadModelChangeBlockReason>[0],
     "nextModelSelection"
   > | null,
+  t: Translate = globalT,
 ) {
   return (instanceId: ProviderInstanceId, model: string): string | null => {
     if (!context) return null;
-    const reason = getStartedThreadModelChangeBlockReason({
-      ...context,
-      nextModelSelection: { instanceId, model },
-    });
-    return reason ? `${reason.description} Start a new thread to use this model.` : null;
+    const reason = getStartedThreadModelChangeBlockReason(
+      { ...context, nextModelSelection: { instanceId, model } },
+      t,
+    );
+    return reason
+      ? t("chatView.providerSwitch.modelDisabled", { description: reason.description })
+      : null;
   };
 }
 

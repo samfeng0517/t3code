@@ -11,6 +11,7 @@ import {
   TIMELINE_MINIMAP_MIN_ITEMS,
 } from "./MessagesTimeline.logic";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 
 function timelineMinimapEventTargetsPreview(target: EventTarget): boolean {
@@ -51,6 +52,7 @@ export function TimelineMinimap({
   onWheel: (event: WheelEvent) => void;
   onSelect: (item: TimelineMinimapItem) => void;
 }) {
+  const t = useT();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const wheelTargetRef = (node: HTMLDivElement | null) => {
     if (!node) return;
@@ -156,7 +158,9 @@ export function TimelineMinimap({
             }}
           />
           <button
-            aria-label={`Jump to message: ${activeItem?.userText ?? "User message"}`}
+            aria-label={t("timeline.minimap.jumpToMessage", {
+              message: activeItem?.userText ?? t("timeline.minimap.userMessage"),
+            })}
             className="absolute inset-y-0 left-0 w-full cursor-pointer bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
             onBlur={() => setActiveIndex(null)}
             onClick={(event) => {
@@ -255,7 +259,7 @@ export function TimelineMinimap({
               >
                 <span className="dropdown-glass block rounded-xl p-3 text-left text-popover-foreground shadow-xl shadow-black/25">
                   <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium leading-5">
-                    {activeItem.userText ?? "User message"}
+                    {activeItem.userText ?? t("timeline.minimap.userMessage")}
                   </span>
                   {activeItem.assistantText ? (
                     <span
@@ -298,8 +302,9 @@ function TimelineMinimapNavigationButton({
   interactive: boolean;
   onClick: () => void;
 }) {
+  const t = useT();
   const previous = direction === "previous";
-  const label = previous ? "Previous turn" : "Next turn";
+  const label = previous ? t("timeline.minimap.previousTurn") : t("timeline.minimap.nextTurn");
   const Icon = previous ? ChevronUpIcon : ChevronDownIcon;
 
   return (

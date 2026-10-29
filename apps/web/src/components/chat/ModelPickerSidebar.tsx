@@ -10,19 +10,26 @@ import {
   shouldShowInstanceBadge,
   type ProviderInstanceEntry,
 } from "../../providerInstances";
+import { useT, type Translate } from "../../i18n";
 
-function describeUnavailableInstance(entry: ProviderInstanceEntry): string {
+function describeUnavailableInstance(entry: ProviderInstanceEntry, t: Translate): string {
   const label = entry.displayName;
   if (!entry.enabled || entry.status === "disabled") {
-    return `${label}: Disabled in settings.`;
+    return t("chatView.modelPicker.disabledInSettings", { label });
   }
   if (entry.status === "ready" && entry.isAvailable) {
     return label;
   }
   const kind =
-    entry.status === "error" ? "Unavailable" : entry.status === "warning" ? "Limited" : "Not ready";
+    entry.status === "error"
+      ? t("chatView.modelPicker.kind.unavailable")
+      : entry.status === "warning"
+        ? t("chatView.modelPicker.kind.limited")
+        : t("chatView.modelPicker.kind.notReady");
   const msg = entry.snapshot.message?.trim();
-  return msg ? `${label}: ${kind}. ${msg}` : `${label}: ${kind}.`;
+  return msg
+    ? t("chatView.modelPicker.unavailableWithMessage", { label, kind, message: msg })
+    : t("chatView.modelPicker.unavailable", { label, kind });
 }
 
 const PICKER_TOOLTIP_SIDE = "left" as const;
@@ -38,6 +45,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
   getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
 }) {
+  const t = useT();
   const handleSelect = (instanceId: ProviderInstanceId | "favorites") => {
     props.onSelectInstance(instanceId);
   };
@@ -70,7 +78,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
     <Toolbar.Root
       className="w-11 shrink-0 overflow-hidden bg-muted/30"
       data-model-picker-sidebar="true"
-      aria-label="Providers"
+      aria-label={t("chatView.modelPicker.providers")}
       orientation="vertical"
       onKeyDown={(event) => {
         if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
@@ -102,7 +110,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                         )}
                         onClick={() => handleSelect("favorites")}
                         type="button"
-                        aria-label="Favorites"
+                        aria-label={t("chatView.modelPicker.favorites")}
                         aria-pressed={props.selectedInstanceId === "favorites"}
                       >
                         <StarIcon className="size-5 fill-current shrink-0" aria-hidden />
@@ -114,7 +122,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                     sideOffset={PICKER_TOOLTIP_SIDE_OFFSET}
                     align="center"
                   >
-                    Favorites
+                    {t("chatView.modelPicker.favorites")}
                   </TooltipPopup>
                 </Tooltip>
               </div>
@@ -134,7 +142,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
             const showInstanceBadge = shouldShowInstanceBadge(entry, props.instanceEntries);
 
             const tooltip = isUnavailable
-              ? describeUnavailableInstance(entry)
+              ? describeUnavailableInstance(entry, t)
               : isContextDisabled
                 ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
                 : entry.displayName;

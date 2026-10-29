@@ -26,7 +26,7 @@ import {
   decodeProjectScriptKeybindingRule,
 } from "~/lib/projectScriptKeybindings";
 import { keybindingFromKeyboardEvent } from "~/components/settings/KeybindingsSettings.logic";
-import { useT } from "~/i18n";
+import { useT, type MessageKey } from "~/i18n";
 import { commandForProjectScript, nextProjectScriptId } from "~/projectScripts";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { useComposerMenuState } from "./chat/useComposerMenuState";
@@ -55,13 +55,13 @@ import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import { Switch } from "./ui/switch";
 import { Textarea } from "./ui/textarea";
 
-const SCRIPT_ICONS: Array<{ id: ProjectScriptIcon; label: string }> = [
-  { id: "play", label: "Play" },
-  { id: "test", label: "Test" },
-  { id: "lint", label: "Lint" },
-  { id: "configure", label: "Configure" },
-  { id: "build", label: "Build" },
-  { id: "debug", label: "Debug" },
+const SCRIPT_ICONS: Array<{ id: ProjectScriptIcon; labelKey: MessageKey }> = [
+  { id: "play", labelKey: "chatView.scriptEditor.icon.play" },
+  { id: "test", labelKey: "chatView.scriptEditor.icon.test" },
+  { id: "lint", labelKey: "chatView.scriptEditor.icon.lint" },
+  { id: "configure", labelKey: "chatView.scriptEditor.icon.configure" },
+  { id: "build", labelKey: "chatView.scriptEditor.icon.build" },
+  { id: "debug", labelKey: "chatView.scriptEditor.icon.debug" },
 ];
 
 export function ScriptIcon({
@@ -155,6 +155,7 @@ export function ProjectScriptEditorDialog({
   onDelete: (scriptId: string) => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const canEditActions = useEnvironmentScope(environmentId, editScope);
   // Scope errors by request so late saves cannot overwrite a newer request's error.
   const [errorState, setErrorState] = useState<{
@@ -215,18 +216,24 @@ export function ProjectScriptEditorDialog({
       <AlertDialog open={deleteConfirmOpen && canEditActions} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogPopup>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete action "{deleteName}"?</AlertDialogTitle>
-            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+            <AlertDialogTitle>
+              {t("chatView.scriptEditor.deleteTitle", { name: deleteName })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("chatView.scriptEditor.deleteDescription")}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="outline" />}>
+              {t("common.cancel")}
+            </AlertDialogClose>
             <Button
               variant="destructive"
               disabled={!canEditActions}
               onClick={() => {
                 if (!request?.scriptId) return;
                 if (!readEnvironmentScope(environmentId, editScope)) {
-                  setValidationError("This connection cannot change project actions.");
+                  setValidationError(t("chatView.scriptEditor.cannotChangeActions"));
                   return;
                 }
                 setDeleteConfirmOpen(false);
@@ -234,7 +241,7 @@ export function ProjectScriptEditorDialog({
                 onDelete(request.scriptId);
               }}
             >
-              Delete action
+              {t("chatView.scriptEditor.deleteAction")}
             </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>
@@ -325,24 +332,24 @@ function ProjectScriptEditorForm({
     event.preventDefault();
     if (pendingSubmissionRef.current !== null) return;
     if (!readEnvironmentScope(environmentId, editScope)) {
-      setValidationError("This connection cannot change project actions.");
+      setValidationError(t("chatView.scriptEditor.cannotChangeActions"));
       return;
     }
     const changesKeybinding =
       (keybinding.trim() || null) !== (request.initial.keybinding?.trim() || null);
     const canChangeKeybinding = readEnvironmentScope(environmentId, AuthSettingsWriteScope);
     if (changesKeybinding && !canChangeKeybinding) {
-      setValidationError("This connection cannot change keyboard shortcuts.");
+      setValidationError(t("chatView.scriptEditor.cannotChangeShortcuts"));
       return;
     }
     const trimmedName = name.trim();
     const trimmedCommand = command.trim();
     if (trimmedName.length === 0) {
-      setValidationError("Name is required.");
+      setValidationError(t("chatView.scriptEditor.nameRequired"));
       return;
     }
     if (trimmedCommand.length === 0) {
-      setValidationError("Command is required.");
+      setValidationError(t("chatView.scriptEditor.commandRequired"));
       return;
     }
 
@@ -375,7 +382,9 @@ function ProjectScriptEditorForm({
         autoOpenPreview: trimmedPreviewUrl.length > 0 ? autoOpenPreview : false,
       } satisfies NewProjectScriptInput;
     } catch (error) {
-      setValidationError(error instanceof Error ? error.message : "Failed to save action.");
+      setValidationError(
+        error instanceof Error ? error.message : t("chatView.scriptEditor.failedToSave"),
+      );
       return;
     }
 
@@ -389,7 +398,9 @@ function ProjectScriptEditorForm({
         if (result._tag === "Failure") {
           if (!isAtomCommandInterrupted(result)) {
             const error = squashAtomCommandFailure(result);
-            setValidationError(error instanceof Error ? error.message : "Failed to save action.");
+            setValidationError(
+              error instanceof Error ? error.message : t("chatView.scriptEditor.failedToSave"),
+            );
           }
         } else {
           close();
@@ -397,7 +408,9 @@ function ProjectScriptEditorForm({
       }
     } catch (error) {
       if (pendingSubmissionRef.current === submission) {
-        setValidationError(error instanceof Error ? error.message : "Failed to save action.");
+        setValidationError(
+          error instanceof Error ? error.message : t("chatView.scriptEditor.failedToSave"),
+        );
       }
     }
     if (pendingSubmissionRef.current === submission) {
@@ -409,16 +422,16 @@ function ProjectScriptEditorForm({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{isEditing ? "Edit Action" : "Add Action"}</DialogTitle>
-        <DialogDescription>
-          Actions are project-scoped commands you can run from the top bar or keybindings.
-        </DialogDescription>
+        <DialogTitle>
+          {isEditing ? t("chatView.scriptEditor.editTitle") : t("chatView.scriptEditor.addTitle")}
+        </DialogTitle>
+        <DialogDescription>{t("chatView.scriptEditor.description")}</DialogDescription>
       </DialogHeader>
       <DialogPanel>
         <form id={formId} onSubmit={submit}>
           <fieldset className="space-y-4" disabled={isSaving || !canEditActions}>
             <div className="space-y-1.5">
-              <Label htmlFor="script-name">Name</Label>
+              <Label htmlFor="script-name">{t("chatView.scriptEditor.name")}</Label>
               <div className="flex items-center gap-2">
                 <Popover onOpenChange={setIconPickerOpen} open={iconPickerOpen}>
                   <PopoverTrigger
@@ -427,7 +440,7 @@ function ProjectScriptEditorForm({
                         type="button"
                         variant="outline"
                         className="size-9 shrink-0"
-                        aria-label="Choose icon"
+                        aria-label={t("chatView.scriptEditor.chooseIcon")}
                       />
                     }
                   >
@@ -452,7 +465,7 @@ function ProjectScriptEditorForm({
                             }}
                           >
                             <ScriptIcon icon={entry.id} className="size-4" />
-                            <span>{entry.label}</span>
+                            <span>{t(entry.labelKey)}</span>
                           </button>
                         );
                       })}
@@ -469,22 +482,23 @@ function ProjectScriptEditorForm({
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="script-keybinding">Keybinding</Label>
+              <Label htmlFor="script-keybinding">{t("chatView.scriptEditor.keybinding")}</Label>
               <Input
                 disabled={!canWriteSettings}
                 id="script-keybinding"
-                placeholder="Press shortcut"
+                placeholder={t("chatView.scriptEditor.pressShortcut")}
                 value={keybinding}
                 readOnly
                 onKeyDown={captureKeybinding}
               />
               <p className="text-xs text-muted-foreground">
-                Press a shortcut. Use <code>Backspace</code> to clear. Shortcuts are
-                environment-wide. Projects using the same action share its shortcut.
+                {t("chatView.scriptEditor.keybindingHintPrefix")}
+                <code>Backspace</code>
+                {t("chatView.scriptEditor.keybindingHintSuffix")}
               </p>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="script-command">Command</Label>
+              <Label htmlFor="script-command">{t("chatView.scriptEditor.command")}</Label>
               <Textarea
                 id="script-command"
                 placeholder="bun test"
@@ -493,7 +507,7 @@ function ProjectScriptEditorForm({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="script-preview-url">Preview URL (optional)</Label>
+              <Label htmlFor="script-preview-url">{t("chatView.scriptEditor.previewUrl")}</Label>
               <Input
                 id="script-preview-url"
                 placeholder="http://localhost:5173"
@@ -501,11 +515,11 @@ function ProjectScriptEditorForm({
                 onChange={(event) => setPreviewUrl(event.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Open this URL in the in-app preview when this action runs.
+                {t("chatView.scriptEditor.previewUrlHint")}
               </p>
             </div>
             <label className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2 text-sm dark:border-transparent dark:bg-white/[0.035]">
-              <span>Run automatically on worktree creation</span>
+              <span>{t("chatView.scriptEditor.runOnCreate")}</span>
               <Switch
                 checked={runOnWorktreeCreate}
                 onCheckedChange={(checked) => setRunOnWorktreeCreate(Boolean(checked))}
@@ -516,7 +530,7 @@ function ProjectScriptEditorForm({
                 runOnWorktreeCreate ? "" : "opacity-60"
               }`}
             >
-              <span>Wait for it to finish before the agent starts</span>
+              <span>{t("chatView.scriptEditor.waitForSetup")}</span>
               <Switch
                 checked={waitForSetup}
                 disabled={!runOnWorktreeCreate}
@@ -524,7 +538,7 @@ function ProjectScriptEditorForm({
               />
             </label>
             <label className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2 text-sm dark:border-transparent dark:bg-white/[0.035]">
-              <span>Run in the thread's worktree when the thread settles</span>
+              <span>{t("chatView.scriptEditor.runOnSettle")}</span>
               <Switch
                 checked={runOnSettle}
                 onCheckedChange={(checked) => setRunOnSettle(Boolean(checked))}
@@ -542,7 +556,7 @@ function ProjectScriptEditorForm({
                 previewUrl.trim().length === 0 ? "opacity-60" : ""
               }`}
             >
-              <span>Open preview automatically when this action runs</span>
+              <span>{t("chatView.scriptEditor.autoOpenPreview")}</span>
               <Switch
                 checked={autoOpenPreview}
                 disabled={previewUrl.trim().length === 0}
@@ -562,14 +576,18 @@ function ProjectScriptEditorForm({
             disabled={isSaving || !canEditActions}
             onClick={() => onRequestDelete(name)}
           >
-            Delete
+            {t("chatView.scriptEditor.delete")}
           </Button>
         )}
         <Button type="button" variant="outline" onClick={close}>
-          Cancel
+          {t("common.cancel")}
         </Button>
         <Button form={formId} type="submit" disabled={isSaving || !canEditActions}>
-          {isSaving ? "Saving…" : isEditing ? "Save changes" : "Save action"}
+          {isSaving
+            ? t("chatView.scriptEditor.saving")
+            : isEditing
+              ? t("chatView.scriptEditor.saveChanges")
+              : t("chatView.scriptEditor.saveAction")}
         </Button>
       </DialogFooter>
     </>

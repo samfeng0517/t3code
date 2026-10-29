@@ -2,6 +2,7 @@ import { useEffect, useImperativeHandle, useRef, useState, type RefObject } from
 import { parseDelimitedPreview } from "@t3tools/shared/delimitedPreview";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { useClientSettings } from "~/hooks/useSettings";
+import { t as globalT, useT } from "~/i18n";
 import { FileSurfaceFailure, FileSurfaceLoading, FileSurfaceNotice } from "./fileSurfaceChrome";
 import { PREVIEW_PAGE_ROWS, type TextPreviewResult } from "./largeTextProtocol";
 import VirtualTablePreview from "./VirtualTablePreview";
@@ -37,6 +38,7 @@ export default function LargeTextViewer(props: {
   readonly revealLine?: number | null;
   readonly revealRequestId?: number;
 }) {
+  const t = useT();
   const [meta, setMeta] = useState<Extract<TextPreviewResult, { type: "meta" }> | null>(null);
   const [pages, setPages] = useState(new Map<number, string[][]>());
   const [error, setError] = useState<string | null>(null);
@@ -123,9 +125,9 @@ export default function LargeTextViewer(props: {
         }
       });
       engine.addEventListener("error", () => {
-        copyPending.current?.reject(new Error("The text viewer stopped."));
+        copyPending.current?.reject(new Error(globalT("files.largeText.viewerStopped")));
         copyPending.current = null;
-        setError("Could not load the text viewer. Close the file and try again.");
+        setError(globalT("files.largeText.loadFailed"));
       });
       engine.postMessage(
         {
@@ -177,7 +179,7 @@ export default function LargeTextViewer(props: {
     } else startWorker();
     return () => {
       controller.abort();
-      copyPending.current?.reject(new Error("Preview closed."));
+      copyPending.current?.reject(new Error(globalT("files.largeText.previewClosed")));
       copyPending.current = null;
       worker.current?.terminate();
       worker.current = null;
@@ -189,11 +191,11 @@ export default function LargeTextViewer(props: {
     () => () =>
       new Promise<string>((resolve, reject) => {
         if (!worker.current) {
-          reject(new Error("The file is unavailable."));
+          reject(new Error(globalT("files.largeText.unavailable")));
           return;
         }
         if (copyPending.current) {
-          reject(new Error("Another copy is in progress."));
+          reject(new Error(globalT("files.largeText.copyInProgress")));
           return;
         }
         copyPending.current = { resolve, reject };
@@ -213,22 +215,23 @@ export default function LargeTextViewer(props: {
         className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-1 border-b border-border/60 px-3 py-2 text-xs text-muted-foreground tabular-nums"
         role="status"
       >
-        {Math.max(0, meta.count - (props.delimiter && meta.count ? 1 : 0)).toLocaleString()}{" "}
-        {props.delimiter ? "rows" : "lines"}
-        {props.delimiter ? ` · ${meta.count ? meta.columns.toLocaleString() : 0} columns` : ""}
+        {t(props.delimiter ? "files.count.rows" : "files.count.lines", {
+          count: Math.max(0, meta.count - (props.delimiter && meta.count ? 1 : 0)).toLocaleString(),
+        })}
+        {props.delimiter
+          ? ` · ${t("files.count.columns", { count: meta.count ? meta.columns.toLocaleString() : 0 })}`
+          : ""}
         {meta.complete && meta.sizeBytes !== undefined
-          ? ` · ${meta.sizeBytes === 0 ? "0 bytes" : formatAttachmentSize(meta.sizeBytes)}`
-          : " · Indexing…"}
+          ? ` · ${meta.sizeBytes === 0 ? t("files.zeroBytes") : formatAttachmentSize(meta.sizeBytes)}`
+          : ` · ${t("files.indexing")}`}
       </div>
       {!meta.complete ? (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20">
-          <FileSurfaceNotice>Loading the rest of the file…</FileSurfaceNotice>
+          <FileSurfaceNotice>{t("files.largeText.loadingRest")}</FileSurfaceNotice>
         </div>
       ) : null}
       {meta.columns === 1024 ? (
-        <FileSurfaceNotice>
-          Showing the first 1,024 columns. Source and Save retain every column.
-        </FileSurfaceNotice>
+        <FileSurfaceNotice>{t("files.largeText.columnLimit")}</FileSurfaceNotice>
       ) : null}
       {meta.count > 0 ? (
         <VirtualTablePreview
@@ -249,7 +252,7 @@ export default function LargeTextViewer(props: {
         />
       ) : (
         <div className="flex flex-1 items-center justify-center p-6 text-xs text-muted-foreground">
-          This file is empty.
+          {t("files.largeText.empty")}
         </div>
       )}
     </div>

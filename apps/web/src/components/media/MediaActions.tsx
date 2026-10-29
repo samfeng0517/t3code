@@ -20,6 +20,7 @@ import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 import { useRef, useState, type ReactElement } from "react";
 
+import { t, type MessageKey } from "~/i18n";
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { readLocalApi } from "../../localApi";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
@@ -70,7 +71,7 @@ export function useMediaActions(source: MediaActionSource) {
     (fileSession.error === null && fileSession.data !== null && allowsHostMedia(fileSession.data));
   const assertCanReadMedia = () => {
     if (!canReadHostMedia(hostEnvironmentId)) {
-      throw new Error("This connection cannot read host files.");
+      throw new Error(t("files.media.noHostFiles"));
     }
   };
   const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, {
@@ -80,17 +81,17 @@ export function useMediaActions(source: MediaActionSource) {
   const actionUrl = async () => {
     assertCanReadMedia();
     if (!source.asset) {
-      if (!source.src) throw new Error("This media is unavailable. Try reopening the preview.");
+      if (!source.src) throw new Error(t("files.media.unavailable"));
       return source.src;
     }
     const { environmentId, resource } = source.asset;
     const connection = readPreparedConnection(environmentId);
-    if (!connection) throw new Error("Reconnect to this environment and try again.");
+    if (!connection) throw new Error(t("files.media.reconnect"));
     const result = await createAssetUrl({ environmentId, input: { resource } });
     if (result._tag === "Failure") throw squashAtomCommandFailure(result);
     assertCanReadMedia();
     const url = resolveAssetUrl(connection.httpBaseUrl, result.value.relativeUrl);
-    if (!url) throw new Error("The environment returned an invalid media URL.");
+    if (!url) throw new Error(t("files.media.invalidUrl"));
     return url;
   };
   const save = async () => {
@@ -99,9 +100,7 @@ export function useMediaActions(source: MediaActionSource) {
   const copyImage = async () => {
     assertCanReadMedia();
     if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
-      throw new Error(
-        "Image copying is unavailable. Use a secure browser connection or save the image.",
-      );
+      throw new Error(t("files.media.copyImageUnavailable"));
     }
     // Start the clipboard write in the user gesture; fetching/decoding may finish later.
     await navigator.clipboard.write([
@@ -129,37 +128,53 @@ export function MediaActions({
     if (!api || menuOpen.current) return;
     menuOpen.current = true;
     setTooltipOpen(false);
-    let failureTitle = "Could not open media menu";
+    let failureTitle = t("files.media.menuFailed");
     let progressToast: ReturnType<typeof toastManager.add> | undefined;
     const result = await settlePromise(async () => {
-      const noun = source.kind === "image" ? "image" : "video";
+      const isImage = source.kind === "image";
       const unavailable = !canReadMedia || (source.src === null && source.asset === undefined);
       const canCopyImage =
         typeof navigator !== "undefined" &&
         Boolean(navigator.clipboard?.write) &&
         typeof ClipboardItem !== "undefined";
+      const failureKeys: Record<MediaActionId, MessageKey> = {
+        "copy-full-path": "files.media.failed.copyFullPath",
+        "copy-relative-path": "files.media.failed.copyRelativePath",
+        "copy-url": "files.media.failed.copyUrl",
+        "open-file": "files.media.failed.openInViewer",
+        save: isImage ? "files.media.failed.saveImage" : "files.media.failed.saveVideo",
+        "copy-image": "files.media.failed.copyImage",
+      };
       const items: ContextMenuItem<MediaActionId>[] = [];
       if (reference?.kind === "file") {
-        items.push({ id: "copy-full-path", label: "Copy full path" });
+        items.push({ id: "copy-full-path", label: t("files.media.menu.copyFullPath") });
         if (reference.relativePath)
-          items.push({ id: "copy-relative-path", label: "Copy relative path" });
+          items.push({ id: "copy-relative-path", label: t("files.media.menu.copyRelativePath") });
       } else if (reference?.kind === "url") {
-        items.push({ id: "copy-url", label: "Copy URL" });
+        items.push({ id: "copy-url", label: t("files.media.menu.copyUrl") });
       }
       if (source.onOpenFile)
-        items.push({ id: "open-file", label: "Open in file viewer", disabled: !canReadMedia });
-      items.push({ id: "save", label: `Save ${noun}`, disabled: unavailable });
+        items.push({
+          id: "open-file",
+          label: t("files.media.menu.openInViewer"),
+          disabled: !canReadMedia,
+        });
+      items.push({
+        id: "save",
+        label: isImage ? t("files.media.menu.saveImage") : t("files.media.menu.saveVideo"),
+        disabled: unavailable,
+      });
       if (source.kind === "image") {
         items.push({
           id: "copy-image",
-          label: "Copy image",
+          label: t("files.media.menu.copyImage"),
           disabled: unavailable || !canCopyImage,
         });
       }
 
       const action = await api.contextMenu.show(items, position);
       if (!action) return;
-      failureTitle = `Could not ${items.find((item) => item.id === action)?.label.toLowerCase() ?? "complete media action"}`;
+      failureTitle = t(failureKeys[action] ?? "files.media.failed.generic");
       const text =
         action === "copy-full-path" && reference?.kind === "file"
           ? reference.path
@@ -174,7 +189,7 @@ export function MediaActions({
         await writeTextToClipboard(clipboardText, reference?.kind === "file" ? "file path" : "URL");
         toastManager.add({
           type: "success",
-          title: action === "copy-url" ? "URL copied" : "Path copied",
+          title: action === "copy-url" ? t("files.media.urlCopied") : t("files.media.pathCopied"),
         });
       } else if (action === "open-file") {
         assertCanReadMedia();
@@ -182,12 +197,18 @@ export function MediaActions({
       } else if (action === "save" || action === "copy-image") {
         progressToast = toastManager.add({
           type: "loading",
-          title: action === "save" ? `Preparing ${noun} download…` : "Copying image…",
+          title:
+            action === "save"
+              ? isImage
+                ? t("files.media.preparingImageDownload")
+                : t("files.media.preparingVideoDownload")
+              : t("files.media.copyingImage"),
         });
         await (action === "save" ? save() : copyImage());
         toastManager.update(progressToast, {
           type: "success",
-          title: action === "save" ? "Download started" : "Image copied",
+          title:
+            action === "save" ? t("files.media.downloadStarted") : t("files.media.imageCopied"),
         });
       }
     });
@@ -196,7 +217,7 @@ export function MediaActions({
       const toast = stackedThreadToast({
         type: "error",
         title: failureTitle,
-        description: error instanceof Error ? error.message : "The media action failed.",
+        description: error instanceof Error ? error.message : t("files.media.actionFailed"),
       });
       if (progressToast) toastManager.update(progressToast, toast);
       else toastManager.add(toast);

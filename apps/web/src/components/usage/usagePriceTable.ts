@@ -1,3 +1,4 @@
+import { t as globalT, type Translate } from "~/i18n";
 import {
   parseUsagePriceForm,
   usagePriceForm,
@@ -35,35 +36,48 @@ function modelAlias(target: UsagePriceTarget, model: string) {
   return target.aliases && Object.hasOwn(target.aliases, model) ? target.aliases[model] : undefined;
 }
 
-export function usageAliasCell(targets: readonly UsagePriceTarget[], model: string) {
+export function usageAliasCell(
+  targets: readonly UsagePriceTarget[],
+  model: string,
+  t: Translate = globalT,
+) {
   if (targets.some((target) => target.aliases === null))
-    return { value: "", placeholder: "Unavailable" };
+    return { value: "", placeholder: t("usage.prices.unavailable") };
   const values = targets.map((target) => modelAlias(target, model) ?? "");
-  if (values.some((value) => value !== values[0])) return { value: "", placeholder: "Mixed" };
-  return { value: values[0] ?? "", placeholder: "None" };
+  if (values.some((value) => value !== values[0]))
+    return { value: "", placeholder: t("usage.prices.mixed") };
+  return { value: values[0] ?? "", placeholder: t("usage.prices.none") };
 }
 
 export function usagePriceCell(
   targets: readonly UsagePriceTarget[],
   model: string,
   field: UsagePriceField,
+  t: Translate = globalT,
 ) {
   const optional = USAGE_PRICE_FIELDS.find((entry) => entry.key === field)!.optional;
   const values = targets.map((target) =>
     modelPrice(target, model) ? usagePriceForm(model, modelPrice(target, model))[field] : null,
   );
   if (targets.some((target) => target.prices === null))
-    return { value: "", placeholder: "Unavailable" };
-  if (values.some((value) => value !== values[0])) return { value: "", placeholder: "Mixed" };
+    return { value: "", placeholder: t("usage.prices.unavailable") };
+  if (values.some((value) => value !== values[0]))
+    return { value: "", placeholder: t("usage.prices.mixed") };
   return {
     value: values[0] ?? "",
-    placeholder: values[0] === null ? "Automatic" : optional ? "Input rate" : "0.00",
+    placeholder:
+      values[0] === null
+        ? t("usage.prices.automatic")
+        : optional
+          ? t("usage.prices.inputRate")
+          : "0.00",
   };
 }
 
 export function usagePriceTableChanges(
   target: UsagePriceTarget,
   drafts: readonly UsagePriceDraft[],
+  t: Translate = globalT,
 ) {
   const changes: UsagePriceChange[] = [];
   const errors = new Map<string, string>();
@@ -78,8 +92,8 @@ export function usagePriceTableChanges(
     }
     const alias = (draft.alias ?? currentAlias ?? "").trim();
     if (alias !== "") {
-      if (model === "") errors.set(draft.id, "Enter a model ID.");
-      else if (alias === model) errors.set(draft.id, "Map to a different model.");
+      if (model === "") errors.set(draft.id, t("usage.prices.error.enterModel"));
+      else if (alias === model) errors.set(draft.id, t("usage.prices.error.mapDifferent"));
       else {
         if (alias !== currentAlias) changes.push({ model, alias });
         if (modelPrice(target, model)) changes.push({ model, price: null });
@@ -104,10 +118,13 @@ export function usagePriceTableChanges(
       errors.set(
         draft.id,
         model === ""
-          ? "Enter a model ID."
+          ? t("usage.prices.error.enterModel")
           : missing
-            ? `${missing.label} is required on ${target.label}.`
-            : "Use non-negative numbers for prices.",
+            ? t("usage.prices.error.required", {
+                field: t(missing.labelKey),
+                environment: target.label,
+              })
+            : t("usage.prices.error.nonNegative"),
       );
       continue;
     }
@@ -121,10 +138,11 @@ export function usagePriceTableChanges(
 export function usagePriceTableErrors(
   targets: readonly UsagePriceTarget[],
   drafts: readonly UsagePriceDraft[],
+  t: Translate = globalT,
 ) {
   return new Map(
     targets
       .filter((target) => target.unavailable === null && target.prices !== null)
-      .flatMap((target) => [...usagePriceTableChanges(target, drafts).errors]),
+      .flatMap((target) => [...usagePriceTableChanges(target, drafts, t).errors]),
   );
 }

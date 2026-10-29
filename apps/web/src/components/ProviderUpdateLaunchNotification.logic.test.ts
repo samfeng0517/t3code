@@ -17,6 +17,9 @@ import {
   isProviderSettingsUpdateCandidate,
   type ProviderUpdateCandidate,
 } from "./ProviderUpdateLaunchNotification.logic";
+import { setLanguagePreference } from "../i18n/languagePreferenceStore";
+
+setLanguagePreference("en");
 
 const checkedAt = "2026-04-23T10:00:00.000Z";
 const sessionStartedAt = "2026-04-23T09:59:00.000Z";

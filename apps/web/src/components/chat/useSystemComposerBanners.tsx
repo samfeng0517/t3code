@@ -23,6 +23,7 @@ import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 import { ENVIRONMENT_RECONNECT_WARNING_GRACE_MS } from "../ChatView.logic";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
+import { useT } from "../../i18n";
 import { ServerUpdateAction, serverUpdateStageLabel } from "../ServerUpdateAction";
 import { useAutoBalanceUpdateBanner } from "./useAutoBalanceUpdateBanner";
 import { ComposerServerUpdateIcon } from "./ComposerServerUpdateStatus";
@@ -66,6 +67,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
     automaticEnvironment,
     autoUpdateEnvironments,
   } = input;
+  const t = useT();
   const navigate = useNavigate();
   const retryEnvironment = useAtomCommand(environmentCatalog.retryNow, { reportFailure: false });
   const setEnvironmentEnabled = useAtomCommand(environmentCatalog.setEnabled, {
@@ -90,8 +92,9 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Could not reconnect environment",
-          description: error instanceof Error ? error.message : "Failed to reconnect.",
+          title: t("chatView.systemBanners.couldNotReconnect"),
+          description:
+            error instanceof Error ? error.message : t("chatView.systemBanners.failedToReconnect"),
         }),
       );
     }
@@ -118,8 +121,11 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Could not disconnect server",
-            description: error instanceof Error ? error.message : "Failed to disconnect.",
+            title: t("chatView.systemBanners.couldNotDisconnect"),
+            description:
+              error instanceof Error
+                ? error.message
+                : t("chatView.systemBanners.failedToDisconnect"),
           }),
         );
       }
@@ -134,8 +140,13 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
   const versionMismatch = resolveServerConfigVersionMismatch(serverConfig);
   const versionMismatchServerLabel =
     hasMultipleRegisteredEnvironments && activeThreadEnvironmentId !== null
-      ? `${activeEnvironment?.label ?? serverConfig?.environment.label ?? activeThreadEnvironmentId} server`
-      : "server";
+      ? t("chatView.systemBanners.namedServer", {
+          name:
+            activeEnvironment?.label ??
+            serverConfig?.environment.label ??
+            activeThreadEnvironmentId,
+        })
+      : t("chatView.systemBanners.server");
   const serverUpdateEnvironmentId = activeThreadEnvironmentId;
   const versionMismatchSelfUpdate = resolveServerSelfUpdateCapability(serverConfig);
   const versionMismatchInstallation = serverConfig?.environment.capabilities.serverInstallation;
@@ -159,14 +170,14 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
           size="xs"
           variant="ghost"
           disabled={disconnectingEnvironment}
-          title="Hide this server's threads. Switch it on again in Environments."
+          title={t("chatView.systemBanners.disconnectTooltip")}
           onClick={() =>
             void handleDisconnectActiveEnvironmentStable(
               activeEnvironmentUnavailableState.environmentId,
             )
           }
         >
-          Disconnect server
+          {t("chatView.systemBanners.disconnectServer")}
         </Button>
       ) : undefined;
     const environmentReconnecting =
@@ -185,7 +196,12 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
         variant: unavailableConnection.phase === "error" ? "error" : "warning",
         group: "environment",
         icon: <WifiOffIcon />,
-        title: `${activeEnvironmentUnavailableState.label} is ${environmentReconnecting ? "reconnecting" : "offline"}`,
+        title: t(
+          environmentReconnecting
+            ? "chatView.systemBanners.environmentReconnecting"
+            : "chatView.systemBanners.environmentOffline",
+          { label: activeEnvironmentUnavailableState.label },
+        ),
         description: activeEnvironment ? (
           <ConnectionDiagnosisHeadline environment={activeEnvironment} />
         ) : undefined,
@@ -201,7 +217,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
                   )
                 }
               >
-                Reconnect
+                {t("chatView.systemBanners.reconnect")}
               </Button>
             ) : null}
             {disconnectAction}
@@ -223,7 +239,12 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
         variant: updateFailed ? "error" : "default",
         group: "environment",
         icon: <ComposerServerUpdateIcon status={serverUpdateState.status} />,
-        title: `${updateFailed ? "Could not update" : "Updating"} ${versionMismatchServerLabel}`,
+        title: t(
+          updateFailed
+            ? "chatView.systemBanners.couldNotUpdate"
+            : "chatView.systemBanners.updating",
+          { server: versionMismatchServerLabel },
+        ),
         description:
           serverUpdateState.status === "failed"
             ? serverUpdateState.message
@@ -240,13 +261,13 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
             installation={versionMismatchInstallation}
             desktopAppUpdate={versionMismatchDesktopAppUpdate}
             targetVersion={versionMismatch.clientVersion}
-            label="Retry"
+            label={t("chatView.common.retry")}
             variant="ghost"
           />
         ),
         ...(updateFailed
           ? {
-              dismissLabel: "Dismiss update notice",
+              dismissLabel: t("chatView.systemBanners.dismissUpdateNotice"),
               onDismiss: () => {
                 dismissServerUpdateFailure(serverUpdateState);
                 setDismissedServerUpdateState(serverUpdateState);

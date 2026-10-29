@@ -24,20 +24,9 @@ import { RadioGroup } from "../ui/radio-group";
 import { Spinner } from "../ui/spinner";
 import { StandalonePage, StandalonePageHeader } from "../ui/standalone-page";
 
-export const accessConfig: Record<
-  AuthMcpClientAccess,
-  { readonly label: string; readonly description: string; readonly icon: LucideIcon }
-> = {
-  "read-only": {
-    label: "Read only",
-    description: "Read projects and threads. Cannot start, message or change anything.",
-    icon: EyeIcon,
-  },
-  ...runtimeModeConfig,
-};
 import { t as translateNow, type Translate, useT } from "../../i18n";
 
-function accessPresentation(
+export function accessPresentation(
   access: AuthMcpClientAccess,
   t: Translate,
 ): { readonly label: string; readonly description: string; readonly icon: LucideIcon } {

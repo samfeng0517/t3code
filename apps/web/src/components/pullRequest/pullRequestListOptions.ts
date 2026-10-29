@@ -12,29 +12,47 @@ import {
   UserLockIcon,
 } from "lucide-react";
 
+import type { MessageKey, Translate } from "~/i18n";
+
 import type { PullRequestFilterOption } from "./PullRequestListFilters";
 import type { PullRequestListSort } from "./pullRequestListPreferences";
 import { PullRequestGlyph } from "./pullRequestIcons";
 
+export type PullRequestFilterOptionSpec<Value extends string> = Omit<
+  PullRequestFilterOption<Value>,
+  "label"
+> & { readonly labelKey: MessageKey };
+
+export function localizePullRequestFilterOptions<Value extends string>(
+  options: ReadonlyArray<PullRequestFilterOptionSpec<Value>>,
+  t: Translate,
+): ReadonlyArray<PullRequestFilterOption<Value>> {
+  return options.map(({ labelKey, ...option }) => ({ ...option, label: t(labelKey) }));
+}
+
 export const INVOLVEMENT_TABS = [
-  { value: "all", label: "All", Icon: LayersIcon },
-  { value: "reviewing", label: "Reviewing", Icon: EyeIcon },
-  { value: "authored", label: "Authored", Icon: PenLineIcon },
-] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestInvolvement>>;
+  { value: "all", labelKey: "pullRequests.options.involvement.all", Icon: LayersIcon },
+  { value: "reviewing", labelKey: "pullRequests.options.involvement.reviewing", Icon: EyeIcon },
+  { value: "authored", labelKey: "pullRequests.options.involvement.authored", Icon: PenLineIcon },
+] as const satisfies ReadonlyArray<PullRequestFilterOptionSpec<PullRequestInvolvement>>;
 
 export const STATE_TABS = [
-  { value: "all", label: "All", Icon: LayersIcon },
-  { value: "open", label: "Open", Icon: PullRequestGlyph.pullRequest },
-  { value: "closed", label: "Closed", Icon: PullRequestGlyph.closed },
-  { value: "merged", label: "Merged", Icon: PullRequestGlyph.merged },
-] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestListState>>;
+  { value: "all", labelKey: "pullRequests.options.state.all", Icon: LayersIcon },
+  {
+    value: "open",
+    labelKey: "pullRequests.options.state.open",
+    Icon: PullRequestGlyph.pullRequest,
+  },
+  { value: "closed", labelKey: "pullRequests.options.state.closed", Icon: PullRequestGlyph.closed },
+  { value: "merged", labelKey: "pullRequests.options.state.merged", Icon: PullRequestGlyph.merged },
+] as const satisfies ReadonlyArray<PullRequestFilterOptionSpec<PullRequestListState>>;
 
 export const SORT_OPTIONS = [
-  { value: "ready", label: "Merge readiness", Icon: ListChecksIcon },
-  { value: "blocked", label: "Blocked on me", Icon: UserLockIcon },
-  { value: "updated", label: "Recently updated", Icon: ClockIcon },
-  { value: "newest", label: "Newest shown", Icon: CalendarArrowDownIcon },
-  { value: "oldest", label: "Oldest shown", Icon: CalendarArrowUpIcon },
-  { value: "largest", label: "Largest shown", Icon: Maximize2Icon },
-  { value: "smallest", label: "Smallest shown", Icon: Minimize2Icon },
-] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestListSort>>;
+  { value: "ready", labelKey: "pullRequests.options.sort.ready", Icon: ListChecksIcon },
+  { value: "blocked", labelKey: "pullRequests.options.sort.blocked", Icon: UserLockIcon },
+  { value: "updated", labelKey: "pullRequests.options.sort.updated", Icon: ClockIcon },
+  { value: "newest", labelKey: "pullRequests.options.sort.newest", Icon: CalendarArrowDownIcon },
+  { value: "oldest", labelKey: "pullRequests.options.sort.oldest", Icon: CalendarArrowUpIcon },
+  { value: "largest", labelKey: "pullRequests.options.sort.largest", Icon: Maximize2Icon },
+  { value: "smallest", labelKey: "pullRequests.options.sort.smallest", Icon: Minimize2Icon },
+] as const satisfies ReadonlyArray<PullRequestFilterOptionSpec<PullRequestListSort>>;

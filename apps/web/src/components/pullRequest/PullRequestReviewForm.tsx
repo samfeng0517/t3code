@@ -1,3 +1,4 @@
+import { useT, type MessageKey } from "~/i18n";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { capitalizeTerm } from "@t3tools/client-runtime/source-control-clients";
 import type { EnvironmentId, PullRequestRef, PullRequestReviewVerdict } from "@t3tools/contracts";
@@ -18,26 +19,26 @@ import {
 
 const VERDICTS: ReadonlyArray<{
   readonly value: PullRequestReviewVerdict;
-  readonly label: string;
-  readonly sent: (term: string) => string;
+  readonly label: MessageKey;
+  readonly sent: MessageKey;
   readonly icon: ReactNode;
 }> = [
   {
     value: "comment",
-    label: "Comment",
-    sent: () => "Review submitted",
+    label: "pullRequestDetail.reviewForm.verdict.comment",
+    sent: "pullRequestDetail.reviewForm.sent.comment",
     icon: <MessageSquareIcon className="size-3" />,
   },
   {
     value: "approve",
-    label: "Approve",
-    sent: (term) => `${capitalizeTerm(term)} approved`,
+    label: "pullRequestDetail.reviewForm.verdict.approve",
+    sent: "pullRequestDetail.reviewForm.sent.approve",
     icon: <CheckIcon className="size-3" />,
   },
   {
     value: "request-changes",
-    label: "Request changes",
-    sent: () => "Changes requested",
+    label: "pullRequestDetail.reviewForm.verdict.requestChanges",
+    sent: "pullRequestDetail.reviewForm.sent.requestChanges",
     icon: <XCircleIcon className="size-3" />,
   },
 ];
@@ -64,6 +65,7 @@ export function PullRequestReviewForm({
   onPendingChange: (pending: boolean) => void;
   onSubmitted: () => void;
 }) {
+  const t = useT();
   const [requestedVerdict, setRequestedVerdict] = useState<PullRequestReviewVerdict>("comment");
   const comments = usePendingReviewComments(reference);
   const reviewKey = pullRequestReviewKey(reference);
@@ -95,7 +97,7 @@ export function PullRequestReviewForm({
     });
     onPendingChange(false);
     if (result._tag === "Failure") {
-      toastManager.add({ type: "error", title: "The review could not be submitted" });
+      toastManager.add({ type: "error", title: t("pullRequestDetail.reviewForm.submitFailed") });
       return;
     }
     // Preserve comments and summary edits made during submission.
@@ -104,7 +106,10 @@ export function PullRequestReviewForm({
       submittedComments.map((comment) => comment.id),
     );
     clearSummary(reviewKey, submittedBody);
-    toastManager.add({ type: "success", title: verdict.sent(term) });
+    toastManager.add({
+      type: "success",
+      title: t(verdict.sent, { singular: capitalizeTerm(term) }),
+    });
     onSubmitted();
   };
 
@@ -115,10 +120,10 @@ export function PullRequestReviewForm({
       : verdict === "approve" || summary.trim().length > 0 || comments.length > 0;
   const placeholder =
     selectedVerdict === undefined || canSubmit(selectedVerdict.value, "")
-      ? "Summarize your review (optional)"
+      ? t("pullRequestDetail.reviewForm.placeholderOptional")
       : selectedVerdict.value === "request-changes" && requestChangesSummaryRequired
-        ? "Summarize your review (required to request changes)"
-        : "Summarize your review or add line comments";
+        ? t("pullRequestDetail.reviewForm.placeholderRequired")
+        : t("pullRequestDetail.reviewForm.placeholderOrComments");
 
   return (
     <>
@@ -127,7 +132,7 @@ export function PullRequestReviewForm({
         rows={3}
         value={body}
         placeholder={placeholder}
-        aria-label="Review summary"
+        aria-label={t("pullRequestDetail.reviewForm.summaryAria")}
         onChange={(event) => setSummary(reviewKey, event.target.value)}
       />
       <div className="mt-2 flex justify-end gap-2">
@@ -139,10 +144,14 @@ export function PullRequestReviewForm({
               if (value !== null) setRequestedVerdict(value);
             }}
           >
-            <SelectTrigger size="xs" className="mr-auto w-auto min-w-0" aria-label="Review verdict">
+            <SelectTrigger
+              size="xs"
+              className="mr-auto w-auto min-w-0"
+              aria-label={t("pullRequestDetail.reviewForm.verdictAria")}
+            >
               <span className="flex items-center gap-1.5">
                 {selectedVerdict?.icon}
-                {selectedVerdict?.label}
+                {selectedVerdict ? t(selectedVerdict.label) : null}
               </span>
             </SelectTrigger>
             <SelectPopup side="top" alignItemWithTrigger={false}>
@@ -150,7 +159,7 @@ export function PullRequestReviewForm({
                 <SelectItem key={verdict.value} value={verdict.value}>
                   <span className="flex items-center gap-1.5">
                     {verdict.icon}
-                    {verdict.label}
+                    {t(verdict.label)}
                   </span>
                 </SelectItem>
               ))}
@@ -166,7 +175,9 @@ export function PullRequestReviewForm({
             if (selectedVerdict !== undefined) void submit(selectedVerdict);
           }}
         >
-          {pending ? "Submitting..." : "Submit review"}
+          {pending
+            ? t("pullRequestDetail.reviewForm.submitting")
+            : t("pullRequestDetail.reviewForm.submit")}
         </Button>
       </div>
     </>

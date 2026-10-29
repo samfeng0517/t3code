@@ -2,6 +2,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import type { SourceControlDefinition } from "@t3tools/client-runtime/source-control-clients";
 import { useState } from "react";
 
+import { useT } from "~/i18n";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -19,6 +20,7 @@ export function SourceControlHostSettings({
   };
   readonly onSaved: () => void;
 }) {
+  const t = useT();
   const saved = useEnvironmentSettings(
     environmentId,
     (settings) => settings.sourceControlHosts[definition.kind],
@@ -66,7 +68,7 @@ export function SourceControlHostSettings({
               void save(Object.fromEntries(Object.keys(saved ?? {}).map((key) => [key, ""])))
             }
           >
-            Remove
+            {t("settingsMisc.sourceControl.remove")}
           </Button>
         </div>
       ) : null}

@@ -10,6 +10,7 @@ import {
 } from "@t3tools/contracts";
 import { PlusIcon, XIcon } from "lucide-react";
 
+import { t as globalT, useT } from "~/i18n";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
@@ -102,6 +103,7 @@ function readFieldBooleanDefault(
 export function deriveProviderSettingsFields(
   definition: SettingsFormDefinition,
   value?: unknown,
+  t = globalT,
 ): ReadonlyArray<ProviderSettingsFieldModel> {
   const isLocalAcp =
     definition.driverKind === "acpRegistry" &&
@@ -135,15 +137,15 @@ export function deriveProviderSettingsFields(
           control: formAnnotation.control ?? "text",
           label:
             isLocalAcp && key === "commandPath"
-              ? "Executable"
+              ? t("providerSetup.form.executable")
               : (annotatedTitle ?? titleizeFieldKey(key)),
           ...(isLocalAcp && key === "commandPath"
-            ? { description: "Executable name or path on this environment." }
+            ? { description: t("providerSetup.form.executableDescription") }
             : annotatedDescription !== undefined
               ? { description: annotatedDescription }
               : {}),
           ...(isLocalAcp && key === "commandPath"
-            ? { placeholder: "e.g. dsh" }
+            ? { placeholder: t("providerSetup.form.executablePlaceholder") }
             : formAnnotation.placeholder !== undefined
               ? { placeholder: formAnnotation.placeholder }
               : {}),
@@ -218,6 +220,7 @@ function ProviderCommandArguments({
   value,
   onChange,
 }: Pick<ProviderSettingsFormProps, "value" | "onChange">) {
+  const t = useT();
   const args = configuredCommandArgs(value);
   const [storedDraft, setDraft] = useState(() => seedRowsDraft(args, toCommandArgumentRows));
   const draft = reconcileRowsDraft(storedDraft, args, commandArgumentsEqual, toCommandArgumentRows);
@@ -234,8 +237,8 @@ function ProviderCommandArguments({
 
   return (
     <SettingsRow
-      title="Arguments"
-      description="One literal argument per row, in launch order."
+      title={t("providerSetup.form.arguments")}
+      description={t("providerSetup.form.argumentsDescription")}
       control={
         <Button
           type="button"
@@ -244,7 +247,7 @@ function ProviderCommandArguments({
           onClick={() => updateArguments([...rows, makeCommandArgumentDraftRow("")])}
         >
           <PlusIcon />
-          Add argument
+          {t("providerSetup.form.addArgument")}
         </Button>
       }
     >
@@ -263,7 +266,7 @@ function ProviderCommandArguments({
                     ),
                   )
                 }
-                aria-label={`Argument ${index + 1}`}
+                aria-label={t("providerSetup.form.argumentN", { number: index + 1 })}
                 spellCheck={false}
               />
               <Button
@@ -273,7 +276,7 @@ function ProviderCommandArguments({
                 onClick={() =>
                   updateArguments(rows.filter((current) => current.id !== argument.id))
                 }
-                aria-label={`Remove argument ${index + 1}`}
+                aria-label={t("providerSetup.form.removeArgumentN", { number: index + 1 })}
               >
                 <XIcon />
               </Button>
@@ -398,14 +401,15 @@ function ProviderSettingsFieldRow({
   variant,
   onChange,
 }: ProviderSettingsFieldRowProps) {
+  const t = useT();
   const inputId = `${idPrefix}-${field.key}`;
   // A refused value is dropped and the field shows the saved one again.
   const commitText = (next: string) => {
     if (!field.accepts(next)) {
       toastManager.add({
         type: "error",
-        title: `${field.label} was not saved`,
-        description: field.description ?? "The value is not valid for this setting.",
+        title: t("providerSetup.form.notSaved", { label: field.label }),
+        description: field.description ?? t("providerSetup.form.invalidValue"),
       });
       return;
     }
@@ -472,7 +476,7 @@ function ProviderSettingsFieldRow({
               size="icon-sm"
               variant="ghost-destructive"
               onClick={() => onChange(nextProviderConfigWithFieldValue(value, field, ""))}
-              aria-label={`Clear ${field.label}`}
+              aria-label={t("providerSetup.form.clear", { label: field.label })}
             >
               <XIcon className="size-3.5" />
             </Button>
@@ -611,7 +615,8 @@ export function ProviderSettingsForm({
   variant,
   onChange,
 }: ProviderSettingsFormProps) {
-  const fields = deriveProviderSettingsFields(definition, value);
+  const t = useT();
+  const fields = deriveProviderSettingsFields(definition, value, t);
   const isLocalAcp =
     definition.driverKind === "acpRegistry" &&
     readProviderConfigString(value, "source") === "local";

@@ -1,4 +1,5 @@
 import { type ProviderDriverKind, type ProviderInstanceId } from "@t3tools/contracts";
+import { useT } from "~/i18n";
 import { memo } from "react";
 import { CheckIcon, StarIcon } from "lucide-react";
 import { getDisplayModelName, getProviderRowLabel } from "./providerIconUtils";
@@ -31,6 +32,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
   disabledReason?: string | null;
   onToggleFavorite: (instanceId: ProviderInstanceId, slug: string) => void;
 }) {
+  const t = useT();
   const model = {
     slug: props.slug,
     name: props.name,
@@ -58,14 +60,14 @@ export const ModelListRow = memo(function ModelListRow(props: {
           {props.showNewBadge ? (
             <span
               className="shrink-0 rounded border border-update/35 bg-update/15 px-0.5 py-px text-3xs font-bold uppercase leading-none tracking-wide text-update-foreground"
-              aria-label="New model"
+              aria-label={t("legacySidebar.misc.modelRow.newAria")}
             >
-              New
+              {t("legacySidebar.misc.modelRow.new")}
             </span>
           ) : null}
           {props.unavailable ? (
             <Badge variant="outline" size="sm">
-              Unavailable
+              {t("legacySidebar.misc.modelRow.unavailable")}
             </Badge>
           ) : null}
         </div>
@@ -103,7 +105,11 @@ export const ModelListRow = memo(function ModelListRow(props: {
                   event.stopPropagation();
                 }}
                 disabled={Boolean(props.disabledReason)}
-                aria-label={props.isFavorite ? "Remove from favorites" : "Add to favorites"}
+                aria-label={t(
+                  props.isFavorite
+                    ? "legacySidebar.misc.modelRow.removeFavorite"
+                    : "legacySidebar.misc.modelRow.addFavorite",
+                )}
               >
                 <StarIcon
                   className={cn(
@@ -117,7 +123,11 @@ export const ModelListRow = memo(function ModelListRow(props: {
             }
           />
           <TooltipPopup side="top" align="center">
-            {props.isFavorite ? "Remove from favorites" : "Add to favorites"}
+            {t(
+              props.isFavorite
+                ? "legacySidebar.misc.modelRow.removeFavorite"
+                : "legacySidebar.misc.modelRow.addFavorite",
+            )}
           </TooltipPopup>
         </Tooltip>
         {/* Last, and always reserved, so stars and the check keep fixed columns. */}

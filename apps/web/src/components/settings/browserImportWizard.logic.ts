@@ -1,5 +1,7 @@
 import type { BrowserImportFailureReason, BrowserImportSource } from "@t3tools/contracts";
 
+import { t as globalT, type Translate } from "~/i18n";
+
 export interface WizardTargetProfile {
   readonly id: string;
   readonly name: string;
@@ -131,9 +133,27 @@ export function isRetryableReason(reason: BrowserImportFailureReason): boolean {
   }
 }
 
-export function formatSkippedDomains(domains: ReadonlyArray<string>): string {
+export function formatSkippedDomains(
+  domains: ReadonlyArray<string>,
+  t: Translate = globalT,
+): string {
   if (domains.length === 0) return "";
   if (domains.length === 1) return domains[0]!;
-  if (domains.length <= 3) return `${domains.slice(0, -1).join(", ")} and ${domains.at(-1)}`;
-  return `${domains.slice(0, 3).join(", ")} and ${domains.length - 3} more`;
+  if (domains.length <= 3) {
+    return t("settingsMisc.browserImport.domains.and", {
+      list: domains.slice(0, -1).join(", "),
+      last: domains.at(-1)!,
+    });
+  }
+  return t("settingsMisc.browserImport.domains.andMore", {
+    list: domains.slice(0, 3).join(", "),
+    count: domains.length - 3,
+  });
+}
+
+export function browserImportFailureText(
+  reason: BrowserImportFailureReason,
+  t: Translate = globalT,
+): string {
+  return t(`settingsMisc.browserImport.failure.${reason}`);
 }

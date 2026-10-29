@@ -4,6 +4,7 @@ import {
   toolGroupAction,
 } from "@t3tools/client-runtime/work-log/presentation";
 import { isJavaScriptReplTool } from "@t3tools/shared/toolActivity";
+import { t as globalT, type Translate } from "~/i18n";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import { type TimelineWorkEntry, type TimelineRow } from "./timelineRowContext";
 import { type WorkEntryIconName } from "./TimelineToolActivityIcon";
@@ -94,6 +95,7 @@ export function buildToolCallExpandedBody(
   workspaceRoot: string | undefined,
   visibleLabel: string,
   viewedImagePath: string | null,
+  t: Translate = globalT,
 ): string | null {
   const blocks: string[] = [];
   const seen = new Set<string>([visibleLabel.trim()]);
@@ -112,7 +114,8 @@ export function buildToolCallExpandedBody(
             "input" in workEntry.toolData
           ? workEntry.toolData.input
           : undefined;
-    if (input !== undefined) addBlock(`Tool input\n${JSON.stringify(input, null, 2)}`);
+    if (input !== undefined)
+      addBlock(`${t("timeline.work.toolInput")}\n${JSON.stringify(input, null, 2)}`);
   }
   const command = workEntry.command?.trim();
   const raw = workEntryRawCommand(workEntry);

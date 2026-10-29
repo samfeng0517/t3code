@@ -1,7 +1,11 @@
 import type { DeviceServiceState } from "@t3tools/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { setLanguagePreference } from "~/i18n/languagePreferenceStore";
 
 import { deviceHubReadiness, platformSetupStatus } from "./DeviceSetup";
+
+beforeEach(() => setLanguagePreference("en"));
+afterEach(() => setLanguagePreference("system"));
 
 const deviceState = (overrides: Partial<DeviceServiceState> = {}): DeviceServiceState => ({
   hosts: [

@@ -9,6 +9,7 @@ import type {
   UnifiedSettings,
 } from "@t3tools/contracts";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
+import { t as globalT, type Translate } from "~/i18n";
 import {
   getBackgroundActivityBaseProfile,
   normalizeBackgroundActivitySettings,
@@ -84,23 +85,26 @@ type TypographySettings = Pick<
   | "fontSizeTerminal"
 >;
 
-export function getChangedTypographySettingLabels(settings: TypographySettings): string[] {
+export function getChangedTypographySettingLabels(
+  settings: TypographySettings,
+  t: Translate = globalT,
+): string[] {
   return [
     ...(settings.fontFamilySans !== DEFAULT_UNIFIED_SETTINGS.fontFamilySans ||
     settings.fontSizeInterface !== DEFAULT_UNIFIED_SETTINGS.fontSizeInterface
-      ? ["Interface font"]
+      ? [t("settingsMisc.restore.interfaceFont")]
       : []),
     ...(settings.fontFamilyComposer !== DEFAULT_UNIFIED_SETTINGS.fontFamilyComposer ||
     settings.fontSizePrompt !== DEFAULT_UNIFIED_SETTINGS.fontSizePrompt
-      ? ["Prompt font"]
+      ? [t("settingsMisc.restore.promptFont")]
       : []),
     ...(settings.fontFamilyCode !== DEFAULT_UNIFIED_SETTINGS.fontFamilyCode ||
     settings.fontSizeCode !== DEFAULT_UNIFIED_SETTINGS.fontSizeCode
-      ? ["Code font"]
+      ? [t("settingsMisc.restore.codeFont")]
       : []),
     ...(settings.fontFamilyTerminal !== DEFAULT_UNIFIED_SETTINGS.fontFamilyTerminal ||
     settings.fontSizeTerminal !== DEFAULT_UNIFIED_SETTINGS.fontSizeTerminal
-      ? ["Terminal font"]
+      ? [t("settingsMisc.restore.terminalFont")]
       : []),
   ];
 }
@@ -132,38 +136,45 @@ function isSamePreviewViewport(
     : true;
 }
 
-export function getChangedBrowserSettingLabels(settings: BrowserDefaultSettings): string[] {
+export function getChangedBrowserSettingLabels(
+  settings: BrowserDefaultSettings,
+  t: Translate = globalT,
+): string[] {
   return [
     ...(isSamePreviewViewport(
       settings.browserDefaultViewport,
       DEFAULT_UNIFIED_SETTINGS.browserDefaultViewport,
     )
       ? []
-      : ["Browser viewport"]),
+      : [t("settingsMisc.restore.browserViewport")]),
     ...(settings.browserDefaultZoomFactor !== DEFAULT_UNIFIED_SETTINGS.browserDefaultZoomFactor
-      ? ["Browser zoom"]
+      ? [t("settingsMisc.restore.browserZoom")]
       : []),
     ...(settings.browserDefaultAppearance !== DEFAULT_UNIFIED_SETTINGS.browserDefaultAppearance
-      ? ["Browser appearance"]
+      ? [t("settingsMisc.restore.browserAppearance")]
       : []),
     ...(settings.browserRecordingFrameRate !== DEFAULT_UNIFIED_SETTINGS.browserRecordingFrameRate
-      ? ["Recording frame rate"]
+      ? [t("settingsMisc.restore.recordingFrameRate")]
       : []),
-    ...(settings.browserRecordingShowKeyPresses ? ["Recording key presses"] : []),
-    ...(settings.browserRecordingShowMousePresses ? ["Recording mouse presses"] : []),
+    ...(settings.browserRecordingShowKeyPresses
+      ? [t("settingsMisc.restore.recordingKeyPresses")]
+      : []),
+    ...(settings.browserRecordingShowMousePresses
+      ? [t("settingsMisc.restore.recordingMousePresses")]
+      : []),
     ...(settings.browserLinkTarget !== DEFAULT_UNIFIED_SETTINGS.browserLinkTarget
-      ? ["Open links in"]
+      ? [t("settingsMisc.restore.openLinksIn")]
       : []),
     ...(settings.browserSearchEngine !== DEFAULT_UNIFIED_SETTINGS.browserSearchEngine ||
     settings.browserCustomSearchUrl !== DEFAULT_UNIFIED_SETTINGS.browserCustomSearchUrl
-      ? ["Search engine"]
+      ? [t("settingsMisc.restore.searchEngine")]
       : []),
     ...(settings.browserAutoShowFloatingPreview !==
     DEFAULT_UNIFIED_SETTINGS.browserAutoShowFloatingPreview
-      ? ["Floating preview"]
+      ? [t("settingsMisc.restore.floatingPreview")]
       : []),
     ...(settings.pullRequestLinksOpenInApp !== DEFAULT_UNIFIED_SETTINGS.pullRequestLinksOpenInApp
-      ? ["Open pull requests in T3 Code"]
+      ? [t("settingsMisc.restore.openPrInApp")]
       : []),
   ];
 }

@@ -13,6 +13,7 @@ import {
 } from "react";
 
 import { useAssetUrlRefresh, useAssetUrlState } from "../../assets/assetUrls";
+import { useT, type Translate } from "../../i18n";
 import { cn } from "../../lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { MediaActions, type MediaActionSource } from "../media/MediaActions";
@@ -75,9 +76,10 @@ export const MarkdownLinkContext = createContext(false);
 function expandableMarkdownImageProps(
   onImageExpand: ((preview: ExpandedImagePreview) => void) | undefined,
   alt: string,
+  t: Translate,
 ) {
   if (!onImageExpand) return {};
-  const previewName = alt.trim() || "image";
+  const previewName = alt.trim() || t("timeline.media.imageName");
   const expand = (event: ReactMouseEvent | ReactKeyboardEvent) => {
     if (event.currentTarget.closest("a")) return;
     event.preventDefault();
@@ -88,7 +90,7 @@ function expandableMarkdownImageProps(
   return {
     role: "button" as const,
     tabIndex: 0,
-    "aria-label": `Preview ${previewName}`,
+    "aria-label": t("timeline.media.preview", { name: previewName }),
     onClick: expand,
     onKeyDown: (event: ReactKeyboardEvent) => {
       if (event.key === "Enter" || event.key === " ") expand(event);
@@ -101,12 +103,13 @@ function ChatMarkdownMediaUnavailableLabel(props: {
   readonly kind?: "image" | "video" | "audio" | undefined;
   readonly detail?: string | undefined;
 }) {
+  const t = useT();
   const label =
     props.kind === "audio"
-      ? "Audio unavailable"
+      ? t("timeline.media.audioUnavailable")
       : props.kind === "video"
-        ? "Video unavailable"
-        : "Image unavailable";
+        ? t("timeline.media.videoUnavailable")
+        : t("timeline.media.imageUnavailable");
   return (
     <span data-thread-find-ignore className="inline-flex items-center gap-1.5">
       <TriangleAlertIcon aria-hidden className="size-3.5 shrink-0" />
@@ -167,6 +170,7 @@ export function ChatMarkdownImage(props: {
   readonly originalUrl?: string | undefined;
   readonly onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
 }) {
+  const t = useT();
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const src = props.src ?? loadedSrc;
@@ -178,7 +182,7 @@ export function ChatMarkdownImage(props: {
     if (image.complete && image.naturalWidth > 0) setLoadedSrc(image.currentSrc || image.src);
     markdownImageItems.set(image, {
       src,
-      name: props.alt.trim() || "image",
+      name: props.alt.trim() || t("timeline.media.imageName"),
       actionsSource: props.actionsSource,
       ...(props.originalUrl ? { originalUrl: props.originalUrl } : {}),
     });
@@ -212,7 +216,7 @@ export function ChatMarkdownImage(props: {
             props.onImageExpand && "cursor-zoom-in",
           )}
           style={props.style}
-          {...expandableMarkdownImageProps(props.onImageExpand, props.alt)}
+          {...expandableMarkdownImageProps(props.onImageExpand, props.alt, t)}
           {...imageEvents(src)}
         />
       </MediaActions>
@@ -231,7 +235,7 @@ export function ChatMarkdownImage(props: {
         id={props.imageProps?.id}
         data-markdown-copy={props.copyMarkdown}
         role="status"
-        aria-label="Loading image"
+        aria-label={t("timeline.media.loadingImage")}
         className={CHAT_MARKDOWN_MEDIA_LAYOUT_CLASS_NAME}
       />
     );
@@ -249,7 +253,7 @@ export function ChatMarkdownImage(props: {
         style={props.style}
         {...(failed
           ? { role: "alert" as const }
-          : { role: "status" as const, "aria-label": "Loading image" })}
+          : { role: "status" as const, "aria-label": t("timeline.media.loadingImage") })}
       >
         {failed ? (
           <span className="flex size-full items-center justify-center p-2 text-center text-xs text-muted-foreground">
@@ -338,6 +342,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
   readonly workspaceMutationId?: string | null | undefined;
   readonly onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
 }) {
+  const t = useT();
   const resource = props.resource;
   const assetUrl = useAssetUrlState(
     props.environmentId,
@@ -379,7 +384,9 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
         : undefined);
   const actionsSource: MediaActionSource = {
     kind: props.kind ?? "image",
-    name: props.alt || (props.kind ?? "image"),
+    name:
+      props.alt ||
+      (props.kind === "video" ? t("timeline.media.videoName") : t("timeline.media.imageName")),
     src,
     ...(fallbackSrc === undefined
       ? { asset: { environmentId: props.environmentId, resource } }

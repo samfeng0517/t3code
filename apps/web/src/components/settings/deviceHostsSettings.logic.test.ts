@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { setLanguagePreference } from "~/i18n/languagePreferenceStore";
 import { updateDeviceHosts } from "./deviceHostsSettings.logic";
+
+beforeEach(() => setLanguagePreference("en"));
+afterEach(() => setLanguagePreference("system"));
 
 describe("device host changes across environments", () => {
   const shared = {

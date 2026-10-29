@@ -1,5 +1,6 @@
 import { Check, Copy } from "lucide";
 import { useRef } from "react";
+import { useT } from "~/i18n";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { cn } from "../lib/utils";
 import {
@@ -12,6 +13,7 @@ import { MorphIcon } from "~/components/MorphIcon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 export function DiffFilePathCopyButton({ filePath }: { filePath: string }) {
+  const t = useT();
   const ref = useRef<HTMLButtonElement>(null);
   const { copyToClipboard, isCopied } = useCopyToClipboard<void>({
     onCopy: () => showAnchoredCopySuccessToast(ref),
@@ -27,7 +29,7 @@ export function DiffFilePathCopyButton({ filePath }: { filePath: string }) {
             ref={ref}
             size="icon-micro"
             variant="ghost-muted"
-            aria-label="Copy file path"
+            aria-label={t("files.diffPath.copyLabel")}
             onClick={() => copyToClipboard(filePath, undefined)}
           />
         }
@@ -38,7 +40,7 @@ export function DiffFilePathCopyButton({ filePath }: { filePath: string }) {
         />
       </TooltipTrigger>
       <TooltipPopup>
-        <p>{isCopied ? "Copied" : "Copy path"}</p>
+        <p>{isCopied ? t("workspace.file.copied") : t("files.diffPath.copyPath")}</p>
       </TooltipPopup>
     </Tooltip>
   );

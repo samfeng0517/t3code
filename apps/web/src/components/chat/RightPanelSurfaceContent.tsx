@@ -8,6 +8,7 @@ import type {
   ThreadLinkedPullRequest,
   ThreadPullRequestLink,
 } from "@t3tools/contracts";
+import { useT } from "~/i18n";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { lazy, Suspense } from "react";
 import type { ComposerImageAttachment, DraftId } from "../../composerDraftStore";
@@ -77,6 +78,7 @@ export function RightPanelSurfaceContent(props: {
   readonly pullRequest: RightPanelPullRequestProps;
   readonly files: RightPanelFileProps;
 }) {
+  const t = useT();
   const { surface, threadRef, visible } = props;
   if (surface === null) return null;
   switch (surface.kind) {
@@ -120,8 +122,8 @@ export function RightPanelSurfaceContent(props: {
       if (!pullRequest.supported) {
         return (
           <PullRequestsUnavailableState
-            title="Pull requests unavailable"
-            error="Update this environment's T3 Code server to browse pull requests."
+            title={t("legacySidebar.misc.rightPanel.prUnavailableTitle")}
+            error={t("legacySidebar.misc.rightPanel.prUnavailableDetail")}
           />
         );
       }

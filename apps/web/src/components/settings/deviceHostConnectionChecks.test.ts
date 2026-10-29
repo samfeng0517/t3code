@@ -1,5 +1,6 @@
 import * as Option from "effect/Option";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { setLanguagePreference } from "~/i18n/languagePreferenceStore";
 import { EnvironmentId, type DeviceHostSummary } from "@t3tools/contracts";
 import {
   checkDeviceHostConnections,
@@ -7,6 +8,9 @@ import {
   deviceHostConnectionKey,
   type DeviceHostCheck,
 } from "./deviceHostConnectionChecks";
+
+beforeEach(() => setLanguagePreference("en"));
+afterEach(() => setLanguagePreference("system"));
 
 const host = { kind: "ssh" as const, id: "mac", label: "Mac mini", target: "user@mac" };
 const ids = ["a", "b", "c", "d"].map((id) => EnvironmentId.make(id));

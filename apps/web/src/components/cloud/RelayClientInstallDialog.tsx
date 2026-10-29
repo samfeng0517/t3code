@@ -8,6 +8,7 @@ import {
   respondToRelayClientInstallConfirmation,
   subscribeRelayClientInstallDialog,
 } from "../../cloud/relayClientInstallDialog";
+import { useT, type MessageKey } from "~/i18n";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -20,18 +21,19 @@ import {
 } from "../ui/dialog";
 const installSteps: ReadonlyArray<{
   readonly stage: RelayClientInstallProgressStage;
-  readonly label: string;
+  readonly label: MessageKey;
 }> = [
-  { stage: "checking", label: "Checking current installation" },
-  { stage: "waiting_for_lock", label: "Waiting for installer" },
-  { stage: "downloading", label: "Downloading relay client" },
-  { stage: "verifying", label: "Verifying download" },
-  { stage: "installing", label: "Installing relay client" },
-  { stage: "validating", label: "Validating executable" },
-  { stage: "activating", label: "Activating installation" },
+  { stage: "checking", label: "files.relayInstall.step.checking" },
+  { stage: "waiting_for_lock", label: "files.relayInstall.step.waiting_for_lock" },
+  { stage: "downloading", label: "files.relayInstall.step.downloading" },
+  { stage: "verifying", label: "files.relayInstall.step.verifying" },
+  { stage: "installing", label: "files.relayInstall.step.installing" },
+  { stage: "validating", label: "files.relayInstall.step.validating" },
+  { stage: "activating", label: "files.relayInstall.step.activating" },
 ];
 
 export function RelayClientInstallDialog() {
+  const t = useT();
   const state = useSyncExternalStore(
     subscribeRelayClientInstallDialog,
     readRelayClientInstallDialogState,
@@ -65,12 +67,14 @@ export function RelayClientInstallDialog() {
             <DownloadIcon aria-hidden className="size-4.5 text-muted-foreground" />
           </div>
           <DialogTitle>
-            {isInstalling ? "Installing relay client" : "Install relay client?"}
+            {isInstalling
+              ? t("files.relayInstall.installingTitle")
+              : t("files.relayInstall.confirmTitle")}
           </DialogTitle>
           <DialogDescription>
             {isInstalling
-              ? "T3 Code is preparing this environment for secure access through T3 Connect."
-              : "T3 Code needs the relay client to make this environment available through T3 Connect."}
+              ? t("files.relayInstall.installingDescription")
+              : t("files.relayInstall.confirmDescription")}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel scrollFade={false}>
@@ -78,28 +82,34 @@ export function RelayClientInstallDialog() {
             <div className="space-y-2.5">
               <div className="flex items-center justify-between gap-3 text-sm">
                 <p aria-live="polite" className="font-medium text-foreground">
-                  {activeStep?.label}
+                  {activeStep ? t(activeStep.label) : null}
                 </p>
                 <p className="shrink-0 tabular-nums text-muted-foreground">
-                  {activeStepIndex + 1} of {installSteps.length}
+                  {t("files.relayInstall.progress", {
+                    current: activeStepIndex + 1,
+                    total: installSteps.length,
+                  })}
                 </p>
               </div>
               <progress
-                aria-label="Relay client installation progress"
+                aria-label={t("files.relayInstall.progressLabel")}
                 className="h-2 w-full appearance-none overflow-hidden rounded-full bg-muted [&::-moz-progress-bar]:rounded-full [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-primary"
                 max={installSteps.length}
                 value={activeStepIndex + 1}
               />
               <p className="text-xs leading-relaxed text-muted-foreground">
-                Keep T3 Code open while the relay client is installed.
+                {t("files.relayInstall.keepOpen")}
               </p>
             </div>
           ) : (
             <div className="rounded-xl border border-border/70 bg-muted/35 p-3">
-              <p className="text-sm font-medium text-foreground">Managed relay client</p>
+              <p className="text-sm font-medium text-foreground">
+                {t("files.relayInstall.managed")}
+              </p>
               <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                T3 Code will download and install version{" "}
-                {view.status === "confirming" ? view.version : ""} locally.
+                {t("files.relayInstall.willInstall", {
+                  version: view.status === "confirming" ? view.version : "",
+                })}
               </p>
             </div>
           )}
@@ -110,10 +120,10 @@ export function RelayClientInstallDialog() {
               variant="outline"
               onClick={() => respondToRelayClientInstallConfirmation(false)}
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button onClick={() => respondToRelayClientInstallConfirmation(true)}>
-              Download and install
+              {t("files.relayInstall.confirm")}
             </Button>
           </DialogFooter>
         ) : null}

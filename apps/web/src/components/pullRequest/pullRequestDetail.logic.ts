@@ -37,15 +37,16 @@ import {
   visibleThreadPullRequests,
 } from "@t3tools/client-runtime/thread-pull-requests";
 
+import { t as globalT, type MessageKey, type Translate } from "~/i18n";
 import { inferReviewCommentFenceLanguage, type ReviewCommentContext } from "~/reviewCommentContext";
 import { reviewCommentContextId } from "~/lib/composerContextRecords";
 import { removeInlineContextReference } from "~/lib/composerContextReferences";
 
-export const PULL_REQUEST_MERGE_METHOD_LABELS: Record<PullRequestMergeMethod, string> = {
-  merge: "Merge",
-  squash: "Squash and merge",
-  rebase: "Rebase and merge",
-};
+export const PULL_REQUEST_MERGE_METHOD_LABEL_KEYS = {
+  merge: "pullRequestDetail.mergeMethod.merge",
+  squash: "pullRequestDetail.mergeMethod.squash",
+  rebase: "pullRequestDetail.mergeMethod.rebase",
+} as const satisfies Record<PullRequestMergeMethod, MessageKey>;
 
 export function allowsSinglePullRequestMerge(input: {
   supportsStackActions: boolean;
@@ -238,17 +239,17 @@ export function threadPullRequestPanelTarget(thread: {
   return legacy ?? thread.branchPullRequest ?? null;
 }
 
-export function pullRequestHandoffLabels(inThisThread: boolean) {
+export function pullRequestHandoffLabels(inThisThread: boolean, t: Translate = globalT) {
   return inThisThread
     ? {
-        fixFinding: "Fix in this thread",
-        fixCheck: "Fix in this thread",
-        fixFindings: "Fix findings in this thread",
+        fixFinding: t("pullRequestDetail.handoff.fixInThisThread"),
+        fixCheck: t("pullRequestDetail.handoff.fixInThisThread"),
+        fixFindings: t("pullRequestDetail.handoff.fixFindingsInThisThread"),
       }
     : {
-        fixFinding: "Fix in a thread",
-        fixCheck: "Fix",
-        fixFindings: "Fix findings in a thread",
+        fixFinding: t("pullRequestDetail.handoff.fixInThread"),
+        fixCheck: t("pullRequestDetail.handoff.fix"),
+        fixFindings: t("pullRequestDetail.handoff.fixFindingsInThread"),
       };
 }
 
@@ -319,8 +320,11 @@ export function classifyPullRequestChecks(
   return "passing";
 }
 
-export function describePullRequestChecks(checks: ReadonlyArray<PullRequestCheck>): string {
-  if (checks.length === 0) return "No checks reported";
+export function describePullRequestChecks(
+  checks: ReadonlyArray<PullRequestCheck>,
+  t: Translate = globalT,
+): string {
+  if (checks.length === 0) return t("pullRequests.checksSummary.none");
   const failed = checks.filter(
     (check) => check.status === "failure" || check.status === "cancelled",
   ).length;
@@ -328,13 +332,28 @@ export function describePullRequestChecks(checks: ReadonlyArray<PullRequestCheck
   const actionRequired = checks.filter((check) => check.status === "action-required").length;
   const passed = checks.filter((check) => check.status === "success").length;
   const parts: string[] = [];
-  if (pending > 0) parts.push(`${pending} of ${checks.length} running`);
-  if (actionRequired > 0) parts.push(`${actionRequired} of ${checks.length} awaiting action`);
+  if (pending > 0) {
+    parts.push(t("pullRequests.checksSummary.running", { count: pending, total: checks.length }));
+  }
+  if (actionRequired > 0) {
+    parts.push(
+      t("pullRequestDetail.checks.awaitingAction", {
+        count: actionRequired,
+        total: checks.length,
+      }),
+    );
+  }
   if (failed > 0) {
-    parts.push(parts.length > 0 ? `${failed} failed` : `${failed} of ${checks.length} failing`);
+    parts.push(
+      parts.length > 0
+        ? t("pullRequestDetail.checks.failed", { count: failed })
+        : t("pullRequests.checksSummary.failing", { count: failed, total: checks.length }),
+    );
   }
   if (parts.length === 0) {
-    return passed === checks.length ? "All checks passed" : `${passed} of ${checks.length} passing`;
+    return passed === checks.length
+      ? t("pullRequests.checksSummary.allPassed")
+      : t("pullRequests.checksSummary.passing", { count: passed, total: checks.length });
   }
   return parts.join(" · ");
 }
@@ -662,6 +681,7 @@ export function buildPullRequestTimeline(
     "provider" | "createdAt" | "author" | "commits" | "comments" | "mergedAt" | "closedAt"
   > &
     Partial<Pick<PullRequestDetailView, "reviewThreads">>,
+  t: Translate = globalT,
 ): ReadonlyArray<PullRequestTimelineEvent> {
   const term = sourceControlClients.get(detail.provider).changeRequest.singular;
   return [
@@ -669,7 +689,7 @@ export function buildPullRequestTimeline(
       id: "created",
       at: detail.createdAt,
       kind: "opened" as const,
-      title: `opened this ${term}`,
+      title: t("pullRequestDetail.timeline.openedThis", { singular: term }),
       body: null,
       markdown: false,
       url: null,
@@ -685,7 +705,7 @@ export function buildPullRequestTimeline(
       id: commit.oid,
       at: commit.committedDate,
       kind: "commit" as const,
-      title: `Commit ${commit.oid.slice(0, 7)}`,
+      title: t("pullRequestDetail.timeline.commit", { sha: commit.oid.slice(0, 7) }),
       body: commit.messageHeadline || null,
       markdown: false,
       url: null,
@@ -720,7 +740,7 @@ export function buildPullRequestTimeline(
             id: "merged",
             at: detail.mergedAt,
             kind: "merged" as const,
-            title: `${capitalizeTerm(term)} merged`,
+            title: t("pullRequestDetail.timeline.merged", { singular: capitalizeTerm(term) }),
             body: null,
             markdown: false,
             url: null,
@@ -740,7 +760,7 @@ export function buildPullRequestTimeline(
             id: "closed",
             at: detail.closedAt,
             kind: "closed" as const,
-            title: `${capitalizeTerm(term)} closed`,
+            title: t("pullRequestDetail.timeline.closed", { singular: capitalizeTerm(term) }),
             body: null,
             markdown: false,
             url: null,
@@ -1231,16 +1251,13 @@ export function readableFailure(failure: unknown, hint: string): string {
 
 const isGitCommandError = Schema.is(GitCommandError);
 
-export function checkoutFailureDescription(failure: unknown): string {
+export function checkoutFailureDescription(failure: unknown, t: Translate = globalT): string {
   const description = isGitCommandError(failure)
     ? failure.reason === undefined
       ? failure.detail
       : `${failure.detail} (${failure.reason})`
     : failure;
-  return readableFailure(
-    description,
-    "Check that the branch still exists and is not checked out elsewhere, then try again.",
-  );
+  return readableFailure(description, t("pullRequestDetail.checkoutFailureHint"));
 }
 
 export function resolveBaseFreshness(detail: {

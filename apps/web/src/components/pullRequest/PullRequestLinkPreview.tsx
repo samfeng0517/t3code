@@ -13,6 +13,7 @@ import {
 
 import { RelativeTime } from "~/components/RelativeTime";
 import { pullRequestEnvironment } from "~/state/pullRequests";
+import { useT } from "~/i18n";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 import { useEnvironmentQuery } from "~/state/query";
 
@@ -46,6 +47,7 @@ export function PullRequestLinkPreview({
   onOpenFallback?: (url: string) => Promise<void>;
   fallback?: ReactNode;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const previewActionsRef = useRef<PreviewCardPrimitive.Root.Actions | null>(null);
   const [resolvingClick, setResolvingClick] = useState(false);
@@ -90,7 +92,8 @@ export function PullRequestLinkPreview({
   const state =
     preview === null
       ? null
-      : resolvePullRequestState({ state: preview.state, isDraft: preview.isDraft });
+      : resolvePullRequestState({ state: preview.state, isDraft: preview.isDraft }, t);
+  const openedParts = t("pullRequestDetail.linkPreview.opened", { time: "\u0001" }).split("\u0001");
   const authorLabel =
     preview?.author === null
       ? "ghost"
@@ -139,7 +142,9 @@ export function PullRequestLinkPreview({
                   <span className="min-w-0 truncate">{authorLabel}</span>
                   <span aria-hidden>·</span>
                   <span className="shrink-0">
-                    opened <RelativeTime timestamp={preview.createdAt} />
+                    {openedParts[0]}
+                    <RelativeTime timestamp={preview.createdAt} />
+                    {openedParts[1]}
                   </span>
                 </div>
               </div>

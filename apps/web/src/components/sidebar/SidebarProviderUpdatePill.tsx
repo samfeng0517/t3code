@@ -54,12 +54,16 @@ export function SidebarProviderUpdatePill() {
   const [dismissAfterExitKey, setDismissAfterExitKey] = useState<string | null>(null);
   const [visibleAfterIso, setVisibleAfterIso] = useState<string | undefined>();
   const effectiveVisibleAfterIso = visibleAfterIso ?? latestProviderCheckedAt(providers);
-  const view = getProviderUpdateSidebarPillView(providers, {
-    ...(effectiveVisibleAfterIso !== undefined
-      ? { visibleAfterIso: effectiveVisibleAfterIso }
-      : {}),
-    dismissedKeys,
-  });
+  const view = getProviderUpdateSidebarPillView(
+    providers,
+    {
+      ...(effectiveVisibleAfterIso !== undefined
+        ? { visibleAfterIso: effectiveVisibleAfterIso }
+        : {}),
+      dismissedKeys,
+    },
+    t,
+  );
 
   if (visibleAfterIso === undefined && effectiveVisibleAfterIso !== undefined) {
     setVisibleAfterIso(effectiveVisibleAfterIso);

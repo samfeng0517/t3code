@@ -1609,8 +1609,8 @@ export function WorkspaceLargeTextPreview(props: {
   const showError = (cause: unknown) => {
     toastManager.add({
       type: "error",
-      title: "Could not read file",
-      description: cause instanceof Error ? cause.message : "Try again.",
+      title: t("files.preview.readFailed"),
+      description: cause instanceof Error ? cause.message : t("common.tryAgain"),
     });
   };
   // Each workspace mutation re-mints the URL, so an edited file loads its new bytes.
@@ -1641,12 +1641,16 @@ export function WorkspaceLargeTextPreview(props: {
       />
     );
   if (assetUrl._tag !== "Success" || loaded === null)
-    return <div className="p-6 text-xs text-muted-foreground">Loading…</div>;
+    return (
+      <div className="p-6 text-xs text-muted-foreground">{t("workspace.preview.loading")}</div>
+    );
   const src = `${loaded.url}${loaded.url.includes("?") ? "&" : "?"}revision=${encodeURIComponent(loaded.revision)}`;
   return (
     <>
       <div className={FILE_SURFACE_SUBHEADER_CLASS}>
-        <span className="min-w-0 flex-1 text-xs text-muted-foreground">Full file</span>
+        <span className="min-w-0 flex-1 text-xs text-muted-foreground">
+          {t("files.preview.fullFile")}
+        </span>
         <FileSurfaceAction
           label={t(isCopied ? "workspace.file.copied" : "workspace.file.copyContents")}
           onPress={() => {
@@ -1683,7 +1687,11 @@ export function WorkspaceLargeTextPreview(props: {
           <DownloadIcon className="size-3.5" />
         </FileSurfaceAction>
       </div>
-      <Suspense fallback={<div className="p-6 text-xs text-muted-foreground">Loading…</div>}>
+      <Suspense
+        fallback={
+          <div className="p-6 text-xs text-muted-foreground">{t("workspace.preview.loading")}</div>
+        }
+      >
         <LargeTextViewer
           key={`${src}:${revision}`}
           name={props.name}

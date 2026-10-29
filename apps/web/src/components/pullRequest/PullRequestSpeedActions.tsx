@@ -3,6 +3,7 @@ import type { PullRequestAction } from "@t3tools/contracts";
 import { createContext, use, type ReactNode } from "react";
 import type { ChangeRequestTerminology } from "@t3tools/client-runtime/source-control-clients";
 
+import { useT } from "~/i18n";
 import { useShortcutModifierState } from "~/shortcutModifierState";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useUiStateStore } from "~/uiStateStore";
@@ -44,6 +45,7 @@ export function PullRequestSpeedActions<Entry extends PullRequestSpeedActionEntr
   sweeping?: boolean;
   onCloseSweepStart?: (entry: Entry, event: PointerEvent) => void;
 }) {
+  const t = useT();
   const canWrite = useAtomValue(
     pullRequestEnvironment.runAction.permissionAtom(entry.environmentId),
   );
@@ -66,8 +68,7 @@ export function PullRequestSpeedActions<Entry extends PullRequestSpeedActionEntr
       const allowed = detail.capabilities.mergeMethods.filter(
         (method) => detail.mergeCapabilities[method],
       );
-      if (allowed.length === 0)
-        throw new Error("No merge method is available for this repository.");
+      if (allowed.length === 0) throw new Error(t("pullRequestDetail.speed.noMergeMethod"));
       return resolvePullRequestMergeMethod(
         allowed,
         null,
@@ -83,10 +84,13 @@ export function PullRequestSpeedActions<Entry extends PullRequestSpeedActionEntr
     <SpeedModeGroup
       busy={busy}
       pending={actionPending || closing}
-      label={`Quick actions for ${terminology.singular} #${entry.number}`}
+      label={t("pullRequestDetail.speed.quickActions", {
+        singular: terminology.singular,
+        number: entry.number,
+      })}
     >
       {actions.map((action) => {
-        const label = ACTIONS[action].label;
+        const label = t(ACTIONS[action].labelKey);
         const Icon = ACTIONS[action].Icon;
         return (
           <Tooltip key={action}>
@@ -111,10 +115,10 @@ export function PullRequestSpeedActions<Entry extends PullRequestSpeedActionEntr
             </TooltipTrigger>
             <TooltipPopup>
               {action === "merge" && entry.stack
-                ? `Open this ${terminology.singular} to merge its stack`
+                ? t("pullRequestDetail.speed.openToMergeStack", { singular: terminology.singular })
                 : action === "close" && onCloseSweepStart
-                  ? "Close immediately, or drag across rows to close several"
-                  : `${label} immediately`}
+                  ? t("pullRequestDetail.speed.closeOrDrag")
+                  : t("pullRequestDetail.speed.immediately", { label })}
             </TooltipPopup>
           </Tooltip>
         );
@@ -163,8 +167,11 @@ function SpeedModeGroup({
 }
 
 const ACTIONS = {
-  close: { label: "Close", Icon: PullRequestGlyph.closed },
-  merge: { label: "Merge", Icon: PullRequestGlyph.merged },
-  ready: { label: "Ready for review", Icon: PullRequestGlyph.pullRequest },
-  reopen: { label: "Reopen", Icon: PullRequestGlyph.reopen },
+  close: { labelKey: "pullRequestDetail.speed.close", Icon: PullRequestGlyph.closed },
+  merge: { labelKey: "pullRequestDetail.speed.merge", Icon: PullRequestGlyph.merged },
+  ready: {
+    labelKey: "pullRequestDetail.action.readyForReview",
+    Icon: PullRequestGlyph.pullRequest,
+  },
+  reopen: { labelKey: "pullRequestDetail.speed.reopen", Icon: PullRequestGlyph.reopen },
 } as const;

@@ -5,6 +5,7 @@ import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { createContext, type ReactNode, useContext } from "react";
 
+import { useT } from "~/i18n";
 import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
 import { getProjectFileQueryAtom, optimisticFileAtom } from "../files/projectFilesQueryState";
 import { useSettingsProjectGroups } from "./useSettingsProjectGroups";
@@ -57,18 +58,19 @@ function useMemberProjectFiles(scope: ReturnType<typeof resolveSettingsScope>) {
 }
 
 function useResolvedSettingsScope(rawSearch: SettingsScopeSearch, singleEnvironment: boolean) {
+  const t = useT();
   const groups = useSettingsProjectGroups();
   const { environments: availableEnvironments } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const search = singleEnvironment
     ? selectSingleEnvironmentScope(
         rawSearch,
-        resolveSettingsScope(rawSearch, groups, availableEnvironments),
+        resolveSettingsScope(rawSearch, groups, availableEnvironments, t),
         availableEnvironments,
         primaryEnvironmentId,
       )
     : rawSearch;
-  const scope = resolveSettingsScope(search, groups, availableEnvironments);
+  const scope = resolveSettingsScope(search, groups, availableEnvironments, t);
   const projectFiles = useMemberProjectFiles(scope);
   const selected = selectScopedSettingsEnvironments(
     scope,

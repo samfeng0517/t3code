@@ -35,6 +35,7 @@ import {
   type ThreadNotificationKind,
   type ThreadNotificationObservation,
 } from "./ThreadNotificationCoordinator.logic";
+import { t } from "../i18n";
 import { toastManager } from "./ui/toast";
 
 interface NotificationState extends ThreadNotificationObservation {
@@ -86,16 +87,16 @@ export function startThreadNotifications(
     };
     const title =
       kind === "completion"
-        ? "Thread completed"
+        ? t("shell.notification.completed")
         : status === "approval"
-          ? "Approval needed"
+          ? t("shell.notification.approvalNeeded")
           : status === "limited"
-            ? "Usage limit reached"
+            ? t("sidebar.tooltip.usageLimitReached")
             : status === "failed"
-              ? "Thread failed"
+              ? t("shell.notification.failed")
               : status === "request"
-                ? "Guest request"
-                : "Input needed";
+                ? t("shell.notification.guestRequest")
+                : t("shell.notification.inputNeeded");
     if (hasNotificationSound(mode)) {
       void playNotificationSound(kind, () =>
         hasNotificationSound(getClientSettings().notificationMode),
@@ -125,7 +126,7 @@ export function startThreadNotifications(
             ),
         },
         actionProps: {
-          children: "Open thread",
+          children: t("shell.notification.openThread"),
           onClick: () => {
             toastManager.close(toastId);
             void router.navigate({

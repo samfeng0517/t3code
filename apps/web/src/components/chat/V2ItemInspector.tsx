@@ -1,4 +1,5 @@
 import type { EnvironmentId, OrchestrationV2ProjectedTurnItem, RunId } from "@t3tools/contracts";
+import { useT } from "~/i18n";
 import {
   toolCallLines,
   turnItemDetailRevision,
@@ -106,6 +107,7 @@ function useFetchedTurnItem(
   source: TurnItemSource | undefined,
   skip = false,
 ) {
+  const t = useT();
   const wireItem = projectedItem.item;
   const fetches = !skip && turnItemNeedsDetailFetch(wireItem);
   const detail = useTurnItemDetail(
@@ -132,7 +134,7 @@ function useFetchedTurnItem(
         item !== wireItem
           ? null
           : detail.data?.item === null
-            ? "Output is no longer available."
+            ? t("legacySidebar.misc.output.unavailable")
             : detail.error,
       empty: fetches && item !== wireItem,
     },
@@ -150,12 +152,13 @@ interface ToolOutputState {
 }
 
 function ToolOutput(props: ToolOutputState) {
+  const t = useT();
   const images = props.images.map((resource) => (
     <ChatMarkdownAssetImage
       key={resource.index}
       environmentId={props.environmentId}
       resource={resource}
-      alt="Tool output image"
+      alt={t("legacySidebar.misc.output.toolImageAlt")}
       maxHeightRem={16}
       onImageExpand={props.onImageExpand}
     />
@@ -163,11 +166,13 @@ function ToolOutput(props: ToolOutputState) {
   const text = props.output ? (
     <div className="max-h-80 overflow-auto text-muted-foreground">{props.output}</div>
   ) : props.pending ? (
-    <div className="text-muted-foreground italic">Loading output…</div>
+    <div className="text-muted-foreground italic">{t("legacySidebar.misc.output.loading")}</div>
   ) : props.error ? (
-    <div className="text-destructive">Couldn&apos;t load output: {props.error}</div>
+    <div className="text-destructive">
+      {t("legacySidebar.misc.output.loadFailed", { error: props.error })}
+    </div>
   ) : props.empty && images.length === 0 ? (
-    <div className="text-muted-foreground italic">No output.</div>
+    <div className="text-muted-foreground italic">{t("legacySidebar.misc.output.none")}</div>
   ) : null;
   return (
     <>
@@ -201,6 +206,7 @@ function ToolCallBody(
     readonly outputSlot?: ReactNode;
   },
 ) {
+  const t = useT();
   const call = toolCallLines({ command: props.command, args: props.args });
   return (
     <div className={cn("space-y-1.5", monoClassName)}>
@@ -222,13 +228,16 @@ function ToolCallBody(
       {call.argsText ? <StructuredValue value={call.argsText} highlightJson /> : null}
       {props.outputSlot ?? <ToolOutput {...props} />}
       {props.exitCode !== undefined && props.exitCode !== 0 ? (
-        <div className="text-destructive">exit {props.exitCode}</div>
+        <div className="text-destructive">
+          {t("legacySidebar.misc.output.exitCode", { code: props.exitCode })}
+        </div>
       ) : null}
     </div>
   );
 }
 
 export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspectorProps) {
+  const t = useT();
   // Command rows stream their output, including the final output, from the server.
   const environmentStreamsOutput = useCommandOutputStreaming(props.environmentId);
   const streamsOutput =
@@ -295,7 +304,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
                 variant="outline"
                 onClick={() => props.onOpenTurnDiff?.(item.runId!, item.fileName)}
               >
-                Open diff
+                {t("legacySidebar.misc.output.openDiff")}
               </Button>
             ) : null}
           </div>
@@ -361,7 +370,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
                   </a>
                 ) : (
                   <p className="font-medium text-foreground">
-                    {result.title ?? result.url ?? "Search result"}
+                    {result.title ?? result.url ?? t("legacySidebar.misc.output.searchResult")}
                   </p>
                 )}
                 {result.snippet ? <p className="text-muted-foreground">{result.snippet}</p> : null}

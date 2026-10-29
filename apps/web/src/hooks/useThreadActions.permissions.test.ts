@@ -162,6 +162,9 @@ vi.mock("./useSettings", () => ({
 }));
 
 import { useThreadActions } from "./useThreadActions";
+import { setLanguagePreference } from "../i18n/languagePreferenceStore";
+
+setLanguagePreference("en");
 
 const primary = EnvironmentId.make("primary");
 const secondary = EnvironmentId.make("secondary");

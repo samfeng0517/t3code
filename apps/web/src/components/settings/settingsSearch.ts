@@ -1312,12 +1312,18 @@ export function isSettingsSearchScopeAvailable(
   }
 }
 
-export function searchableSetting(id: SettingsSearchItemId): {
+export function searchableSetting(
+  id: SettingsSearchItemId,
+  translate?: Translate,
+): {
   readonly id: string;
   readonly title: string;
 } {
-  const { id: anchorId, title } = SEARCH_ITEMS_BY_ID.get(id)!;
-  return { id: anchorId, title };
+  const item = SEARCH_ITEMS_BY_ID.get(id)!;
+  return {
+    id: item.id,
+    title: translate ? settingsSearchItemTitle(item, translate) : item.title,
+  };
 }
 
 export function filterAvailableSettingsSearchItems(

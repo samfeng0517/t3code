@@ -2,6 +2,7 @@
 /* oxlint-disable react/no-unstable-nested-components -- These callbacks return overlays, and are invoked as render functions. */
 import { Tooltip, TooltipTrigger, TooltipPopup } from "~/components/ui/tooltip";
 import { Fragment, useEffect, useRef, useState } from "react";
+import { t as globalT, useT } from "~/i18n";
 import { FileSurfaceLoading } from "../fileSurfaceChrome";
 import { OfficePages, type PaintPage } from "./OfficePages";
 import { createWorkerClient } from "./worker-rpc";
@@ -25,6 +26,7 @@ export default function WordDocument(props: {
   onDetails: (text: string) => void;
   onError: (cause: unknown) => void;
 }) {
+  const t = useT();
   const { onError, bytes, onDetails } = props;
   const [opened, setOpened] = useState<Opened>();
   const scroll = useRef<((index: number, y?: number) => void) | null>(null);
@@ -63,15 +65,19 @@ export default function WordDocument(props: {
       .then(async (first) => {
         if (controller.signal.aborted) return;
         setOpened({ pages: first.pages, paint, engine });
-        onDetails(`${first.pages.length}${first.loading ? "+" : ""} pages`);
+        onDetails(
+          globalT(first.loading ? "files.office.pageCountMore" : "files.office.pageCount", {
+            count: first.pages.length,
+          }),
+        );
         if (!first.loading) return;
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         while (!controller.signal.aborted) {
           const step = await engine.call("layout", undefined, { signal: controller.signal });
           if (!step.done) continue;
-          if (step.pages.length > 1000) throw new Error("Preview limited to 1,000 pages.");
+          if (step.pages.length > 1000) throw new Error(globalT("files.office.pageLimit"));
           setOpened({ pages: step.pages, paint, engine });
-          onDetails(`${step.pages.length} pages`);
+          onDetails(globalT("files.office.pageCount", { count: step.pages.length }));
           break;
         }
       })
@@ -98,7 +104,7 @@ export default function WordDocument(props: {
     <OfficePages
       pages={opened.pages}
       paint={opened.paint}
-      label="Page"
+      label={t("files.office.page")}
       scrollRef={scroll}
       onError={onError}
       overlay={(index) => (

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { setLanguagePreference } from "~/i18n/languagePreferenceStore";
 import { ProviderDriverKind, type ModelCapabilities } from "@t3tools/contracts";
 
 import {
@@ -10,6 +11,9 @@ import {
   validateDraft,
   type CustomModelDraft,
 } from "./customModelEditor.logic";
+
+beforeEach(() => setLanguagePreference("en"));
+afterEach(() => setLanguagePreference("system"));
 
 const draft = (overrides: Partial<CustomModelDraft>): CustomModelDraft => ({
   slug: "my-model",

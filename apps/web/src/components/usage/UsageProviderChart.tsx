@@ -10,6 +10,7 @@ import {
   formatTokens,
   formatUsd,
 } from "@t3tools/shared/usageFormat";
+import { type MessageKey, useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { PROVIDER_ORDER, PROVIDER_PRESENTATION } from "./usageProviders";
 import { observeResize } from "~/lib/observeResize";
@@ -21,6 +22,15 @@ const PLOT_TOP = 8;
 const NONE_LOADING: ReadonlySet<UsageProviderKind> = new Set();
 
 export type UsageChartMetric = "tokens" | "cost";
+
+const CHART_TITLE_KEY = {
+  hour: { tokens: "usage.chart.hourlyTokens", cost: "usage.chart.hourlyCost" },
+  day: { tokens: "usage.chart.dailyTokens", cost: "usage.chart.dailyCost" },
+} as const satisfies Record<"day" | "hour", Record<UsageChartMetric, MessageKey>>;
+
+export function usageChartTitleKey(resolution: "day" | "hour", metric: UsageChartMetric) {
+  return CHART_TITLE_KEY[resolution][metric];
+}
 
 interface UsageProviderChartProps {
   readonly providers: readonly UsageProviderKind[];
@@ -236,6 +246,7 @@ function UsageChartTooltip({
   readonly loadingProviders: ReadonlySet<UsageProviderKind>;
   readonly format: (value: number) => string;
 }) {
+  const t = useT();
   const partial = providers.some((provider) => loadingProviders.has(provider));
   return (
     <div
@@ -271,7 +282,7 @@ function UsageChartTooltip({
         );
       })}
       <div className="mt-1 flex items-center justify-between gap-3 border-t border-border pt-1">
-        <span className="text-muted-foreground">Total</span>
+        <span className="text-muted-foreground">{t("usage.chart.total")}</span>
         <span className={cn("tabular-nums", partial ? "text-muted-foreground" : "text-foreground")}>
           {format(column?.total ?? 0)}
         </span>
@@ -418,6 +429,7 @@ export function UsageProviderChart({
   timeZone,
   hour12,
 }: UsageProviderChartProps) {
+  const t = useT();
   const periods = resolution === "hour" ? hours : days;
   const totals: readonly (DailyTotals | HourlyTotals)[] = resolution === "hour" ? hourly : daily;
   const byPeriod = new Map(
@@ -467,7 +479,9 @@ export function UsageProviderChart({
           loadingProviders={loadingProviders}
           format={format}
           formatTooltipPeriod={formatTooltipPeriod}
-          ariaLabel={`${resolution === "hour" ? "Hourly" : "Daily"} ${metric === "tokens" ? "processed tokens" : "cost"} by provider`}
+          ariaLabel={t("usage.chart.byProvider", {
+            title: t(usageChartTitleKey(resolution, metric)),
+          })}
         >
           {scale.ticks.map((tick) => {
             const y = toY(tick);

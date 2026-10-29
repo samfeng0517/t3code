@@ -13,7 +13,8 @@ import {
   type RepositoryIdentity,
   type ThreadPullRequestLink,
 } from "@t3tools/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { setLanguagePreference } from "~/i18n/languagePreferenceStore";
 import { formatInlineContextReference } from "~/lib/composerContextReferences";
 import { buildMessageContext, reviewCommentContextReference } from "~/lib/composerContextRecords";
 
@@ -57,6 +58,9 @@ import {
   readableFailure,
 } from "./pullRequestDetail.logic";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
+
+beforeEach(() => setLanguagePreference("en"));
+afterEach(() => setLanguagePreference("system"));
 
 describe("pull request checkout commands", () => {
   it("quotes shell metacharacters in Forgejo repository URLs", () => {

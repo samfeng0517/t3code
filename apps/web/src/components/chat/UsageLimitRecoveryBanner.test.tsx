@@ -1,7 +1,8 @@
 import { RunId } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { setLanguagePreference } from "../../i18n/languagePreferenceStore";
 import { usageLimitRecoveryBannerItem } from "./UsageLimitRecoveryBanner";
 
 const stoppedAt = new Date(2026, 9, 20, 12, 0);
@@ -19,6 +20,9 @@ function bannerDescription(resetAt: Date, timestampFormat: TimestampFormat) {
 }
 
 describe("usageLimitRecoveryBannerItem", () => {
+  beforeEach(() => setLanguagePreference("en"));
+  afterEach(() => setLanguagePreference("system"));
+
   it.each([
     ["12-hour", "Resets 5:30 PM"],
     ["24-hour", "Resets 17:30"],

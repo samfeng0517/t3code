@@ -16,6 +16,17 @@ import { gitZhTW } from "./git";
 import { branchToolbarZhTW } from "./branchToolbar";
 import { gitActionsZhTW } from "./gitActions";
 import { threadDetailsZhTW } from "./threadDetails";
+import { shellZhTW } from "./shell";
+import { chatViewZhTW } from "./chatView";
+import { timelineZhTW } from "./timeline";
+import { usageZhTW } from "./usage";
+import { pullRequestsZhTW } from "./pullRequests";
+import { pullRequestDetailZhTW } from "./pullRequestDetail";
+import { providerSetupZhTW } from "./providerSetup";
+import { settingsMiscZhTW } from "./settingsMisc";
+import { deviceZhTW } from "./device";
+import { filesZhTW } from "./files";
+import { legacySidebarZhTW } from "./legacySidebar";
 
 export const zhTW: Readonly<Record<MessageKey, string>> = {
   ...commonZhTW,
@@ -35,4 +46,15 @@ export const zhTW: Readonly<Record<MessageKey, string>> = {
   ...branchToolbarZhTW,
   ...gitActionsZhTW,
   ...threadDetailsZhTW,
+  ...shellZhTW,
+  ...chatViewZhTW,
+  ...timelineZhTW,
+  ...usageZhTW,
+  ...pullRequestsZhTW,
+  ...pullRequestDetailZhTW,
+  ...providerSetupZhTW,
+  ...settingsMiscZhTW,
+  ...deviceZhTW,
+  ...filesZhTW,
+  ...legacySidebarZhTW,
 };

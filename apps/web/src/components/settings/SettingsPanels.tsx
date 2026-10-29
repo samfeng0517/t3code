@@ -494,13 +494,13 @@ export function useSettingsRestore(onRestored?: () => void) {
       ? [t("settings.appearance.wordWrap.title")]
       : []),
     ...(!Equal.equals(settings.snoozePresets, DEFAULT_UNIFIED_SETTINGS.snoozePresets)
-      ? ["Snooze options"]
+      ? [t("settingsMisc.restore.snoozeOptions")]
       : []),
     ...(settings.persistComposerContextStrip !==
     DEFAULT_UNIFIED_SETTINGS.persistComposerContextStrip
       ? [t("settings.appearance.composerContext.title")]
       : []),
-    ...getChangedTypographySettingLabels(settings),
+    ...getChangedTypographySettingLabels(settings, t),
     ...(settings.diffFilesCollapsed !== DEFAULT_UNIFIED_SETTINGS.diffFilesCollapsed
       ? [t("settings.general.diffFileState.title")]
       : []),
@@ -562,9 +562,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       : []),
     ...(isTextGenerationModelDirty ? [t("settings.general.textGenerationModel.title")] : []),
     ...(settings.threadTitleInstructions !== DEFAULT_UNIFIED_SETTINGS.threadTitleInstructions
-      ? ["Thread title instructions"]
+      ? [t("settingsMisc.restore.threadTitleInstructions")]
       : []),
-    ...getChangedBrowserSettingLabels(settings),
+    ...getChangedBrowserSettingLabels(settings, t),
     ...(settings.enableAgentBrowserAccess !== DEFAULT_UNIFIED_SETTINGS.enableAgentBrowserAccess
       ? [t("settings.restore.label.agentBrowserAccess")]
       : []),
@@ -1788,7 +1788,7 @@ export function ThreadsSettingsPanel() {
       <ProjectDefaultsSettings category="general" />
 
       {!isProjectScope ? (
-        <SettingsSection id="snooze" title="Snooze">
+        <SettingsSection id="snooze" title={t("settingsMisc.snooze.section")}>
           <SnoozePresetsRow />
         </SettingsSection>
       ) : null}

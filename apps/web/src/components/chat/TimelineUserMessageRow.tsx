@@ -272,7 +272,16 @@ export function FoldedMessageHeader(props: {
   );
 }
 
+const PROJECTED_STATUS_LABEL_KEY = {
+  running: "timeline.userMessage.status.running",
+  idle: "timeline.userMessage.status.idle",
+  failed: "timeline.userMessage.status.failed",
+  cancelled: "timeline.userMessage.status.cancelled",
+  interrupted: "timeline.userMessage.status.interrupted",
+} as const;
+
 function UserMessageProjectedStatus({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
+  const t = useT();
   const status = row.projectedItem?.item.status;
   if (
     status === undefined ||
@@ -284,7 +293,7 @@ function UserMessageProjectedStatus({ row }: { row: Extract<TimelineRow, { kind:
   return (
     <div className="me-1 flex items-center gap-1.5">
       <span className="rounded-full border border-destructive/25 bg-destructive/8 px-1.5 py-0.5 text-3xs font-medium text-destructive">
-        {status}
+        {t(PROJECTED_STATUS_LABEL_KEY[status])}
       </span>
     </div>
   );
@@ -329,7 +338,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       ? { environmentId: ctx.activeThreadEnvironmentId, threadId: senderThreadId }
       : null,
   );
-  const senderLabel = senderShell?.title.trim() || "Agent";
+  const senderLabel = senderShell?.title.trim() || t("timeline.userMessage.agent");
   const resolvedContext = resolveUserMessageContext(
     userMessage.attribution === "guest" ? { ...row.message, text: userMessage.text } : row.message,
   );
@@ -455,7 +464,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           className="me-1 text-2xs text-muted-foreground/70"
           data-user-message-attribution="t3code"
         >
-          Sent by T3 Code
+          {t("timeline.userMessage.sentByApp")}
         </p>
       ) : null}
       {/* The row's heading already names the guest for screen readers. */}
@@ -482,8 +491,8 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           {folded
             ? senderLabel
             : userMessage.guestName === undefined
-              ? "You"
-              : `${userMessage.guestName} (guest)`}
+              ? t("timeline.userMessage.you")
+              : t("timeline.userMessage.guest", { name: userMessage.guestName })}
         </MessageAuthorHeading>
         {folded ? (
           <FoldedMessageHeader
@@ -520,7 +529,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                       <button
                         type="button"
                         className="block h-full w-full cursor-zoom-in"
-                        aria-label={`Preview ${image.name}`}
+                        aria-label={t("timeline.media.preview", { name: image.name })}
                         onClick={() => {
                           const preview = buildExpandedImagePreview(regularImages, image.id);
                           if (!preview) return;
@@ -590,7 +599,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                       <div key={file.id} className="flex min-w-0 items-center gap-1">
                         <button
                           type="button"
-                          aria-label={`Preview ${file.name}`}
+                          aria-label={t("timeline.media.preview", { name: file.name })}
                           onClick={() => ctx.onFileOpen(file)}
                           className="focus-visible:ring-ring/70 flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-1 text-left text-sm hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
                         >
@@ -603,14 +612,16 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                               <Button
                                 size="icon-xs"
                                 variant="ghost-muted"
-                                aria-label={`Download ${file.name}`}
+                                aria-label={t("timeline.userMessage.download", { name: file.name })}
                                 onClick={() => ctx.onFileDownload(file)}
                               />
                             }
                           >
                             <DownloadIcon />
                           </TooltipTrigger>
-                          <TooltipPopup side="top">Download {file.name}</TooltipPopup>
+                          <TooltipPopup side="top">
+                            {t("timeline.userMessage.download", { name: file.name })}
+                          </TooltipPopup>
                         </Tooltip>
                       </div>
                     );
@@ -652,7 +663,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           <div className="flex shrink-0 items-center gap-2">
             {folded && senderThreadId ? (
               <InlineButton onClick={() => ctx.onOpenThread(senderThreadId)} tone="muted">
-                Open thread
+                {t("timeline.userMessage.openThread")}
               </InlineButton>
             ) : null}
             <Tooltip>
@@ -767,6 +778,7 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
   markdownCwd: string | undefined;
   collapsible?: boolean;
 }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const revealForFind = () => setExpanded(true);
   const revealRef = findRevealRef(revealForFind);
@@ -817,7 +829,7 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
               onClick={() => setExpanded((value) => !value)}
               className="-ml-1"
             >
-              {expanded ? "Show less" : "Show full message"}
+              {expanded ? t("timeline.userMessage.showLess") : t("timeline.userMessage.showFull")}
             </Button>
           ) : null}
         </div>

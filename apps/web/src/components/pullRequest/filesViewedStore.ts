@@ -11,6 +11,7 @@ import type {
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 
+import { t } from "~/i18n";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 
@@ -249,7 +250,8 @@ const filesViewedStore = createFilesViewedStore({
       { reportFailure: false },
     ),
   refresh: (target) => appAtomRegistry.refresh(filesViewedAtom(target)),
-  reportFailure: () => toastManager.add({ type: "error", title: "Could not update viewed files" }),
+  reportFailure: () =>
+    toastManager.add({ type: "error", title: t("pullRequestDetail.filesViewed.updateFailed") }),
 });
 
 export function filesViewedScope(target: FilesViewedTarget): FilesViewedScopeHandle {

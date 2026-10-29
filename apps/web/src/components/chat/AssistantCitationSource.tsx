@@ -5,6 +5,7 @@ import {
   resolveAssistantCitationRange,
   type AssistantCitationSourceAnchor,
 } from "~/lib/assistantTextSelection";
+import { t } from "~/i18n";
 import { toastManager } from "../ui/toast";
 import { observeResize } from "~/lib/observeResize";
 
@@ -194,8 +195,8 @@ function observeAssistantCitationSource({
             request.onComplete();
             toastManager.add({
               type: "warning",
-              title: "Could not open the cited response",
-              description: "Click the citation to try again.",
+              title: t("timeline.citation.sourceOpenFailed"),
+              description: t("timeline.citation.sourceOpenFailedDescription"),
             });
           },
         );
@@ -207,8 +208,8 @@ function observeAssistantCitationSource({
       if (!range) {
         toastManager.add({
           type: "warning",
-          title: "The quoted text has changed",
-          description: "Showing the source response. The saved quote is unchanged.",
+          title: t("timeline.citation.sourceChanged"),
+          description: t("timeline.citation.sourceChangedDescription"),
         });
       }
     }

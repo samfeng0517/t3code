@@ -5,6 +5,7 @@ import { Alert, AlertAction, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button, InlineButton } from "../ui/button";
 import { formatProviderDriverKindLabel } from "../../providerModels";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { t as globalT, useT, type Translate } from "../../i18n";
 
 function getIncompatibleVersion(status: ServerProvider) {
   const compatibility = status.compatibilityAdvisory;
@@ -57,7 +58,7 @@ export function hasProviderSetup(status: ServerProvider): boolean {
   );
 }
 
-export function getProviderStatusMessage(status: ServerProvider): string {
+export function getProviderStatusMessage(status: ServerProvider, t: Translate = globalT): string {
   if (
     status.auth.status !== "unauthenticated" &&
     status.compatibilityAdvisory?.status === "broken" &&
@@ -68,21 +69,23 @@ export function getProviderStatusMessage(status: ServerProvider): string {
   if (status.message) return status.message;
   const providerName = status.displayName?.trim() || formatProviderDriverKindLabel(status.driver);
   if (!status.installed && hasProviderSetup(status)) {
-    return `Open provider setup to install ${formatProviderDriverKindLabel(status.driver)} on this environment.`;
+    return t("chatView.providerStatus.openSetupToInstall", {
+      provider: formatProviderDriverKindLabel(status.driver),
+    });
   }
   if (status.auth.status === "unauthenticated") {
     if (hasProviderSetup(status)) {
       return status.driver === "antigravity"
-        ? "Open provider setup to sign in with Google."
-        : "Open provider setup to sign in.";
+        ? t("chatView.providerStatus.openSetupToSignInGoogle")
+        : t("chatView.providerStatus.openSetupToSignIn");
     }
-    return "Sign in via the CLI to authenticate again.";
+    return t("chatView.providerStatus.signInViaCli");
   }
   return status.status === "ready"
-    ? "No models are available for this provider."
+    ? t("chatView.providerStatus.noModels")
     : status.status === "error"
-      ? `${providerName} provider is unavailable.`
-      : `${providerName} provider has limited availability.`;
+      ? t("chatView.providerStatus.unavailable", { provider: providerName })
+      : t("chatView.providerStatus.limitedAvailability", { provider: providerName });
 }
 
 export const ProviderStatusBanner = memo(function ProviderStatusBanner({
@@ -94,6 +97,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   status: ServerProvider | null;
 }) {
+  const t = useT();
   if (!status || getProviderStatusBannerKey(status) === null) {
     return null;
   }
@@ -102,11 +106,16 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   const isUnauthenticated = status.status === "error" && status.auth.status === "unauthenticated";
   const incompatible = getIncompatibleVersion(status);
   const title = isUnauthenticated
-    ? `${providerName} is unauthenticated`
+    ? t("chatView.providerStatus.unauthenticated", { provider: providerName })
     : incompatible
-      ? `${providerName} ${status.version ?? ""} is ${incompatible.status === "broken" ? "known to be broken" : "unsupported"}`
-      : `${providerName} provider status`;
-  const message = incompatible?.message ?? getProviderStatusMessage(status);
+      ? t(
+          incompatible.status === "broken"
+            ? "chatView.providerStatus.knownBroken"
+            : "chatView.providerStatus.unsupportedVersion",
+          { provider: providerName, version: status.version ?? "" },
+        )
+      : t("chatView.providerStatus.title", { provider: providerName });
+  const message = incompatible?.message ?? getProviderStatusMessage(status, t);
   const isWarning =
     incompatible?.status !== "broken" && (status.status === "warning" || incompatible !== null);
 
@@ -129,13 +138,16 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
           </Tooltip>
           {onOpenProviderSetup && hasProviderSetup(status) ? (
             <InlineButton onClick={() => onOpenProviderSetup(status.instanceId)}>
-              Open provider setup
+              {t("chatView.providerStatus.openSetup")}
             </InlineButton>
           ) : null}
         </AlertDescription>
         <AlertAction>
           <Button
-            aria-label={`Dismiss ${providerName} provider ${status.status}`}
+            aria-label={t("chatView.providerStatus.dismiss", {
+              provider: providerName,
+              status: t(`chatView.providerStatus.state.${status.status}`),
+            })}
             onClick={onDismiss}
             size="icon-xs"
             variant="ghost-muted"

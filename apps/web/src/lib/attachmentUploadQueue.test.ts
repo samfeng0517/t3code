@@ -2,6 +2,7 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { Atom, AsyncResult } from "effect/reactivity";
 import { appAtomRegistry } from "../rpc/atomRegistry";
+import { setLanguagePreference } from "../i18n/languagePreferenceStore";
 
 import {
   composerFileNeedsReattach,
@@ -165,6 +166,7 @@ function setConnected(environmentId: EnvironmentId, connected: boolean) {
 
 describe("attachmentUploadQueue", () => {
   beforeEach(() => {
+    setLanguagePreference("en");
     mocks.connectionStateAtom.mockImplementation(connectionStates);
     setConnected(firstEnvironment, true);
     setConnected(secondEnvironment, true);
@@ -208,6 +210,7 @@ describe("attachmentUploadQueue", () => {
       releaseAttachmentUpload(imageId);
     }
     vi.unstubAllGlobals();
+    setLanguagePreference("system");
   });
 
   it("keeps an attachment local until its own environment grants write access", async () => {

@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { setLanguagePreference } from "~/i18n/languagePreferenceStore";
 
 import { describePullRequestDiffError } from "./pullRequestDiffError";
+
+beforeEach(() => setLanguagePreference("en"));
+afterEach(() => setLanguagePreference("system"));
 
 describe("describePullRequestDiffError", () => {
   it("explains the rate limit inside an HTTP transport error without exposing the endpoint", () => {

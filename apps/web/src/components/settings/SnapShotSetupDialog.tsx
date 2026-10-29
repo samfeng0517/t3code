@@ -229,7 +229,7 @@ export function SnapShotSetupDialog({
                     checked && !busy && !error ? "text-xs text-muted-foreground" : "sr-only"
                   }
                 >
-                  {checked && !busy && !error ? captureSetupCheckMessage(state) : null}
+                  {checked && !busy && !error ? captureSetupCheckMessage(state, t) : null}
                 </p>
                 {macPermissions ? (
                   <PermissionChecklist

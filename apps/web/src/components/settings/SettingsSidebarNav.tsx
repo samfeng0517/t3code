@@ -135,7 +135,7 @@ function SettingsSectionIcon({ to }: { to: SettingsPath }) {
 export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   const t = useT();
   const locale = useLocale();
-  const navArea = workspaceAreaProps("settings-nav", 0, "Settings sections");
+  const navArea = workspaceAreaProps("settings-nav", 0, t("settingsMisc.nav.sectionsAria"));
   const navigate = useNavigate();
   const currentHash = useLocation({ select: (location) => location.hash });
   const currentSearch = useLocation({ select: (location) => location.search });
@@ -387,7 +387,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                 <div
                   {...sectionNavigation.containerProps}
                   role="tree"
-                  aria-label="Settings sections"
+                  aria-label={t("settingsMisc.nav.sectionsAria")}
                   className="flex flex-col gap-4"
                 >
                   {SETTINGS_NAV_GROUPS.map((group, index) => {

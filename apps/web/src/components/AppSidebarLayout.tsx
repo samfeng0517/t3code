@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useLocation, useRouter, type AnyRouter } from "@tanstack/react-router";
 
+import { useT } from "~/i18n";
 import { moveWorkspaceFocus, workspaceAreaProps } from "../lib/workspaceFocus";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { isElectron } from "../env";
@@ -314,6 +315,7 @@ function registerAppShellCommands(router: AnyRouter, shellElement: Element): () 
 }
 
 function SidebarControl() {
+  const t = useT();
   const router = useRouter();
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -390,7 +392,7 @@ function SidebarControl() {
                 "pointer-events-auto",
                 isSidebarVisible && stageBackdropVariant && "relative top-auto translate-y-0",
               )}
-              aria-label="Toggle main sidebar"
+              aria-label={t("sidebar.chrome.toggleSidebar")}
             />
           }
         />
@@ -403,7 +405,8 @@ function SidebarControl() {
 }
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
-  const sidebarArea = workspaceAreaProps("sidebar", 0, "Threads");
+  const t = useT();
+  const sidebarArea = workspaceAreaProps("sidebar", 0, t("sidebar.header.title"));
   const legacySidebarEnabled = useLegacySidebarEnabled();
   const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
     observedKey: null,
@@ -459,7 +462,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           data-app-sidebar=""
           {...sidebarArea}
           role="navigation"
-          aria-label="Threads"
+          aria-label={t("sidebar.header.title")}
           resizable={{
             maxWidth: sidebarMaximumWidth,
             minWidth: sidebarMinimumWidth,

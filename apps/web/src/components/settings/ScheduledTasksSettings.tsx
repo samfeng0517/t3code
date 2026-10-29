@@ -300,30 +300,29 @@ function splitModelKey(value: string): ModelSelection | null {
   };
 }
 
-export function scheduleLabel(schedule: ScheduledTaskSchedule): string {
-  if (schedule.type === "webhook")
-    return translate("settingsPages.scheduledTasks.schedule.webhook");
+export function scheduleLabel(schedule: ScheduledTaskSchedule, t: Translate = translate): string {
+  if (schedule.type === "webhook") return t("settingsPages.scheduledTasks.schedule.webhook");
   if (schedule.type === "interval") {
     const minutes = schedule.everyMs / 60_000;
     return Number.isInteger(minutes)
-      ? translate("settingsPages.scheduledTasks.schedule.everyMin", { n: minutes })
-      : translate("settingsPages.scheduledTasks.schedule.everySec", {
+      ? t("settingsPages.scheduledTasks.schedule.everyMin", { n: minutes })
+      : t("settingsPages.scheduledTasks.schedule.everySec", {
           n: Math.round(schedule.everyMs / 1000),
         });
   }
   const weekdays = schedule.weekdays ?? [];
   const days =
     weekdays.length === 0
-      ? translate("settingsPages.scheduledTasks.schedule.daily")
+      ? t("settingsPages.scheduledTasks.schedule.daily")
       : weekdays.length === 5 && weekdays.every((day) => day >= 1 && day <= 5)
-        ? translate("settingsPages.scheduledTasks.schedule.weekdays")
+        ? t("settingsPages.scheduledTasks.schedule.weekdays")
         : weekdays
             .map((day) => {
               const key = WEEKDAY_LABELS[day];
-              return key ? translate(key) : "";
+              return key ? t(key) : "";
             })
-            .join(translate("settingsPages.scheduledTasks.schedule.daysSeparator"));
-  return translate("settingsPages.scheduledTasks.schedule.at", {
+            .join(t("settingsPages.scheduledTasks.schedule.daysSeparator"));
+  return t("settingsPages.scheduledTasks.schedule.at", {
     days,
     time: schedule.timeOfDay,
   });
@@ -568,7 +567,7 @@ function ScheduledTaskEnvironmentList({
     <SettingsGroup>
       {populated.map(({ environment, tasks }) => {
         const { primary, secondary } = settingsScopeEnvironmentLabels(environment, environments);
-        const transport = environmentTransportLabel(environment);
+        const transport = environmentTransportLabel(environment, null, t);
         return (
           <div key={environment.environmentId} className="divide-y divide-border/50">
             <EnvironmentRow
@@ -773,7 +772,7 @@ function ScheduledTaskRow({
       status={
         <div className="flex flex-wrap items-center gap-2">
           <span>
-            {scheduleLabel(task.schedule)} ·{" "}
+            {scheduleLabel(task.schedule, t)} ·{" "}
             {!task.enabled ? (
               t("settingsPages.scheduledTasks.paused")
             ) : isWebhook ? (
@@ -915,7 +914,7 @@ function WebhookDeliveriesDialog({
                     selected.pendingWindow ? "coalesced" : selected.outcome,
                   )}
                 >
-                  {webhookDeliveryLabel(selected)}
+                  {webhookDeliveryLabel(selected, t)}
                 </Badge>
                 <span>
                   {selected.method} · <ScheduledRelativeLabel value={selected.receivedAt} />
@@ -998,7 +997,7 @@ function WebhookDeliveriesDialog({
                         delivery.pendingWindow ? "coalesced" : delivery.outcome,
                       )}
                     >
-                      {webhookDeliveryLabel(delivery)}
+                      {webhookDeliveryLabel(delivery, t)}
                     </Badge>
                     <span>{delivery.method}</span>
                     <span className="text-muted-foreground">
@@ -1300,7 +1299,9 @@ function ScheduledTaskEditorForm({
     }
     const schedule = scheduleFromDraft(draft);
     if (schedule === null) {
-      for (const error of webhookDraftErrors(draft)) reportFailure(error.title, error.description);
+      for (const error of webhookDraftErrors(draft, t)) {
+        reportFailure(error.title, error.description);
+      }
       return;
     }
     if (

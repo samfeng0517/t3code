@@ -123,7 +123,8 @@ function SettingsScopeBoundary({ pathname, children }: { pathname: string; child
 }
 
 function SettingsContentLayout() {
-  const contentArea = workspaceAreaProps("settings", 1, "Settings content");
+  const t = useT();
+  const contentArea = workspaceAreaProps("settings", 1, t("settingsMisc.route.content"));
   const location = useLocation();
   const { search, environment } = useSettingsScope();
   const contentScopeKey =
@@ -133,7 +134,7 @@ function SettingsContentLayout() {
   const [restoreSignal, setRestoreSignal] = useState(0);
 
   return (
-    <AppRouteModal label="Settings">
+    <AppRouteModal label={t("common.settings")}>
       <div className="relative flex min-h-0 flex-1">
         <SettingsSidebarNav pathname={location.pathname} />
         <div {...contentArea} className="flex min-h-0 min-w-0 flex-1 flex-col">

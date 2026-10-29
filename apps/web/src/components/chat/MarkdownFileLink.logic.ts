@@ -1,6 +1,7 @@
 import type { EnvironmentId } from "@t3tools/contracts";
 import { splitFilePathPosition } from "@t3tools/shared/fileLinks";
 
+import { t as globalT, type Translate } from "~/i18n";
 import {
   shouldOpenMarkdownFileLinkInBrowserByDefault,
   type MarkdownFileLinkMeta,
@@ -29,20 +30,35 @@ export function hasMarkdownFilePrimaryAction(input: {
   );
 }
 
-export function markdownFileCopyMenuItems({
-  targetPath,
-  workspaceRelativePath,
-}: Pick<MarkdownFileLinkMeta, "targetPath" | "workspaceRelativePath">) {
-  const items = [
-    { id: "copy-full", label: "Copy full path", value: targetPath, title: "Full path" },
+export type MarkdownFileCopyKind = "relative" | "full";
+
+export function markdownFileCopyMenuItems(
+  {
+    targetPath,
+    workspaceRelativePath,
+  }: Pick<MarkdownFileLinkMeta, "targetPath" | "workspaceRelativePath">,
+  t: Translate = globalT,
+) {
+  const items: Array<{
+    id: "copy-relative" | "copy-full";
+    label: string;
+    value: string;
+    kind: MarkdownFileCopyKind;
+  }> = [
+    {
+      id: "copy-full",
+      label: t("timeline.fileLink.copyFullPath"),
+      value: targetPath,
+      kind: "full",
+    },
   ];
   if (workspaceRelativePath !== null) {
     const position = targetPath.slice(splitFilePathPosition(targetPath).path.length);
     items.unshift({
       id: "copy-relative",
-      label: "Copy relative path",
+      label: t("timeline.fileLink.copyRelativePath"),
       value: `${workspaceRelativePath}${position}`,
-      title: "Relative path",
+      kind: "relative",
     });
   }
   return items;

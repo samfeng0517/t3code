@@ -1,6 +1,7 @@
 import { withDeviceHubQuery } from "@t3tools/client-runtime/state/deviceHubAccess";
 import type { DeviceHubAccess } from "@t3tools/client-runtime/state/deviceHubAccess";
 import type { DevicePlatform } from "@t3tools/contracts";
+import { t as globalT } from "~/i18n";
 
 export interface DeviceAxElement {
   readonly id: string;
@@ -111,7 +112,7 @@ export async function fetchDeviceAxTree(
     );
     if (!Array.isArray(payload)) {
       const error = isRecord(payload) && typeof payload.error === "string" ? payload.error : null;
-      return { elements: [], errors: [error ?? "Unexpected accessibility payload."] };
+      return { elements: [], errors: [error ?? globalT("device.ax.unexpectedPayload")] };
     }
     return { elements: flattenIosAxTree(payload), errors: [] };
   }
@@ -122,7 +123,7 @@ export async function fetchDeviceAxTree(
   );
   if (!isRecord(payload) || !Array.isArray(payload.nodes)) {
     const error = isRecord(payload) && typeof payload.error === "string" ? payload.error : null;
-    return { elements: [], errors: [error ?? "Unexpected accessibility payload."] };
+    return { elements: [], errors: [error ?? globalT("device.ax.unexpectedPayload")] };
   }
   const nodes = payload.nodes.filter(
     (node): node is Record<string, unknown> => isRecord(node) && isRecord(node.bounds),

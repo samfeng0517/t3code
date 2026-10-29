@@ -1,5 +1,6 @@
 import { lazy, memo, Suspense } from "react";
 
+import { useT } from "../../i18n";
 import { RenderErrorBoundary } from "../RenderErrorBoundary";
 
 const MathTypeset = lazy(() => import("./MathTypeset"));
@@ -14,6 +15,7 @@ export const MarkdownMath = memo(function MarkdownMath(props: {
   display: boolean;
   focusable?: boolean;
 }) {
+  const t = useT();
   const tex = props.tex.trim();
   const source = props.display ? `\\[\n${tex}\n\\]` : `\\(${tex}\\)`;
   const fallback = <span className="whitespace-pre-wrap">{source}</span>;
@@ -31,8 +33,8 @@ export const MarkdownMath = memo(function MarkdownMath(props: {
         props.focusable === false
           ? undefined
           : props.display
-            ? "Display equation"
-            : "Inline equation"
+            ? t("timeline.markdown.displayEquation")
+            : t("timeline.markdown.inlineEquation")
       }
     >
       <span
@@ -42,8 +44,8 @@ export const MarkdownMath = memo(function MarkdownMath(props: {
           props.focusable === false
             ? undefined
             : props.display
-              ? "Scroll display equation"
-              : "Scroll inline equation"
+              ? t("timeline.markdown.scrollDisplayEquation")
+              : t("timeline.markdown.scrollInlineEquation")
         }
       >
         <span className={props.display ? "inline-block w-max min-w-full" : "inline-block w-max"}>

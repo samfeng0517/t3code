@@ -21,6 +21,7 @@ import {
   Trash2Icon,
 } from "lucide-react";
 
+import { useT } from "~/i18n";
 import { shortcutLabelForCommand } from "~/keybindings";
 import { readLocalApi } from "~/localApi";
 import { primaryServerKeybindingsAtom } from "~/state/server";
@@ -39,7 +40,7 @@ import { RefreshIcon } from "../ui/refresh-icon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ActOnEnvironmentPicker, type PerformPullRequestAction } from "./PullRequestDetailActions";
 import {
-  PULL_REQUEST_MERGE_METHOD_LABELS,
+  PULL_REQUEST_MERGE_METHOD_LABEL_KEYS,
   pullRequestActionMenuHasGroup,
 } from "./pullRequestDetail.logic";
 import { PullRequestGlyph } from "./pullRequestIcons";
@@ -129,6 +130,7 @@ export function PullRequestActionsMenu({
   openOnHostText: string;
   copyReference: (value: string, label: string) => void;
 }) {
+  const t = useT();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const inlineConfirm = useInlineActionConfirm(pullRequestKey);
   const actionPending = pendingAction !== null;
@@ -142,8 +144,10 @@ export function PullRequestActionsMenu({
                 <Button
                   aria-label={
                     refreshing
-                      ? `Refreshing ${terminology.singular}`
-                      : `More ${terminology.singular} actions`
+                      ? t("pullRequestDetail.actionsMenu.refreshing", {
+                          singular: terminology.singular,
+                        })
+                      : t("pullRequestDetail.actionsMenu.more", { singular: terminology.singular })
                   }
                   size="icon-xs"
                   variant="ghost-muted"
@@ -160,8 +164,8 @@ export function PullRequestActionsMenu({
         />
         <TooltipPopup>
           {refreshing
-            ? `Refreshing ${terminology.singular}`
-            : `More ${terminology.singular} actions`}
+            ? t("pullRequestDetail.actionsMenu.refreshing", { singular: terminology.singular })
+            : t("pullRequestDetail.actionsMenu.more", { singular: terminology.singular })}
         </TooltipPopup>
       </Tooltip>
       <MenuPopup align="end" side="bottom">
@@ -175,16 +179,24 @@ export function PullRequestActionsMenu({
         />
         <MenuItem disabled={refreshing} onClick={() => void refreshFromHost()}>
           <RefreshIcon size="sm" refreshing={refreshing} />
-          Refresh
+          {t("pullRequestDetail.actionsMenu.refresh")}
         </MenuItem>
         <MenuItem disabled={handoff !== null} onClick={askAboutPullRequest}>
           <MessageCircleQuestionIcon className="mt-1 size-3.5 shrink-0 self-start" />
           <span className="flex min-w-0 flex-col">
-            <span>{handoff === "ask" ? "Opening..." : "Ask a question"}</span>
+            <span>
+              {handoff === "ask"
+                ? t("pullRequestDetail.actionsMenu.opening")
+                : t("pullRequestDetail.actionsMenu.askQuestion")}
+            </span>
             <span className="text-xs text-muted-foreground">
               {attachesToComposer
-                ? `Adds the ${terminology.singular} to this thread's composer.`
-                : `Opens a thread that knows which ${terminology.singular} you mean.`}
+                ? t("pullRequestDetail.actionsMenu.askAttachHint", {
+                    singular: terminology.singular,
+                  })
+                : t("pullRequestDetail.actionsMenu.askThreadHint", {
+                    singular: terminology.singular,
+                  })}
             </span>
           </span>
         </MenuItem>
@@ -192,21 +204,31 @@ export function PullRequestActionsMenu({
           <BookOpenIcon className="mt-1 size-3.5 shrink-0 self-start" />
           <span className="flex min-w-0 flex-col">
             <span>
-              {handoff === "explain" ? "Opening..." : `Explain this ${terminology.shortLabel}`}
+              {handoff === "explain"
+                ? t("pullRequestDetail.actionsMenu.opening")
+                : t("pullRequestDetail.actionsMenu.explain", {
+                    shortLabel: terminology.shortLabel,
+                  })}
             </span>
             <span className="text-xs text-muted-foreground">
-              A walk through the diff and what to read closely.
+              {t("pullRequestDetail.actionsMenu.explainHint")}
             </span>
           </span>
         </MenuItem>
         <MenuItem disabled={handoff !== null || !canFixFindings} onClick={startFixFindings}>
           <HammerIcon className="size-3.5" />
-          {handoff === "findings" ? "Preparing..." : handoffLabels.fixFindings}
+          {handoff === "findings"
+            ? t("pullRequestDetail.action.preparing")
+            : handoffLabels.fixFindings}
         </MenuItem>
         {canWriteGuide ? (
           <MenuItem disabled={guideRunning} onClick={writeGuide}>
             <SparklesIcon className="size-3.5" />
-            {guideRunning ? "Writing guide..." : !guideWritten ? "Write guide" : "Rewrite guide"}
+            {guideRunning
+              ? t("pullRequestDetail.actionsMenu.writingGuide")
+              : !guideWritten
+                ? t("pullRequestDetail.actionsMenu.writeGuide")
+                : t("pullRequestDetail.actionsMenu.rewriteGuide")}
           </MenuItem>
         ) : null}
         {pickableEnvironments.length > 0 ? (
@@ -230,32 +252,40 @@ export function PullRequestActionsMenu({
                 ) : (
                   <PullRequestGlyph.draft className="size-3.5" />
                 )}
-                {detail.isDraft ? "Ready for review" : "Convert to draft"}
+                {detail.isDraft
+                  ? t("pullRequestDetail.action.readyForReview")
+                  : t("pullRequestDetail.action.convertToDraft")}
               </MenuItem>
             ) : null}
             {showsMergeNow ? (
               <MenuItem
                 closeOnClick={inlineConfirm.isArmed("merge")}
-                aria-label={inlineConfirm.isArmed("merge") ? "Confirm merge?" : "Merge now"}
+                aria-label={
+                  inlineConfirm.isArmed("merge")
+                    ? t("pullRequestDetail.action.confirmMerge")
+                    : t("pullRequestDetail.action.mergeNow")
+                }
                 disabled={actionPending}
                 {...inlineConfirm.props("merge", () => void perform("merge", selectedMergeMethod))}
               >
                 <PullRequestGlyph.merged className="size-3.5" />
-                {inlineConfirm.isArmed("merge") ? "Confirm merge?" : "Merge now"}
+                {inlineConfirm.isArmed("merge")
+                  ? t("pullRequestDetail.action.confirmMerge")
+                  : t("pullRequestDetail.action.mergeNow")}
               </MenuItem>
             ) : null}
             {autoMergeArmed && can("disable-auto-merge") ? (
               <MenuItem disabled={actionPending} onClick={() => void perform("disable-auto-merge")}>
                 <PullRequestGlyph.merged className="size-3.5" />
-                Disable auto-merge
+                {t("pullRequestDetail.action.disableAutoMerge")}
               </MenuItem>
             ) : showsAutoMerge ? (
               <MenuItem
                 closeOnClick={inlineConfirm.isArmed("enable-auto-merge")}
                 aria-label={
                   inlineConfirm.isArmed("enable-auto-merge")
-                    ? "Confirm auto-merge?"
-                    : "Enable auto-merge"
+                    ? t("pullRequestDetail.action.confirmAutoMerge")
+                    : t("pullRequestDetail.action.enableAutoMerge")
                 }
                 disabled={actionPending}
                 {...inlineConfirm.props(
@@ -265,8 +295,8 @@ export function PullRequestActionsMenu({
               >
                 <PullRequestGlyph.merged className="size-3.5" />
                 {inlineConfirm.isArmed("enable-auto-merge")
-                  ? "Confirm auto-merge?"
-                  : "Enable auto-merge"}
+                  ? t("pullRequestDetail.action.confirmAutoMerge")
+                  : t("pullRequestDetail.action.enableAutoMerge")}
               </MenuItem>
             ) : null}
             {showsMergeMethods ? (
@@ -285,7 +315,7 @@ export function PullRequestActionsMenu({
                     >
                       <span className="flex min-w-0 items-center gap-2">
                         <PullRequestGlyph.merged className="size-3.5" />
-                        <span>{PULL_REQUEST_MERGE_METHOD_LABELS[method]}</span>
+                        <span>{t(PULL_REQUEST_MERGE_METHOD_LABEL_KEYS[method])}</span>
                       </span>
                     </MenuRadioItem>
                   ))}
@@ -305,18 +335,32 @@ export function PullRequestActionsMenu({
           <ArrowUpRightIcon className="size-3.5" />
           {openOnHostText}
         </MenuItem>
-        <MenuItem onClick={() => copyReference(detail.url, `${terminology.shortLabel} link`)}>
+        <MenuItem
+          onClick={() =>
+            copyReference(
+              detail.url,
+              t("pullRequestDetail.actionsMenu.linkLabel", { shortLabel: terminology.shortLabel }),
+            )
+          }
+        >
           <LinkIcon className="size-3.5" />
-          Copy link
+          {t("pullRequestDetail.actionsMenu.copyLink")}
           <MenuShortcut>
             {shortcutLabelForCommand(keybindings, "thread.copyReference")}
           </MenuShortcut>
         </MenuItem>
         <MenuItem
-          onClick={() => copyReference(`#${reference.number}`, `${terminology.shortLabel} number`)}
+          onClick={() =>
+            copyReference(
+              `#${reference.number}`,
+              t("pullRequestDetail.actionsMenu.numberLabel", {
+                shortLabel: terminology.shortLabel,
+              }),
+            )
+          }
         >
           <CopyIcon className="size-3.5" />
-          Copy {terminology.shortLabel} number
+          {t("pullRequestDetail.actionsMenu.copyNumber", { shortLabel: terminology.shortLabel })}
           <MenuShortcut>
             {shortcutLabelForCommand(keybindings, "pullRequest.copyNumber")}
           </MenuShortcut>
@@ -327,14 +371,18 @@ export function PullRequestActionsMenu({
             <MenuItem
               closeOnClick={inlineConfirm.isArmed("close")}
               aria-label={
-                inlineConfirm.isArmed("close") ? "Confirm close?" : `Close ${terminology.singular}`
+                inlineConfirm.isArmed("close")
+                  ? t("pullRequestDetail.action.confirmClose")
+                  : t("pullRequestDetail.action.close", { singular: terminology.singular })
               }
               variant="destructive"
               disabled={actionPending}
               {...inlineConfirm.props("close", () => void perform("close"))}
             >
               <PullRequestGlyph.closed className="size-3.5" />
-              {inlineConfirm.isArmed("close") ? "Confirm close?" : `Close ${terminology.singular}`}
+              {inlineConfirm.isArmed("close")
+                ? t("pullRequestDetail.action.confirmClose")
+                : t("pullRequestDetail.action.close", { singular: terminology.singular })}
             </MenuItem>
           </>
         ) : detail.state === "closed" && can("reopen") ? (
@@ -342,7 +390,7 @@ export function PullRequestActionsMenu({
             <MenuSeparator />
             <MenuItem disabled={actionPending} onClick={() => void perform("reopen")}>
               <PullRequestGlyph.reopen className="size-3.5" />
-              Reopen {terminology.singular}
+              {t("pullRequestDetail.action.reopen", { singular: terminology.singular })}
             </MenuItem>
           </>
         ) : detail.state === "merged" && can("revert") ? (
@@ -350,13 +398,19 @@ export function PullRequestActionsMenu({
             <MenuSeparator />
             <MenuItem
               closeOnClick={inlineConfirm.isArmed("revert")}
-              aria-label={inlineConfirm.isArmed("revert") ? "Confirm revert?" : "Revert changes"}
+              aria-label={
+                inlineConfirm.isArmed("revert")
+                  ? t("pullRequestDetail.action.confirmRevert")
+                  : t("pullRequestDetail.action.revert")
+              }
               variant={inlineConfirm.isArmed("revert") ? "destructive" : "default"}
               disabled={actionPending}
               {...inlineConfirm.props("revert", () => void perform("revert"))}
             >
               <RotateCcwIcon className="size-3.5" />
-              {inlineConfirm.isArmed("revert") ? "Confirm revert?" : "Revert changes"}
+              {inlineConfirm.isArmed("revert")
+                ? t("pullRequestDetail.action.confirmRevert")
+                : t("pullRequestDetail.action.revert")}
             </MenuItem>
           </>
         ) : null}
@@ -365,7 +419,9 @@ export function PullRequestActionsMenu({
             <MenuSeparator />
             <MenuItem disabled={actionPending} onClick={() => void perform("unapprove")}>
               <RotateCcwIcon className="size-3.5" />
-              {pendingAction === "unapprove" ? "Revoking approval..." : "Revoke approval"}
+              {pendingAction === "unapprove"
+                ? t("pullRequestDetail.action.revokingApproval")
+                : t("pullRequestDetail.action.revokeApproval")}
             </MenuItem>
           </>
         ) : null}
@@ -380,10 +436,14 @@ export function PullRequestActionsMenu({
               <Trash2Icon className="mt-1 size-3.5 shrink-0 self-start" />
               <span className="flex min-w-0 flex-col">
                 <span>
-                  {pendingAction === "delete-branch" ? "Deleting branch..." : "Delete branch"}
+                  {pendingAction === "delete-branch"
+                    ? t("pullRequestDetail.action.deletingBranch")
+                    : t("pullRequestDetail.action.deleteBranch")}
                 </span>
                 <span className="truncate text-xs text-muted-foreground">
-                  {environmentConnected ? detail.headBranch : "Reconnect to delete this branch"}
+                  {environmentConnected
+                    ? detail.headBranch
+                    : t("pullRequestDetail.action.reconnectToDelete")}
                 </span>
               </span>
             </MenuItem>

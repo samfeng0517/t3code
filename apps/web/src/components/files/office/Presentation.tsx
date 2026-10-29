@@ -6,6 +6,7 @@ import {
   FileSurfaceLoading,
   FILE_SURFACE_SUBHEADER_CLASS,
 } from "../fileSurfaceChrome";
+import { t as globalT, useT } from "~/i18n";
 import { OfficePages, type PaintPage } from "./OfficePages";
 import { createWorkerClient } from "./worker-rpc";
 import {
@@ -21,6 +22,7 @@ export default function Presentation(props: {
   onDetails: (text: string) => void;
   onError: (cause: unknown) => void;
 }) {
+  const t = useT();
   const { onError, bytes: source, onDetails } = props;
   const [opened, setOpened] = useState<Opened>();
   const [page, setPage] = useState(0);
@@ -59,7 +61,7 @@ export default function Presentation(props: {
       const context = canvas.getContext("bitmaprenderer");
       if (!context) {
         result.bitmap.close();
-        throw new Error("This browser cannot draw slides.");
+        throw new Error(globalT("files.office.cannotDrawSlides"));
       }
       canvas.width = result.bitmap.width;
       canvas.height = result.bitmap.height;
@@ -81,9 +83,9 @@ export default function Presentation(props: {
       .call("open", { bytes }, { transfer: [bytes], signal: controller.signal })
       .then((slides) => {
         if (slides.length === 0 || slides.length > 500)
-          throw new Error("Preview limited to presentations with 1 to 500 slides.");
+          throw new Error(globalT("files.office.slideLimit"));
         setOpened({ slides, paint });
-        onDetails(`${slides.length} slides`);
+        onDetails(globalT("files.office.slideCount", { count: slides.length }));
       })
       .catch(fail);
     return () => {
@@ -100,17 +102,17 @@ export default function Presentation(props: {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className={FILE_SURFACE_SUBHEADER_CLASS}>
         <FileSurfaceAction
-          label="Previous slide"
+          label={t("files.office.previousSlide")}
           disabled={page === 0}
           onPress={() => select(page - 1)}
         >
           <ChevronLeftIcon className="size-3.5" />
         </FileSurfaceAction>
         <span className="flex-1 text-center text-xs tabular-nums" aria-live="polite">
-          Slide {page + 1} of {opened.slides.length}
+          {t("files.office.slideOf", { current: page + 1, total: opened.slides.length })}
         </span>
         <FileSurfaceAction
-          label="Next slide"
+          label={t("files.office.nextSlide")}
           disabled={page + 1 === opened.slides.length}
           onPress={() => select(page + 1)}
         >
@@ -120,7 +122,7 @@ export default function Presentation(props: {
       <OfficePages
         pages={opened.slides}
         paint={opened.paint}
-        label="Slide"
+        label={t("files.office.slide")}
         scrollRef={scroll}
         onPageChange={setPage}
         onError={onError}
@@ -134,7 +136,7 @@ export default function Presentation(props: {
                 role="status"
                 className="absolute inset-0 flex items-center justify-center bg-background/80 p-4 text-xs text-foreground"
               >
-                This slide could not be drawn.
+                {t("files.office.slideFailed")}
               </p>
             ) : null}
           </>
@@ -143,11 +145,11 @@ export default function Presentation(props: {
           const slide = opened.slides[index];
           return slide?.notes || slide?.hidden ? (
             <div className="space-y-1 text-xs text-muted-foreground">
-              {slide.hidden ? <p>Hidden slide</p> : null}
+              {slide.hidden ? <p>{t("files.office.hiddenSlide")}</p> : null}
               {slide.notes ? (
                 <p
                   role="note"
-                  aria-label="Speaker notes"
+                  aria-label={t("files.office.speakerNotes")}
                   className="select-text whitespace-pre-wrap break-words"
                 >
                   {slide.notes}

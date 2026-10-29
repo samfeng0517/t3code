@@ -231,7 +231,11 @@ describe("default merge-readiness ranking", () => {
     const measured = entry({ number: 2 });
     const empty = entry({ number: 3, additions: 0, deletions: 0 });
     const groups = [
-      { key: "others", label: "Others", entries: [unknown, measured, empty] },
+      {
+        key: "others",
+        label: "pullRequestDetail.list.groupOthers",
+        entries: [unknown, measured, empty],
+      },
     ] as const;
 
     const sorted = sortPullRequestGroups(groups, "ready", "", (row) => row.number !== 1);
@@ -257,8 +261,12 @@ describe("default merge-readiness ranking", () => {
     });
     const sorted = sortPullRequestGroups(
       [
-        { key: "authored", label: "Authored", entries: [authoredWaiting, authoredReady] },
-        { key: "others", label: "Others", entries: [otherReady] },
+        {
+          key: "authored",
+          label: "pullRequestDetail.list.groupAuthored",
+          entries: [authoredWaiting, authoredReady],
+        },
+        { key: "others", label: "pullRequestDetail.list.groupOthers", entries: [otherReady] },
       ],
       "ready",
       "",

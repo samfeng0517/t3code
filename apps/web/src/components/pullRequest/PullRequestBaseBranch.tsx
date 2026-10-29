@@ -2,6 +2,7 @@ import type { PullRequestUpdateMethod } from "@t3tools/contracts";
 import { TriangleAlertIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { MiddleTruncate } from "../ui/middle-truncate";
@@ -31,13 +32,16 @@ function PullRequestBaseFreshnessWarning({
   readonly className?: string;
   readonly children?: ReactNode;
 }) {
-  const behind =
+  const t = useT();
+  const summary =
     freshness.behindBy === null
-      ? ""
-      : ` by ${freshness.behindBy.toLocaleString()} ${
-          freshness.behindBy === 1 ? "commit" : "commits"
-        }`;
-  const summary = `This branch is out-of-date with ${baseBranch}${behind}.`;
+      ? t("pullRequestDetail.baseBranch.outOfDate", { baseBranch })
+      : t(
+          freshness.behindBy === 1
+            ? "pullRequestDetail.baseBranch.outOfDateByOne"
+            : "pullRequestDetail.baseBranch.outOfDateByOther",
+          { baseBranch, count: freshness.behindBy.toLocaleString() },
+        );
   return (
     <Popover>
       <PopoverTrigger
@@ -60,7 +64,9 @@ function PullRequestBaseFreshnessWarning({
       </PopoverTrigger>
       <PopoverPopup align="start" side="bottom" className="max-w-80" padding="compact">
         <p className="text-xs text-foreground">{summary}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">Changes can be cleanly merged.</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {t("pullRequestDetail.baseBranch.cleanMerge")}
+        </p>
         {freshness.methods.length > 0 ? (
           <span className="mt-2 flex flex-wrap items-center gap-1.5">
             {freshness.methods.map((method) => (
@@ -72,7 +78,9 @@ function PullRequestBaseFreshnessWarning({
                 onClick={() => onUpdate(method)}
               >
                 <PullRequestGlyph.merged aria-hidden className="size-3" />
-                {method === "rebase" ? "Update with rebase" : "Update branch"}
+                {method === "rebase"
+                  ? t("pullRequestDetail.baseBranch.updateWithRebase")
+                  : t("pullRequestDetail.baseBranch.updateBranch")}
               </Button>
             ))}
           </span>
@@ -98,10 +106,14 @@ export function PullRequestBaseBranch({
   readonly onUpdate: (method: PullRequestUpdateMethod) => void;
   readonly iconClassName?: string;
 }) {
+  const t = useT();
   const label = (
     <>
       {stacked ? (
-        <PullRequestGlyph.stack aria-label="Stacked pull request" className="size-3 shrink-0" />
+        <PullRequestGlyph.stack
+          aria-label={t("pullRequestDetail.baseBranch.stackedAria")}
+          className="size-3 shrink-0"
+        />
       ) : null}
       <code className="flex min-w-0">
         <MiddleTruncate value={baseBranch} showTitle={false} />
@@ -131,7 +143,9 @@ export function PullRequestBaseBranch({
           </span>
         }
       />
-      <TooltipPopup side="top">{stacked ? `Stacked on ${baseBranch}` : baseBranch}</TooltipPopup>
+      <TooltipPopup side="top">
+        {stacked ? t("pullRequestDetail.baseBranch.stackedOn", { baseBranch }) : baseBranch}
+      </TooltipPopup>
     </Tooltip>
   );
 }

@@ -8,6 +8,7 @@ import {
   unknownThreadLinkLabel,
 } from "@t3tools/shared/threadLinks";
 
+import { useT } from "../../i18n";
 import { useThreadRefs, useThreadShell } from "../../state/entities";
 import { UnresolvedChip } from "../contextChipParts";
 import { ThreadContextChip } from "../ThreadContextChip";
@@ -18,6 +19,7 @@ export function MarkdownThreadLink(props: {
   readonly link: ThreadLink;
   readonly label: string | null;
 }) {
+  const t = useT();
   const environmentId = props.link.environmentId ?? props.environmentId;
   const decodedId = percentDecodedThreadLinkId(props.link.threadId);
   const written = useThreadShell(scopeThreadRef(environmentId, props.link.threadId));
@@ -34,7 +36,7 @@ export function MarkdownThreadLink(props: {
     return <UnresolvedChip label={props.label ?? unknown} tooltip={unknown} />;
   }
   const ref = { environmentId: thread.environmentId, threadId: thread.id };
-  const title = thread.title.trim() || props.label || "Untitled thread";
+  const title = thread.title.trim() || props.label || t("timeline.markdown.untitledThread");
   return (
     <ThreadContextChip record={{ ...ref, title }} copyMarkdown={formatThreadLink(ref, title)} />
   );

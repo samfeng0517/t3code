@@ -1,11 +1,15 @@
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { setLanguagePreference } from "~/i18n/languagePreferenceStore";
 import {
   backgroundActivitySharedPolicySettings,
   getChangedBrowserSettingLabels,
   hasChangedBackgroundActivitySettings,
 } from "./SettingsPanels.logic";
+
+beforeEach(() => setLanguagePreference("en"));
+afterEach(() => setLanguagePreference("system"));
 
 describe("background activity settings restore", () => {
   it("detects legacy interval values even when the structured setting is at its default", () => {

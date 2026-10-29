@@ -1,6 +1,7 @@
 import { LoaderCircleIcon, PauseIcon, PlayIcon, TriangleAlertIcon } from "lucide-react";
 import { createContext, useContext, useRef, useState } from "react";
 
+import { useT } from "~/i18n";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { ContextChip, ContextChipAction, ContextChipLabel } from "../ContextChip";
 import { middleTruncateAttachmentName } from "../composerInlineChip";
@@ -71,6 +72,7 @@ function audioTime(seconds: number) {
 }
 
 function AudioChip(props: AudioPreviewProps) {
+  const t = useT();
   const audio = useRef<HTMLAudioElement | null>(null);
   const onUnmount = useContext(AudioPreviewUnmountContext);
   const [loadedSource, setLoadedSource] = useState<string | null>(null);
@@ -92,13 +94,14 @@ function AudioChip(props: AudioPreviewProps) {
   const open = props.onOpen ?? (props.failed ? props.onRetry : undefined);
   const action = props.failed
     ? props.onOpen
-      ? "Open"
-      : "Retry"
+      ? "files.audio.open"
+      : "files.audio.retry"
     : loading
-      ? "Loading"
+      ? "files.audio.loading"
       : playing
-        ? "Pause"
-        : "Play";
+        ? "files.audio.pause"
+        : "files.audio.play";
+  const actionLabel = t(action, { name: props.name });
   const Icon = props.failed
     ? TriangleAlertIcon
     : loading
@@ -112,7 +115,7 @@ function AudioChip(props: AudioPreviewProps) {
       kind="file"
       {...(props.failed ? { state: "invalid" as const } : {})}
       className="relative isolate overflow-hidden"
-      title={props.failed ? "Audio unavailable. Open the file or retry playback." : props.name}
+      title={props.failed ? t("files.audio.unavailableTitle") : props.name}
     >
       <span
         aria-hidden
@@ -121,7 +124,9 @@ function AudioChip(props: AudioPreviewProps) {
       />
       <ContextChipAction
         className="ml-0 [&_svg]:size-[1em]"
-        aria-label={`${props.failed ? "Audio unavailable. " : ""}${action} ${props.name}`}
+        aria-label={
+          props.failed ? t("files.audio.unavailableLabel", { label: actionLabel }) : actionLabel
+        }
         disabled={loading}
         onClick={() => {
           if (props.failed) {
@@ -146,7 +151,12 @@ function AudioChip(props: AudioPreviewProps) {
             type="button"
             className="block max-w-full cursor-pointer truncate rounded-sm text-left focus-visible:outline-2 focus-visible:outline-foreground"
             onClick={open}
-            aria-label={`${props.failed && !props.onOpen ? "Retry" : "Preview"} ${props.name}`}
+            aria-label={t(
+              props.failed && !props.onOpen ? "files.audio.retry" : "files.audio.preview",
+              {
+                name: props.name,
+              },
+            )}
           >
             {middleTruncateAttachmentName(props.name)}
           </button>
@@ -156,7 +166,7 @@ function AudioChip(props: AudioPreviewProps) {
       </ContextChipLabel>
       <span className="shrink-0 self-baseline text-3xs text-current">
         {props.failed
-          ? "Unavailable"
+          ? t("files.audio.unavailable")
           : loading
             ? "..."
             : duration > 0

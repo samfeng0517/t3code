@@ -9,6 +9,7 @@ import { usePullRequestLinking } from "~/hooks/usePullRequestLinking";
 
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { normalizeThreadPullRequestKey } from "@t3tools/client-runtime/thread-pull-requests";
+import { useT } from "~/i18n";
 import { useProjects, useServerConfigs, useThreadShell, useThreadShells } from "~/state/entities";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useEnvironmentQuery } from "~/state/query";
@@ -50,6 +51,7 @@ function EnabledPullRequestThreadLinks({
   display,
   onPickerOpenChange,
 }: PullRequestThreadLinksProps) {
+  const t = useT();
   const parsedUrl = sourceControlClients.parseChangeRequestUrl(url);
   const parsed = parsedUrl?.link ?? null;
   const term = (parsedUrl?.definition ?? sourceControlClients.get(undefined)).changeRequest
@@ -87,7 +89,9 @@ function EnabledPullRequestThreadLinks({
       const error = squashAtomCommandFailure(result);
       toastManager.add({
         type: "error",
-        title: remove ? `Could not unlink the ${term}` : `Could not link the ${term}`,
+        title: remove
+          ? t("pullRequestDetail.threadLinks.unlinkFailed", { singular: term })
+          : t("pullRequestDetail.threadLinks.linkFailed", { singular: term }),
         description: error instanceof Error ? error.message : String(error),
       });
       return;
@@ -108,8 +112,13 @@ function EnabledPullRequestThreadLinks({
     linking.mode === "multiple" ? ((relations.data ?? lastRelations)?.threads ?? []) : [];
   const linkedThreadsLabel =
     linkedThreads.length > 0
-      ? `Linked from ${linkedThreads.length} ${linkedThreads.length === 1 ? "thread" : "threads"}`
-      : "Linked threads";
+      ? t(
+          linkedThreads.length === 1
+            ? "pullRequestDetail.threadLinks.linkedFromOne"
+            : "pullRequestDetail.threadLinks.linkedFromOther",
+          { count: linkedThreads.length },
+        )
+      : t("pullRequestDetail.threadLinks.linkedThreads");
   return (
     <>
       {display === "count" && (linkedThreads.length > 0 || relations.error !== null) ? (
@@ -134,7 +143,9 @@ function EnabledPullRequestThreadLinks({
               </Button>
             }
           />
-          <TooltipPopup>{linkedThreadsLabel}. Search in the command palette.</TooltipPopup>
+          <TooltipPopup>
+            {t("pullRequestDetail.threadLinks.searchPalette", { label: linkedThreadsLabel })}
+          </TooltipPopup>
         </Tooltip>
       ) : null}
       {display === "menu-item" ? (
@@ -154,16 +165,18 @@ function EnabledPullRequestThreadLinks({
             <PullRequestGlyph.link aria-hidden className="size-3.5" />
           )}
           {linkedHere
-            ? "Unlink from this thread"
+            ? t("pullRequestDetail.threadLinks.unlinkThis")
             : currentThreadRef
-              ? "Link to this thread"
-              : "Link to thread"}
+              ? t("pullRequestDetail.threadLinks.linkThis")
+              : t("pullRequestDetail.threadLinks.linkToThread")}
         </MenuItem>
       ) : null}
       {display === "picker" ? (
         <Dialog open onOpenChange={onPickerOpenChange}>
           <DialogPopup className="max-w-md" showCloseButton={false}>
-            <DialogTitle className="sr-only">Link {term} to a thread</DialogTitle>
+            <DialogTitle className="sr-only">
+              {t("pullRequestDetail.threadLinks.dialogTitle", { singular: term })}
+            </DialogTitle>
             <ThreadPicker
               environmentId={environmentId}
               url={url}
@@ -188,6 +201,7 @@ function ThreadPicker({
   pending: boolean;
   onSelect: (threadId: ThreadId) => void;
 }) {
+  const t = useT();
   const threads = useThreadShells();
   const linking = usePullRequestLinking(environmentId);
   const projects = useProjects();
@@ -211,12 +225,20 @@ function ThreadPicker({
     )
     .toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   return (
-    <Command mode="none" value={query} onValueChange={setQuery} aria-label="Choose a thread">
-      <CommandInput placeholder="Search threads or projects..." disabled={pending} />
+    <Command
+      mode="none"
+      value={query}
+      onValueChange={setQuery}
+      aria-label={t("pullRequestDetail.threadLinks.choose")}
+    >
+      <CommandInput
+        placeholder={t("pullRequestDetail.threadLinks.searchPlaceholder")}
+        disabled={pending}
+      />
       <CommandList className="max-h-80 overflow-y-auto">
         {candidates.length === 0 ? (
           <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-            No active threads found.
+            {t("pullRequestDetail.threadLinks.noThreads")}
           </div>
         ) : (
           candidates.map((thread) => {
@@ -230,7 +252,9 @@ function ThreadPicker({
               >
                 <MessageSquareIcon aria-hidden className="size-4 shrink-0" />
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate">{thread.title || "Untitled thread"}</span>
+                  <span className="truncate">
+                    {thread.title || t("pullRequestDetail.threadLinks.untitled")}
+                  </span>
                   <span className="truncate text-xs text-muted-foreground">
                     {projectNames.get(thread.projectId)}
                   </span>
@@ -238,7 +262,9 @@ function ThreadPicker({
                 {linked ? (
                   <>
                     <CheckIcon aria-hidden className="size-3.5" />
-                    <span className="text-xs text-muted-foreground">Linked</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t("pullRequestDetail.threadLinks.linked")}
+                    </span>
                   </>
                 ) : null}
               </CommandItem>

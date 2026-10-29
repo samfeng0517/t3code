@@ -4,6 +4,7 @@ import {
 } from "@t3tools/client-runtime/state/threads";
 import { MessageSquareIcon } from "lucide-react";
 
+import { t as globalT, type Translate } from "~/i18n";
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
@@ -12,6 +13,7 @@ import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 export function feedbackBannerItem(
   submission: CodexFeedbackSubmission,
   onDismiss: () => void,
+  t: Translate = globalT,
 ): ComposerBannerStackItem | null {
   const notice = codexFeedbackNotice(submission);
   if (!notice) return null;
@@ -31,18 +33,18 @@ export function feedbackBannerItem(
               (error: unknown) => {
                 toastManager.add({
                   type: "error",
-                  title: "Could not copy thread ID",
-                  description: error instanceof Error ? error.message : "An error occurred.",
+                  title: t("legacySidebar.misc.feedback.copyFailed"),
+                  description: error instanceof Error ? error.message : t("common.errorOccurred"),
                 });
               },
             );
           }}
         >
-          Copy ID
+          {t("legacySidebar.misc.feedback.copyId")}
         </Button>
       ) : undefined,
     ...(submission.status !== "uploading"
-      ? { dismissLabel: "Dismiss feedback notice", onDismiss }
+      ? { dismissLabel: t("legacySidebar.misc.feedback.dismiss"), onDismiss }
       : {}),
   };
 }

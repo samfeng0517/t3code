@@ -136,9 +136,9 @@ export function SnapShotSettings() {
       ? latestShortcutCheck
       : { status: "idle", availability: null };
   const shortcutCheckIdRef = useRef(0);
-  const unavailableMessage = snapShotUnavailableMessage(Boolean(bridge));
+  const unavailableMessage = snapShotUnavailableMessage(Boolean(bridge), t);
   const captureAvailable = Boolean(bridge) && state !== null && state.mode !== "unavailable";
-  const feedbackUnavailable = snapShotFeedbackUnavailableMessage(state);
+  const feedbackUnavailable = snapShotFeedbackUnavailableMessage(state, t);
   const managedShortcut = state?.linuxBackend === "niri" || state?.linuxBackend === "hyprland";
   const shortcutChanged = !managedShortcut && !sameSnapShotShortcut(candidate, savedShortcut);
   const displayShortcut = shortcutChanged ? candidate : (state?.shortcut ?? savedShortcut);
@@ -277,7 +277,7 @@ export function SnapShotSettings() {
               !state.shortcutLabel &&
               isModifierPairShortcut(displayShortcut)
             ? t("settingsPages.snapShot.shortcut.tryExample")
-            : snapShotShortcutStatus(state);
+            : snapShotShortcutStatus(state, t);
 
   const openSetup = async (requested: CaptureSetupStep | "resume" = "resume") => {
     if (!state || setupBusy) return;
@@ -366,14 +366,14 @@ export function SnapShotSettings() {
           <SettingsRow
             {...searchableSetting("snap-shot-enabled")}
             title={t("settingsPages.snapShot.section")}
-            description={snapShotDescription(state)}
+            description={snapShotDescription(state, t)}
             status={
               bridge
                 ? setupBusy && !wizard
                   ? t("settingsPages.snapShot.updating")
                   : refreshError
                     ? `${refreshError.title}. ${refreshError.message}`
-                    : snapShotStatus(state, settings.snapShotEnabled)
+                    : snapShotStatus(state, settings.snapShotEnabled, t)
                 : undefined
             }
             control={
@@ -386,7 +386,7 @@ export function SnapShotSettings() {
                     disabled={setupBusy}
                     onClick={() => void openSetup()}
                   >
-                    {snapShotSetupButtonLabel(state)}
+                    {snapShotSetupButtonLabel(state, t)}
                   </Button>
                 ) : null}
                 <Switch
@@ -408,15 +408,16 @@ export function SnapShotSettings() {
                 {...searchableSetting("snap-shot-accessibility")}
                 title={t("settingsPages.snapShot.accessibility.title")}
                 description={t("settingsPages.snapShot.accessibility.description")}
-                status={snapShotAccessibilityUnavailableMessage(state)}
+                status={snapShotAccessibilityUnavailableMessage(state, t)}
                 control={
                   <Switch
                     checked={
-                      !snapShotAccessibilityUnavailableMessage(state) &&
+                      !snapShotAccessibilityUnavailableMessage(state, t) &&
                       settings.snapShotIncludeAccessibility
                     }
                     disabled={
-                      !captureAvailable || Boolean(snapShotAccessibilityUnavailableMessage(state))
+                      !captureAvailable ||
+                      Boolean(snapShotAccessibilityUnavailableMessage(state, t))
                     }
                     aria-label={t("settingsPages.snapShot.accessibility.ariaLabel")}
                     onCheckedChange={(checked) => void saveIncludeAccessibility(checked)}

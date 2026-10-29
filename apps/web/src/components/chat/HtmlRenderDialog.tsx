@@ -2,6 +2,8 @@ import type { PageCommentTarget, ScopedThreadRef } from "@t3tools/contracts";
 import { MinusIcon, PlusIcon, XIcon } from "lucide-react";
 import { useRef, useState } from "react";
 
+import { useT } from "~/i18n";
+
 import { HtmlRenderDocument } from "../files/BrowserDocumentFrame";
 import {
   HtmlRenderCommentOverlay,
@@ -19,6 +21,7 @@ export function HtmlRenderDialog(props: {
   readonly commentTarget: PageCommentTarget;
   readonly onClose: () => void;
 }) {
+  const t = useT();
   const [zoom, setZoom] = useState(1);
   const comments = usePageCommentSession(props.threadRef, props.commentTarget);
   const [frame, setFrame] = useState<HTMLIFrameElement | null>(null);
@@ -55,11 +58,13 @@ export function HtmlRenderDialog(props: {
         className="row-start-1"
         initialFocus={closeButtonRef}
       >
-        <DialogTitle className="sr-only">Expanded {props.title} preview</DialogTitle>
+        <DialogTitle className="sr-only">
+          {t("files.htmlRender.expandedPreview", { title: props.title })}
+        </DialogTitle>
         <div className="relative w-[92vw]">
           <Button
             ref={closeButtonRef}
-            aria-label="Close"
+            aria-label={t("common.close")}
             size="icon-xs"
             variant="media-close"
             className="absolute right-0 -top-10 z-20"
@@ -99,7 +104,7 @@ export function HtmlRenderDialog(props: {
             <div className="flex shrink-0 items-center gap-1">
               {comments ? <PageCommentToggle session={comments} variant="overlay" /> : null}
               <Button
-                aria-label="Zoom out"
+                aria-label={t("workspace.preview.menu.zoomOut")}
                 size="icon-sm"
                 variant="overlay"
                 disabled={zoom === 0.5}
@@ -108,7 +113,7 @@ export function HtmlRenderDialog(props: {
                 <MinusIcon />
               </Button>
               <Button
-                aria-label="Reset zoom"
+                aria-label={t("workspace.preview.menu.resetZoom")}
                 size="sm"
                 variant="overlay"
                 onClick={() => setZoom(1)}
@@ -116,7 +121,7 @@ export function HtmlRenderDialog(props: {
                 {Math.round(zoom * 100)}%
               </Button>
               <Button
-                aria-label="Zoom in"
+                aria-label={t("workspace.preview.menu.zoomIn")}
                 size="icon-sm"
                 variant="overlay"
                 disabled={zoom === 2}

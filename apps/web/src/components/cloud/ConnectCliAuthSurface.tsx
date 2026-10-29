@@ -7,18 +7,13 @@ import {
   connectCliSignInRedirectUrl,
 } from "../../cloud/connectCliAuth";
 import { isElectron } from "../../env";
+import { useT } from "~/i18n";
 import { StandalonePage, StandalonePageHeader } from "../ui/standalone-page";
 import { resolveClerkSignInProps } from "../clerk/authRedirect";
 import { Button } from "../ui/button";
 
-const invalidLinkMessage = {
-  context: "Authorization request",
-  title: "This connect link is incomplete",
-  description:
-    "The link is missing its authorization request. Re-run `t3 connect` in your terminal and open the freshly printed URL.",
-} as const;
-
 export function ConnectCliAuthorizeSurface() {
+  const t = useT();
   const [request] = useState(() => readConnectAuthorizeRequest(new URL(window.location.href)));
   const clerk = useClerk();
   const { isLoaded, isSignedIn } = useAuth();
@@ -61,7 +56,11 @@ export function ConnectCliAuthorizeSurface() {
   if (!request) {
     return (
       <StandalonePage>
-        <StandalonePageHeader {...invalidLinkMessage} />
+        <StandalonePageHeader
+          context={t("files.connectCli.context")}
+          title={t("files.connectCli.invalidTitle")}
+          description={t("files.connectCli.invalidDescription")}
+        />
       </StandalonePage>
     );
   }
@@ -69,18 +68,16 @@ export function ConnectCliAuthorizeSurface() {
   return (
     <StandalonePage>
       <StandalonePageHeader
-        context="Browser authorization"
-        title="Connecting your terminal"
+        context={t("files.connectCli.browserContext")}
+        title={t("files.connectCli.title")}
         description={
-          isSignedIn
-            ? "Redirecting to authorize T3 Connect for your CLI…"
-            : "Sign in to continue authorizing T3 Connect for your CLI."
+          isSignedIn ? t("files.connectCli.redirecting") : t("files.connectCli.signInToContinue")
         }
       />
       {isLoaded && !isSignedIn ? (
         <div className="mt-6">
           <Button type="button" onClick={openSignIn}>
-            Sign in
+            {t("onboarding.signIn")}
           </Button>
         </div>
       ) : null}

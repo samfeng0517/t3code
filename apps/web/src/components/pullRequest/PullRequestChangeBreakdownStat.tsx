@@ -2,6 +2,7 @@ import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
 import type { EnvironmentId, PullRequestChangeBreakdown, PullRequestRef } from "@t3tools/contracts";
 import { useState } from "react";
 
+import { useT, type MessageKey } from "~/i18n";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useEnvironmentQuery } from "~/state/query";
 
@@ -9,12 +10,12 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PullRequestDiffStat } from "./pullRequestPresentation";
 
 const KIND_LABELS = {
-  code: "Code",
-  tests: "Tests",
-  mocks: "Mocks",
-  generated: "Generated",
-  docs: "Docs",
-} satisfies Record<keyof NonNullable<PullRequestChangeBreakdown>, string>;
+  code: "pullRequestDetail.breakdown.code",
+  tests: "pullRequestDetail.breakdown.tests",
+  mocks: "pullRequestDetail.breakdown.mocks",
+  generated: "pullRequestDetail.breakdown.generated",
+  docs: "pullRequestDetail.breakdown.docs",
+} satisfies Record<keyof NonNullable<PullRequestChangeBreakdown>, MessageKey>;
 
 type DiffTotals = { additions: number; deletions: number };
 
@@ -38,6 +39,7 @@ export function PullRequestChangeBreakdownStat({
   className: string;
   eager?: boolean;
 }) {
+  const t = useT();
   const [requested, setRequested] = useState(eager);
   const query = useEnvironmentQuery(
     requested ? pullRequestEnvironment.changeBreakdown({ environmentId, input: reference }) : null,
@@ -64,7 +66,7 @@ export function PullRequestChangeBreakdownStat({
           <ChangeBreakdownGrid breakdown={breakdown} total={{ additions, deletions }} />
         </TooltipPopup>
       ) : query.isPending ? (
-        <TooltipPopup side="bottom">Loading breakdown</TooltipPopup>
+        <TooltipPopup side="bottom">{t("pullRequestDetail.breakdown.loading")}</TooltipPopup>
       ) : null}
     </Tooltip>
   );
@@ -101,6 +103,7 @@ function ChangeBreakdownGrid({
   breakdown: NonNullable<PullRequestChangeBreakdown>;
   total?: DiffTotals;
 }) {
+  const t = useT();
   return (
     <div className="grid grid-cols-[auto_auto_auto] justify-start gap-x-4 gap-y-1 py-0.5 font-mono tabular-nums">
       {(Object.keys(KIND_LABELS) as Array<keyof typeof KIND_LABELS>).map((kind) => {
@@ -108,7 +111,7 @@ function ChangeBreakdownGrid({
         return additions === 0 && deletions === 0 ? null : (
           <BreakdownRow
             key={kind}
-            label={KIND_LABELS[kind]}
+            label={t(KIND_LABELS[kind])}
             additions={additions}
             deletions={deletions}
           />
@@ -117,7 +120,11 @@ function ChangeBreakdownGrid({
       {total ? (
         <>
           <div className="col-span-3 border-t border-border" />
-          <BreakdownRow label="Total" additions={total.additions} deletions={total.deletions} />
+          <BreakdownRow
+            label={t("pullRequestDetail.breakdown.total")}
+            additions={total.additions}
+            deletions={total.deletions}
+          />
         </>
       ) : null}
     </div>

@@ -1,4 +1,5 @@
-import { assert, expect, it } from "vite-plus/test";
+import { afterEach, assert, beforeEach, expect, it } from "vite-plus/test";
+import { setLanguagePreference } from "~/i18n/languagePreferenceStore";
 import { DEFAULT_CLIENT_SETTINGS, type DesktopSnapShotState } from "@t3tools/contracts";
 
 import {
@@ -9,6 +10,9 @@ import {
   snapShotSetupButtonLabel,
   snapShotSetupComplete,
 } from "./SnapShotSettings.logic";
+
+beforeEach(() => setLanguagePreference("en"));
+afterEach(() => setLanguagePreference("system"));
 
 it("ignores a stale request after a newer request starts", () => {
   const requests = createRecordingRequestTracker();

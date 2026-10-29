@@ -7,6 +7,7 @@ import {
 } from "@t3tools/client-runtime/device/duo-control";
 import type { DeviceScreenSize } from "@t3tools/client-runtime/device/stream";
 import { DeviceDuoGlyph } from "./DeviceDuoGlyph";
+import { useT, type MessageKey } from "~/i18n";
 import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
@@ -16,9 +17,9 @@ const FOLDS = [
   { id: "open", angle: 180 },
 ] as const;
 const STANDS = [
-  { id: "laptop", label: "Laptop stand" },
-  { id: "tent", label: "Tent stand" },
-] as const;
+  { id: "laptop", label: "device.duo.laptopStand" },
+  { id: "tent", label: "device.duo.tentStand" },
+] as const satisfies ReadonlyArray<{ id: string; label: MessageKey }>;
 
 export function DeviceDuoControls(props: {
   screen: DeviceScreenSize;
@@ -26,6 +27,7 @@ export function DeviceDuoControls(props: {
   enabled: boolean;
   onCommand: (command: DuoCommand) => void;
 }) {
+  const t = useT();
   const { screen } = props;
   const { fold, stand, phoneVertical: reportedVertical, settled } = duoFoldState(screen);
   const [settledVertical, setSettledVertical] = useState(reportedVertical);
@@ -36,9 +38,9 @@ export function DeviceDuoControls(props: {
   // correct display frame.
   const foldWaits = props.state.pending && (stand || props.state.requested?.control === "pose");
   const foldLabels = {
-    closed: "Closed",
-    half: phoneVertical ? "Book" : "Laptop",
-    open: "Open",
+    closed: t("device.duo.closed"),
+    half: phoneVertical ? t("device.duo.book") : t("device.duo.laptop"),
+    open: t("device.duo.open"),
   };
   const button = (
     key: string,
@@ -70,8 +72,8 @@ export function DeviceDuoControls(props: {
   const group =
     "pointer-events-auto flex shrink-0 flex-col items-center gap-1 rounded-full border border-border/50 bg-background/80 p-1 shadow-sm";
   return (
-    <div aria-label="iPhone Duo stands" className="flex flex-col items-center gap-2">
-      <div role="group" aria-label="Fold shape" className={group}>
+    <div aria-label={t("device.duo.standsLabel")} className="flex flex-col items-center gap-2">
+      <div role="group" aria-label={t("device.duo.foldShape")} className={group}>
         {FOLDS.map(({ id, angle: value }) =>
           button(
             id,
@@ -90,11 +92,11 @@ export function DeviceDuoControls(props: {
           ),
         )}
       </div>
-      <div role="group" aria-label="Device stance" className={group}>
+      <div role="group" aria-label={t("device.duo.stance")} className={group}>
         {STANDS.map(({ id, label }) =>
           button(
             id,
-            label,
+            t(label),
             screen.hingePose === id,
             () => {
               if (!stand) setStandVertical(settledVertical);

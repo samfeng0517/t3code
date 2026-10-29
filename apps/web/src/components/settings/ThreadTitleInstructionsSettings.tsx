@@ -1,5 +1,6 @@
 import { useRef } from "react";
 
+import { useT } from "~/i18n";
 import { Textarea } from "../ui/textarea";
 import { SettingsRow, SettingResetButton } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
@@ -11,6 +12,7 @@ import {
 } from "./useScopedSettings";
 
 export function ThreadTitleInstructionsSettings() {
+  const t = useT();
   const settings = useScopedSettings();
   const { targets } = useSettingsScope();
   const scopeKey = targets.map((target) => `${target.environmentId}:${target.projectId}`).join(",");
@@ -22,12 +24,12 @@ export function ThreadTitleInstructionsSettings() {
     <SettingsRow
       serverScoped
       settingKeys={["threadTitleInstructions"]}
-      {...searchableSetting("thread-title-instructions")}
-      description="Appended to the prompt for new and regenerated thread titles."
+      {...searchableSetting("thread-title-instructions", t)}
+      description={t("settingsMisc.threadTitle.description")}
       resetAction={
         mixed || settings.threadTitleInstructions !== "" ? (
           <SettingResetButton
-            label="thread title instructions"
+            label={t("settingsMisc.threadTitle.resetLabel")}
             onClick={() => updateSettings({ threadTitleInstructions: "" })}
           />
         ) : null
@@ -36,7 +38,7 @@ export function ThreadTitleInstructionsSettings() {
       <div className="mt-3 max-w-2xl pb-3.5">
         <Textarea
           key={`${scopeKey}:${mixed}:${settings.threadTitleInstructions}`}
-          aria-label="Thread title instructions"
+          aria-label={t("settingsMisc.threadTitle.ariaLabel")}
           onChange={() => {
             edited.current = true;
           }}
@@ -44,8 +46,8 @@ export function ThreadTitleInstructionsSettings() {
           defaultValue={mixed ? "" : settings.threadTitleInstructions}
           placeholder={
             mixed
-              ? "Mixed. Enter instructions to apply to all selected targets."
-              : "Keep titles to a few words. Lead with the main subject."
+              ? t("settingsMisc.threadTitle.mixedPlaceholder")
+              : t("settingsMisc.threadTitle.placeholder")
           }
           onBlur={(event) => {
             const value = event.target.value.trim();

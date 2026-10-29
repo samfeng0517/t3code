@@ -44,6 +44,7 @@ import {
   AuthPreviewOperateScope,
   type EditorId,
   type EnvironmentId,
+  type FileManagerRevealKind,
   type ServerConfig,
   type ScopedThreadRef,
   type ServerProviderSkill,
@@ -110,10 +111,6 @@ import { markdownImageGallery } from "./chat/markdownImageGallery";
 import { type MediaActionSource } from "./media/MediaActions";
 import { resolveProtocolRelativeMediaUrl } from "./media/mediaContent";
 import {
-  revealInFileExplorerLabelForKind,
-  revealInFileExplorerLabelForOs,
-} from "./preview/fileExplorerLabel";
-import {
   resolveExternalWebLinkHost,
   showExternalLinkContextMenu,
 } from "./chat/externalLinkContextMenu";
@@ -121,15 +118,16 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { Button } from "./ui/button";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { recordVisitForThread } from "../browserHistoryStore";
+import { openInEditorMenuLabel } from "../editorLabels";
 import {
   PreferredEditorEnvironmentRequiredError,
   useOpenInPreferredEditor,
   usePreferredEditor,
 } from "../editorPreferences";
-import { openInEditorMenuLabel } from "../editorLabels";
 import { resolveDiffThemeName } from "../lib/diffRendering";
 import { RenderErrorBoundary } from "./RenderErrorBoundary";
 import { useRenderedAppearance } from "../hooks/useTheme";
+import { useT, type MessageKey } from "../i18n";
 import { useClientSettings } from "../hooks/useSettings";
 import { chatMarkdownClipboardPayload } from "../markdown-clipboard";
 import {
@@ -272,13 +270,14 @@ function CodexArtifactTemplateCard(props: {
   readonly template: CodexArtifactTemplate;
   readonly onUse?: ((template: CodexArtifactTemplate) => void) | undefined;
 }) {
+  const t = useT();
   const Icon = ARTIFACT_TEMPLATE_ICON_BY_KIND[props.template.artifactKind];
   const presentationLabel = codexArtifactTemplatePresentationLabel(props.template.artifactKind);
 
   return (
     <div
       role="group"
-      aria-label={`${props.template.displayName} template`}
+      aria-label={t("timeline.markdown.template", { name: props.template.displayName })}
       data-chat-markdown-artifact-template
       className="my-[0.65rem] flex w-full min-w-0 items-center gap-3 rounded-xl border border-border/70 bg-card/60 px-3 py-2.5 text-foreground shadow-xs"
       data-artifact-kind={props.template.artifactKind}
@@ -308,7 +307,7 @@ function CodexArtifactTemplateCard(props: {
           className="shrink-0"
           onClick={() => props.onUse?.(props.template)}
         >
-          Use template
+          {t("timeline.markdown.useTemplate")}
         </Button>
       ) : null}
     </div>
@@ -342,34 +341,34 @@ function orderedListGutterStyle(
 
 const GITHUB_ALERT_PRESENTATIONS: Record<
   string,
-  { label: string; Icon: typeof InfoIcon; borderClassName: string; titleClassName: string }
+  { labelKey: MessageKey; Icon: typeof InfoIcon; borderClassName: string; titleClassName: string }
 > = {
   note: {
-    label: "Note",
+    labelKey: "timeline.markdown.alert.note",
     Icon: InfoIcon,
     borderClassName: "border-blue-500/70",
     titleClassName: "text-blue-600 dark:text-blue-400",
   },
   tip: {
-    label: "Tip",
+    labelKey: "timeline.markdown.alert.tip",
     Icon: LightbulbIcon,
     borderClassName: "border-emerald-500/70",
     titleClassName: "text-emerald-600 dark:text-emerald-400",
   },
   important: {
-    label: "Important",
+    labelKey: "timeline.markdown.alert.important",
     Icon: MessageSquareWarningIcon,
     borderClassName: "border-purple-500/70",
     titleClassName: "text-purple-600 dark:text-purple-400",
   },
   warning: {
-    label: "Warning",
+    labelKey: "timeline.markdown.alert.warning",
     Icon: TriangleAlertIcon,
     borderClassName: "border-amber-500/70",
     titleClassName: "text-amber-600 dark:text-amber-500",
   },
   caution: {
-    label: "Caution",
+    labelKey: "timeline.markdown.alert.caution",
     Icon: OctagonAlertIcon,
     borderClassName: "border-red-500/70",
     titleClassName: "text-red-600 dark:text-red-400",
@@ -398,17 +397,28 @@ const CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS = [
 
 const NO_MARKDOWN_EDITORS: ReadonlyArray<EditorId> = [];
 
+// Servers may report kinds this client does not know (e.g. "xdg-open"); those fall back to "files".
+function revealLabelKey(kind: string): MessageKey {
+  if (kind === "finder") return "workspace.reveal.finder";
+  if (kind === "file-explorer") return "workspace.reveal.fileExplorer";
+  return "workspace.reveal.files";
+}
+
+function revealKindForOs(os: ServerConfig["environment"]["platform"]["os"]): FileManagerRevealKind {
+  if (os === "darwin") return "finder";
+  if (os === "windows") return "file-explorer";
+  return "files";
+}
+
 type MarkdownServerConfigFields = ReturnType<typeof markdownServerConfigFields>;
 
 function markdownServerConfigFields(config: ServerConfig | null) {
   return {
     pullRequestsEnabled: config !== null,
     availableEditors: config?.availableEditors ?? NO_MARKDOWN_EDITORS,
-    revealInFileManagerLabel:
+    revealInFileManagerKind:
       config?.shellRevealInFileManager === true && config.availableEditors.includes("file-manager")
-        ? config.shellRevealInFileManagerKind === undefined
-          ? revealInFileExplorerLabelForOs(config.environment.platform.os)
-          : revealInFileExplorerLabelForKind(config.shellRevealInFileManagerKind)
+        ? (config.shellRevealInFileManagerKind ?? revealKindForOs(config.environment.platform.os))
         : undefined,
   };
 }
@@ -419,7 +429,7 @@ function markdownServerConfigFieldsEqual(
 ): boolean {
   return (
     previous.pullRequestsEnabled === next.pullRequestsEnabled &&
-    previous.revealInFileManagerLabel === next.revealInFileManagerLabel &&
+    previous.revealInFileManagerKind === next.revealInFileManagerKind &&
     previous.availableEditors.length === next.availableEditors.length &&
     previous.availableEditors.every((editor, index) => editor === next.availableEditors[index])
   );
@@ -453,6 +463,7 @@ function useChatMarkdownState({
   headingLevelOffset = 0,
   sourceControlMedia = false,
 }: ChatMarkdownProps) {
+  const t = useT();
   const resolvedTheme = useRenderedAppearance();
   const markdownRef = useRef<HTMLElement>(null);
   const mediaRequestId = useRef(0);
@@ -542,9 +553,7 @@ function useChatMarkdownState({
       (error: unknown) => {
         if (mediaRequestId.current !== requestId) return;
         let description =
-          error instanceof Error
-            ? error.message
-            : "The file could not be loaded. It may have been moved or deleted.";
+          error instanceof Error ? error.message : t("timeline.markdownToast.fileLoadFailed");
         if (
           isAssetNotFoundError(error) &&
           error.resource._tag === "media-file" &&
@@ -561,25 +570,30 @@ function useChatMarkdownState({
               isDesktopRenderer: window.desktopBridge !== undefined,
             }).mode !== "local-exec"
           ) {
-            description = `The file was not found on ${target.label} at ${error.checkedPath ?? error.resource.path}.`;
+            description = t("timeline.markdownToast.fileNotFoundOnEnvironment", {
+              environment: target.label,
+              path: error.checkedPath ?? error.resource.path,
+            });
           }
         }
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Media unavailable",
+            title: t("timeline.markdownToast.mediaUnavailable"),
             description,
           }),
         );
       },
     );
   };
-  const { pullRequestsEnabled, availableEditors, revealInFileManagerLabel } = useAtomValue(
+  const { pullRequestsEnabled, availableEditors, revealInFileManagerKind } = useAtomValue(
     markdownServerConfigFieldsAtom(environmentId),
   );
   const projects = useProjects();
   const [preferredEditor] = usePreferredEditor(availableEditors);
-  const preferredEditorMenuLabel = openInEditorMenuLabel(preferredEditor);
+  const preferredEditorMenuLabel = openInEditorMenuLabel(preferredEditor, t);
+  const revealInFileManagerLabel =
+    revealInFileManagerKind === undefined ? undefined : t(revealLabelKey(revealInFileManagerKind));
   const openInPreferredEditor = useOpenInPreferredEditor(environmentId, availableEditors);
   const openInEditor = useAtomCommand(shellEnvironment.openInEditor, {
     reportFailure: false,
@@ -595,7 +609,7 @@ function useChatMarkdownState({
     if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) {
       return Promise.resolve(
         AsyncResult.failure<void, Error>(
-          Cause.fail(new Error("This connection cannot reveal files on this environment.")),
+          Cause.fail(new Error(t("timeline.markdownToast.cannotRevealOnEnvironment"))),
         ),
       );
     }
@@ -695,7 +709,7 @@ function useChatMarkdownState({
         AsyncResult.failure<void, BrowserPreviewUnavailableError>(
           Cause.fail(
             new BrowserPreviewUnavailableError({
-              message: "Preview access is unavailable for this client.",
+              message: t("legacySidebar.misc.chatMarkdown.previewUnavailable"),
             }),
           ),
         ),
@@ -709,7 +723,7 @@ function useChatMarkdownState({
           toastManager.add(
             stackedThreadToast({
               type: "error",
-              title: "Unable to open link in browser",
+              title: t("timeline.markdownToast.openLinkInBrowserFailed"),
               description: error.message,
             }),
           );
@@ -725,7 +739,7 @@ function useChatMarkdownState({
         AsyncResult.failure<void, BrowserPreviewUnavailableError>(
           Cause.fail(
             new BrowserPreviewUnavailableError({
-              message: "Environment is not connected.",
+              message: t("timeline.markdownToast.environmentNotConnected"),
             }),
           ),
         ),
@@ -977,6 +991,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     );
   },
   blockquote: function MarkdownBlockquote({ node, children, ...props }) {
+    const t = useT();
     const sourceLineProps = useSourceLineProps(node);
     const alert =
       GITHUB_ALERT_PRESENTATIONS[String((props as Record<string, unknown>)["data-alert"] ?? "")];
@@ -999,7 +1014,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           className={cn("flex items-center gap-1.5 font-medium", alert.titleClassName)}
         >
           <alert.Icon aria-hidden className="size-3.5 shrink-0" />
-          {alert.label}
+          {t(alert.labelKey)}
         </p>
         {children}
       </div>
@@ -1034,6 +1049,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     );
   },
   input: function MarkdownInput({ node: _node, type, checked, disabled: _disabled, ...props }) {
+    const t = useT();
     const { onTaskListChange } = use(ChatMarkdownRendererContext);
     const text = use(ChatMarkdownTextContext);
     if (type !== "checkbox" || !onTaskListChange) {
@@ -1052,7 +1068,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
         {...props}
         type="checkbox"
         name="markdown-task"
-        aria-label="Toggle task"
+        aria-label={t("timeline.markdown.toggleTask")}
         checked={checked}
         onChange={(event) => {
           const listItemStart = Number(event.currentTarget.closest("li")?.dataset.listItemOffset);
@@ -1065,6 +1081,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     );
   },
   a: function MarkdownAnchor({ node, href, children, title: _title, ...props }) {
+    const t = useT();
     const {
       canOperateHost,
       canOperatePreview,
@@ -1097,7 +1114,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       return environmentId ? (
         <MarkdownThreadLink environmentId={environmentId} link={threadLink} label={label} />
       ) : (
-        <span>{label ?? "Thread"}</span>
+        <span>{label ?? t("timeline.markdown.thread")}</span>
       );
     }
     const contextReference = href ? parseComposerContextHref(href) : null;
@@ -1266,9 +1283,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
                       type: "error",
                       title:
                         operation === "link-pull-request-to-thread"
-                          ? "Unable to link pull request"
-                          : "Unable to unlink pull request",
-                      description: cause instanceof Error ? cause.message : "The request failed.",
+                          ? t("timeline.markdownToast.linkPullRequestFailed")
+                          : t("timeline.markdownToast.unlinkPullRequestFailed"),
+                      description:
+                        cause instanceof Error
+                          ? cause.message
+                          : t("timeline.markdownToast.requestFailed"),
                     }),
                   );
                 }
@@ -1370,6 +1390,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     );
   },
   img: function MarkdownImage({ node, title, src, alt, ...props }) {
+    const t = useT();
     const {
       expandMedia,
       cwd,
@@ -1411,7 +1432,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       const name =
         (filePath ?? classifiedSrc.split(/[?#]/, 1)[0] ?? "").split(/[\\/]/).at(-1) ||
         altText ||
-        "Audio";
+        t("timeline.media.audioName");
       if (imageSource._tag !== "Direct" && !(filePath && threadRef)) {
         return <ChatMarkdownImageFallback alt={altText} copyMarkdown={copyMarkdown} kind="audio" />;
       }
@@ -1551,6 +1572,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     return <MarkdownDetails open={detailsOpen}>{children}</MarkdownDetails>;
   },
   pre: function MarkdownPre({ node, children, ...props }) {
+    const t = useT();
     const sourceLineProps = useSourceLineProps(node);
     const {
       resolvedTheme,
@@ -1610,7 +1632,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
           fenceTitle={fenceTitle}
           theme={resolvedTheme}
           isStreaming={isStreaming && !isClosedCodeFence(node, text, codeBlock.code)}
-          onExpand={(src) => expandMedia({ images: [{ src, name: "Mermaid diagram" }], index: 0 })}
+          onExpand={(src) =>
+            expandMedia({
+              images: [{ src, name: t("timeline.markdown.mermaidDiagram") }],
+              index: 0,
+            })
+          }
           rootProps={sourceLineProps}
         >
           {highlightedCode}

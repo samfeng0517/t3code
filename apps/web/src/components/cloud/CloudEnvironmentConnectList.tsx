@@ -23,6 +23,7 @@ import type {
 import * as Option from "effect/Option";
 import { type ReactNode, useEffect, useEffectEvent, useState } from "react";
 
+import { useT } from "~/i18n";
 import { environmentCatalog } from "~/connection/catalog";
 import { cn } from "~/lib/utils";
 import { relayEnvironmentDiscovery } from "~/state/relay";
@@ -89,6 +90,7 @@ export function CloudEnvironmentConnectRows({
     readonly onChange: (environmentId: EnvironmentId, selected: boolean) => void;
   };
 }) {
+  const t = useT();
   const environmentsState = useRelayEnvironmentDiscovery();
   const registerEnvironment = useAtomCommand(environmentCatalog.register, {
     reportFailure: false,
@@ -154,11 +156,11 @@ export function CloudEnvironmentConnectRows({
       toastManager.add({
         type: "success",
         title: savedWithoutRelay.has(environment.environmentId)
-          ? "T3 Connect route added"
-          : "Environment added",
+          ? t("files.cloud.list.routeAdded")
+          : t("files.cloud.list.environmentAdded"),
         description: savedWithoutRelay.has(environment.environmentId)
-          ? `${environment.label} falls back to T3 Connect when its other routes are unreachable.`
-          : `Connecting to ${environment.label} through T3 Connect.`,
+          ? t("files.cloud.list.routeAddedDescription", { label: environment.label })
+          : t("files.cloud.list.connectingDescription", { label: environment.label }),
       });
       return true;
     }
@@ -167,17 +169,17 @@ export function CloudEnvironmentConnectRows({
     }
     const cause = squashAtomCommandFailure(result);
     const message =
-      cause instanceof Error ? cause.message : "Could not connect the T3 Connect environment.";
+      cause instanceof Error ? cause.message : t("files.cloud.list.connectFailedFallback");
     const traceId = findErrorTraceId(cause);
     console.error("[t3-connect] Could not connect environment", { message, traceId, cause });
     toastManager.add({
       type: "error",
-      title: "Could not connect environment",
+      title: t("files.cloud.list.connectFailedTitle"),
       description: message,
       data: traceId
         ? {
             secondaryActionProps: {
-              children: "Copy trace ID",
+              children: t("files.cloud.list.copyTraceId"),
               onClick: () => void navigator.clipboard?.writeText(traceId),
             },
           }
@@ -283,14 +285,12 @@ export function CloudEnvironmentConnectRows({
 
   if (standalone && visibleEnvironments.length === 0) {
     const discoveryProblem = environmentsState.offline
-      ? "You appear to be offline."
+      ? t("files.cloud.list.offline")
       : (Option.getOrNull(environmentsState.error)?.message ?? null);
     if (discoveryProblem !== null && !environmentsState.refreshing) {
       return (
         <div className={ITEM_ROW_CLASSNAME}>
-          <p className="text-sm font-medium text-destructive">
-            Could not load T3 Connect environments
-          </p>
+          <p className="text-sm font-medium text-destructive">{t("files.cloud.list.loadFailed")}</p>
           <p className="mt-1 text-xs text-muted-foreground">{discoveryProblem}</p>
           <Button
             size="sm"
@@ -298,7 +298,7 @@ export function CloudEnvironmentConnectRows({
             className="mt-3"
             onClick={() => void refreshRelayEnvironments()}
           >
-            Try again
+            {t("files.cloud.list.tryAgain")}
           </Button>
         </div>
       );
@@ -314,13 +314,16 @@ export function CloudEnvironmentConnectRows({
     const unsupportedDetail =
       compatibilityError?.message ?? savedEnvironment?.connection.error ?? null;
     const savedConnection = unsupported
-      ? presentSavedCloudEnvironmentConnection({
-          phase: "unsupported",
-          error: unsupportedDetail,
-          traceId: null,
-        })
+      ? presentSavedCloudEnvironmentConnection(
+          {
+            phase: "unsupported",
+            error: unsupportedDetail,
+            traceId: null,
+          },
+          t,
+        )
       : savedEnvironment
-        ? presentSavedCloudEnvironmentConnection(savedEnvironment.connection)
+        ? presentSavedCloudEnvironmentConnection(savedEnvironment.connection, t)
         : null;
     const relayStatus = status === undefined ? null : Option.getOrNull(status);
     const descriptor = relayStatus?.descriptor;
@@ -348,23 +351,23 @@ export function CloudEnvironmentConnectRows({
             ? "bg-warning"
             : "bg-muted-foreground/35";
     const notAdded = savedWithoutRelay.has(environment.environmentId)
-      ? "Saved without T3 Connect"
-      : "Not added";
+      ? t("files.cloud.list.savedWithoutConnect")
+      : t("files.cloud.list.notAdded");
     const statusText =
       unsupported && !savedEnvironment
-        ? `T3 Connect · ${notAdded} · Client not supported`
+        ? t("files.cloud.list.statusUnsupported", { added: notAdded })
         : offlineReason !== null
           ? offlineReason
           : savedConnection
             ? savedConnection.statusText
             : availability === "online"
-              ? `T3 Connect · ${notAdded} · Relay online`
+              ? t("files.cloud.list.statusRelayOnline", { added: notAdded })
               : availability === "offline"
-                ? `T3 Connect · ${notAdded} · Relay offline`
+                ? t("files.cloud.list.statusRelayOffline", { added: notAdded })
                 : availability === "checking"
-                  ? `T3 Connect · ${notAdded} · Checking relay status…`
+                  ? t("files.cloud.list.statusRelayChecking", { added: notAdded })
                   : (Option.getOrNull(error)?.message ??
-                    `T3 Connect · ${notAdded} · Relay status unavailable`);
+                    t("files.cloud.list.statusRelayUnavailable", { added: notAdded }));
     if (selection) {
       return (
         <label
@@ -405,15 +408,15 @@ export function CloudEnvironmentConnectRows({
               )}
             >
               {connectingEnvironmentIds.has(environment.environmentId)
-                ? "Connecting…"
+                ? t("files.cloud.status.connecting")
                 : (savedConnection?.buttonLabel ??
                   (availability === "online"
-                    ? "Available"
+                    ? t("files.cloud.list.available")
                     : availability === "offline"
-                      ? "Offline"
+                      ? t("files.cloud.status.offline")
                       : availability === "error"
-                        ? "Unavailable"
-                        : "Checking…"))}
+                        ? t("files.cloud.list.unavailable")
+                        : t("files.cloud.list.checking")))}
             </TooltipTrigger>
             <TooltipPopup>{unsupportedDetail ?? statusText}</TooltipPopup>
           </Tooltip>
@@ -441,12 +444,13 @@ export function CloudEnvironmentConnectRows({
                       : savedConnection
                         ? savedConnection.statusText
                         : availability === "online"
-                          ? "Relay online"
+                          ? t("files.cloud.list.relayOnline")
                           : availability === "offline"
-                            ? "Relay offline"
+                            ? t("files.cloud.list.relayOffline")
                             : availability === "checking"
-                              ? "Checking relay status"
-                              : (Option.getOrNull(error)?.message ?? "Relay status unavailable")
+                              ? t("files.cloud.list.relayChecking")
+                              : (Option.getOrNull(error)?.message ??
+                                t("files.cloud.list.relayUnavailable"))
                 }
               />
               <EnvironmentMachineIcon
@@ -473,10 +477,12 @@ export function CloudEnvironmentConnectRows({
             <Tooltip>
               <TooltipTrigger render={<span className="inline-flex" tabIndex={0} />}>
                 <Button size="sm" disabled>
-                  Add
+                  {t("files.cloud.list.add")}
                 </Button>
               </TooltipTrigger>
-              <TooltipPopup>{unsupportedDetail ?? "Client not supported"}</TooltipPopup>
+              <TooltipPopup>
+                {unsupportedDetail ?? t("files.cloud.status.unsupported")}
+              </TooltipPopup>
             </Tooltip>
           ) : savedConnection ? (
             <Button size="sm" variant="outline" disabled>
@@ -489,10 +495,10 @@ export function CloudEnvironmentConnectRows({
               onClick={() => void connectEnvironment(environment)}
             >
               {connectingEnvironmentIds.has(environment.environmentId)
-                ? "Adding…"
+                ? t("files.cloud.list.adding")
                 : savedWithoutRelay.has(environment.environmentId)
-                  ? "Add route"
-                  : "Add"}
+                  ? t("files.cloud.list.addRoute")
+                  : t("files.cloud.list.add")}
             </Button>
           )}
         </div>

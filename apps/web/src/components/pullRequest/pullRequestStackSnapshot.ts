@@ -1,5 +1,7 @@
 import type { PullRequestRef, PullRequestStack, ThreadPullRequestLink } from "@t3tools/contracts";
 
+import type { MessageKey } from "~/i18n";
+
 /** Saved membership supports navigation, never action head SHAs. */
 export function savedPullRequestStack(
   links: ReadonlyArray<ThreadPullRequestLink>,
@@ -57,16 +59,13 @@ export function pullRequestStackView(
   saved: PullRequestStack | null,
 ) {
   const data = query.isSuccess ? query.data : (query.data ?? saved);
-  return {
-    data,
-    isFresh: query.isSuccess,
-    notice:
-      data === null
-        ? null
-        : query.error
-          ? "Stack data may be stale. We couldn’t refresh it."
-          : !query.isSuccess || query.isPending
-            ? "Refreshing stack… Showing saved data."
-            : null,
-  };
+  const notice: MessageKey | null =
+    data === null
+      ? null
+      : query.error
+        ? "pullRequestDetail.stack.staleNotice"
+        : !query.isSuccess || query.isPending
+          ? "pullRequestDetail.stack.refreshingNotice"
+          : null;
+  return { data, isFresh: query.isSuccess, notice };
 }

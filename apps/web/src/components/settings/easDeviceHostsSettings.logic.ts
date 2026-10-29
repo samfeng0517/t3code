@@ -3,6 +3,7 @@ import {
   type EasDeviceHostConfig as EasDeviceHostConfigType,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { t as globalT, type Translate } from "~/i18n";
 
 export const parseEasDeviceHostDraft = Schema.decodeUnknownOption(EasDeviceHostConfig);
 
@@ -28,8 +29,14 @@ export function updateEasDeviceHosts(
     : [...hosts, host];
 }
 
-export function easSessionLimits(host: EasDeviceHostConfigType) {
+export function easSessionLimits(host: EasDeviceHostConfigType, t: Translate = globalT) {
   const sessions =
-    host.maxConcurrentSessions === 1 ? "1 session" : `${host.maxConcurrentSessions} sessions`;
-  return `Up to ${sessions} at once, each stopped after ${host.maxSessionMinutes} min or ${host.idleMinutes} idle min`;
+    host.maxConcurrentSessions === 1
+      ? t("device.eas.sessionOne")
+      : t("device.eas.sessionMany", { count: host.maxConcurrentSessions });
+  return t("device.eas.limits", {
+    sessions,
+    max: host.maxSessionMinutes,
+    idle: host.idleMinutes,
+  });
 }

@@ -496,7 +496,9 @@ export function AddProviderInstanceDialog({
                 <Collapsible open={showMoreProviders} onOpenChange={setShowMoreProviders}>
                   <div className="flex pt-2">
                     <CollapsibleTrigger render={<Button variant="ghost-muted" size="xs" />}>
-                      {showMoreProviders ? "Show less" : "Show more"}
+                      {showMoreProviders
+                        ? t("providerSetup.addInstance.showLess")
+                        : t("providerSetup.addInstance.showMore")}
                       <ChevronDownIcon
                         aria-hidden
                         className={cn("transition-transform", showMoreProviders && "rotate-180")}
@@ -511,7 +513,7 @@ export function AddProviderInstanceDialog({
                         value={driver}
                         disabled={isPreparingRegistryAgent}
                         onValueChange={selectDriver}
-                        aria-label="More providers"
+                        aria-label={t("providerSetup.addInstance.moreProviders")}
                       />
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         <div aria-hidden className="flex-1 border-t border-border/70" />

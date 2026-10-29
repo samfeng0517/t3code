@@ -2,6 +2,7 @@ import type { EnvironmentId, PullRequestAction } from "@t3tools/contracts";
 import { EyeIcon, LayersIcon, PenLineIcon, UsersIcon, type LucideIcon } from "lucide-react";
 import type { RefCallback } from "react";
 
+import { useT, type MessageKey } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { Separator } from "../ui/separator";
 import {
@@ -27,13 +28,14 @@ const MATCHED_ELSEWHERE_SCORE = 10;
 function PullRequestGroupHeader({
   group,
 }: {
-  group: { key: string; label: string; entries: ReadonlyArray<unknown> };
+  group: { key: string; label: MessageKey | ""; entries: ReadonlyArray<unknown> };
 }) {
+  const t = useT();
   const Icon = GROUP_ICONS[group.key] ?? LayersIcon;
   return (
     <div className="flex items-center gap-2 px-3 pb-1 text-xs font-medium text-muted-foreground/70">
       <Icon aria-hidden className="size-3.5 shrink-0" />
-      <h2 className="shrink-0">{group.label}</h2>
+      <h2 className="shrink-0">{group.label === "" ? "" : t(group.label)}</h2>
       <span className="shrink-0 tabular-nums text-muted-foreground/50">{group.entries.length}</span>
       <Separator className="min-w-2 flex-1" />
     </div>

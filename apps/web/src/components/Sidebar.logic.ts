@@ -2,6 +2,7 @@ import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/mod
 import { isShownUnderParent } from "@t3tools/client-runtime/state/threads";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
+import { t as globalT, type MessageKey, type Translate } from "../i18n";
 import * as React from "react";
 import {
   isAtomCommandInterrupted,
@@ -542,18 +543,25 @@ export async function archiveSelectedThreadEntries<
   return { archivedThreadKeys, mutationFailure: null, followupFailures };
 }
 
-export function buildMultiSelectThreadContextMenuItems(input: {
-  count: number;
-  hasRunningThread: boolean;
-}): readonly ContextMenuItem<"mark-unread" | "archive" | "delete">[] {
+export function buildMultiSelectThreadContextMenuItems(
+  input: {
+    count: number;
+    hasRunningThread: boolean;
+  },
+  t: Translate = globalT,
+): readonly ContextMenuItem<"mark-unread" | "archive" | "delete">[] {
   return [
-    { id: "mark-unread", label: `Mark unread (${input.count})` },
+    { id: "mark-unread", label: t("sidebar.bulkMenu.markUnread", { count: input.count }) },
     {
       id: "archive",
-      label: `Archive (${input.count})`,
+      label: t("shell.bulkMenu.archive", { count: input.count }),
       disabled: input.hasRunningThread,
     },
-    { id: "delete", label: `Delete (${input.count})`, destructive: true },
+    {
+      id: "delete",
+      label: t("sidebar.bulkMenu.delete", { count: input.count }),
+      destructive: true,
+    },
   ];
 }
 
@@ -607,29 +615,35 @@ export function filterSidebarV2VisibleThreads<
   );
 }
 
-export function buildBulkTitleRegenerationContextMenuItem(input: {
-  supportedCount: number;
-  actionableCount: number;
-}): ContextMenuItem<"regenerate-title"> | null {
+export function buildBulkTitleRegenerationContextMenuItem(
+  input: {
+    supportedCount: number;
+    actionableCount: number;
+  },
+  t: Translate = globalT,
+): ContextMenuItem<"regenerate-title"> | null {
   if (input.supportedCount === 0) return null;
   if (input.actionableCount === 0) {
     return {
       id: "regenerate-title",
-      label: `Regenerating… (${input.supportedCount})`,
+      label: t("sidebar.bulkMenu.regenerating", { count: input.supportedCount }),
       disabled: true,
     };
   }
   return {
     id: "regenerate-title",
-    label: `Regenerate titles (${input.actionableCount})`,
+    label: t("sidebar.bulkMenu.regenerateTitles", { count: input.actionableCount }),
   };
 }
 
-export function buildBulkUnpinContextMenuItem(input: {
-  pinnedCount: number;
-}): ContextMenuItem<"unpin"> | null {
+export function buildBulkUnpinContextMenuItem(
+  input: {
+    pinnedCount: number;
+  },
+  t: Translate = globalT,
+): ContextMenuItem<"unpin"> | null {
   if (input.pinnedCount === 0) return null;
-  return { id: "unpin", label: `Unpin (${input.pinnedCount})` };
+  return { id: "unpin", label: t("sidebar.bulkMenu.unpin", { count: input.pinnedCount }) };
 }
 
 export interface ThreadStatusPill {
@@ -659,6 +673,23 @@ const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
   "Plan Ready": 2,
   Completed: 1,
 };
+
+const THREAD_STATUS_LABEL_KEYS: Record<ThreadStatusPill["label"], MessageKey> = {
+  Working: "shell.threadStatus.working",
+  Connecting: "shell.threadStatus.connecting",
+  Completed: "shell.threadStatus.completed",
+  Failed: "shell.threadStatus.failed",
+  "Pending Approval": "shell.threadStatus.pendingApproval",
+  "Awaiting Input": "shell.threadStatus.awaitingInput",
+  "Guest Request": "shell.threadStatus.guestRequest",
+  Waiting: "shell.threadStatus.waiting",
+  "Plan Ready": "shell.threadStatus.planReady",
+};
+
+/** The displayed text of a status pill; `label` itself stays an English identifier. */
+export function threadStatusLabel(status: Pick<ThreadStatusPill, "label">, t: Translate): string {
+  return t(THREAD_STATUS_LABEL_KEYS[status.label]);
+}
 
 type ThreadStatusInput = Pick<
   SidebarThreadSummary,

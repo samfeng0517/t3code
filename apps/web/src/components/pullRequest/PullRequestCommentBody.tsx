@@ -1,5 +1,6 @@
 import { useId, useRef, useState, type ComponentProps } from "react";
 
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
@@ -9,6 +10,7 @@ export function PullRequestCommentBody({
   className,
   ...props
 }: ComponentProps<typeof PullRequestMarkdown>) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
   const clip = useRef<HTMLDivElement>(null);
@@ -51,7 +53,9 @@ export function PullRequestCommentBody({
             setExpanded(!expanded);
           }}
         >
-          {expanded ? "Show less" : "Show full comment"}
+          {expanded
+            ? t("pullRequestDetail.common.showLess")
+            : t("pullRequestDetail.commentBody.showFull")}
         </Button>
       ) : null}
     </div>

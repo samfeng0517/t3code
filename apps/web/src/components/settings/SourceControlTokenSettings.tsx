@@ -2,6 +2,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { ExternalLinkIcon } from "lucide-react";
 import { useState } from "react";
 
+import { useT } from "~/i18n";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import {
   readHostCredentialSettings,
@@ -26,6 +27,7 @@ export function SourceControlTokenSettings({
   readonly credentials: SourceControlHostCredentials;
   readonly onSaved: () => void;
 }) {
+  const t = useT();
   const { tokens } = useEnvironmentSettings(environmentId, (settings) =>
     readHostCredentialSettings(settings, definition.kind),
   );
@@ -71,12 +73,15 @@ export function SourceControlTokenSettings({
       {/* Locked while saving: a successful save clears the draft, which would drop edits made mid-request. */}
       <fieldset disabled={saving} className="contents">
         <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
-          A token saved here is used before{" "}
+          {t("settingsMisc.sourceControl.token.intro1")}{" "}
           <code className="rounded bg-muted px-1 py-px text-2xs">{credentials.tokenEnvVar}</code>{" "}
-          and the{" "}
-          <code className="rounded bg-muted px-1 py-px text-2xs">{credentials.cliName}</code> login,
-          so {definition.label} works without the {credentials.cliLabel}. Give it{" "}
-          {credentials.tokenAccess}.{" "}
+          {t("settingsMisc.sourceControl.token.intro2")}{" "}
+          <code className="rounded bg-muted px-1 py-px text-2xs">{credentials.cliName}</code>{" "}
+          {t("settingsMisc.sourceControl.token.intro3", {
+            label: definition.label,
+            cliLabel: credentials.cliLabel,
+            access: credentials.tokenAccess,
+          })}{" "}
           {normalizedHost || defaultHost ? (
             <InlineButton
               render={
@@ -87,14 +92,16 @@ export function SourceControlTokenSettings({
                 />
               }
             >
-              Create a token
+              {t("settingsMisc.sourceControl.token.create")}
               <ExternalLinkIcon aria-hidden className="size-3" />
             </InlineButton>
           ) : null}
         </p>
         <div className="grid gap-3 sm:grid-cols-[12rem_1fr]">
           <div className="grid gap-1.5">
-            <Label htmlFor={`${definition.kind}-token-host-${environmentId}`}>Host</Label>
+            <Label htmlFor={`${definition.kind}-token-host-${environmentId}`}>
+              {t("settingsMisc.sourceControl.token.host")}
+            </Label>
             <Input
               id={`${definition.kind}-token-host-${environmentId}`}
               autoComplete="off"
@@ -105,7 +112,9 @@ export function SourceControlTokenSettings({
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor={`${definition.kind}-token-${environmentId}`}>Token</Label>
+            <Label htmlFor={`${definition.kind}-token-${environmentId}`}>
+              {t("settingsMisc.sourceControl.token.token")}
+            </Label>
             <SecretInput
               id={`${definition.kind}-token-${environmentId}`}
               size="sm"
@@ -118,8 +127,11 @@ export function SourceControlTokenSettings({
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
             {savedHosts.length === 0
-              ? `No token saved; the server uses ${credentials.tokenEnvVar} or the ${credentials.cliName} login.`
-              : `Saved for ${savedHosts.join(", ")}.`}
+              ? t("settingsMisc.sourceControl.token.noneSaved", {
+                  envVar: credentials.tokenEnvVar,
+                  cliName: credentials.cliName,
+                })
+              : t("settingsMisc.sourceControl.token.savedFor", { hosts: savedHosts.join(", ") })}
           </p>
           <div className="flex shrink-0 gap-2">
             {isSaved ? (
@@ -129,11 +141,11 @@ export function SourceControlTokenSettings({
                 disabled={saving}
                 onClick={() => void save(normalizedHost, "")}
               >
-                Remove
+                {t("settingsMisc.sourceControl.remove")}
               </Button>
             ) : null}
             <Button type="submit" size="xs" disabled={!normalizedHost || !draft.trim() || saving}>
-              Save
+              {t("settingsMisc.sourceControl.save")}
             </Button>
           </div>
         </div>

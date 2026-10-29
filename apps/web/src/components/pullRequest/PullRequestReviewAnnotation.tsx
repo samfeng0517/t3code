@@ -13,6 +13,7 @@ import { useRef, useState } from "react";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 
 import { RelativeTime } from "~/components/RelativeTime";
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 
 import { Button } from "../ui/button";
@@ -79,6 +80,7 @@ export function PendingReviewCommentCard({
   comment: PendingReviewComment;
   onRemove: () => void;
 }) {
+  const t = useT();
   return (
     <div
       className={cn(CARD_CLASS, "border-dashed")}
@@ -87,12 +89,12 @@ export function PendingReviewCommentCard({
     >
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <MessageSquareIcon className="size-3.5" />
-        <span>Pending. Sent when you submit the review</span>
+        <span>{t("pullRequestDetail.annotation.pending")}</span>
         <Button
           size="icon-xs"
           variant="ghost"
           className="ml-auto"
-          aria-label="Discard this comment"
+          aria-label={t("pullRequestDetail.annotation.discard")}
           onClick={onRemove}
         >
           <Trash2Icon className="size-3.5" />
@@ -113,7 +115,7 @@ export function ReviewThreadCard({
   reference,
   pending,
   fixPending,
-  fixLabel = "Fix in a thread",
+  fixLabel,
   onFix,
   onReply,
   onLoadMore,
@@ -140,6 +142,7 @@ export function ReviewThreadCard({
   onToggleResolved: () => void;
   onReacted: () => void;
 }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(!thread.isResolved);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -216,10 +219,18 @@ export function ReviewThreadCard({
           aria-expanded={expanded}
           onClick={() => setExpanded((current) => !current)}
         >
-          {thread.isResolved ? "Resolved" : "Open"} · {commentCount}{" "}
-          {commentCount === 1 ? "comment" : "comments"}
+          {thread.isResolved
+            ? t("pullRequestDetail.annotation.resolved")
+            : t("pullRequestDetail.annotation.open")}{" "}
+          ·{" "}
+          {t(
+            commentCount === 1
+              ? "pullRequestDetail.annotation.commentOne"
+              : "pullRequestDetail.annotation.commentOther",
+            { count: commentCount },
+          )}
         </button>
-        {thread.isOutdated ? <span>outdated</span> : null}
+        {thread.isOutdated ? <span>{t("pullRequestDetail.annotation.outdated")}</span> : null}
         {onFix ? (
           <Button
             size="xs"
@@ -229,7 +240,9 @@ export function ReviewThreadCard({
             onClick={onFix}
           >
             <HammerIcon className="size-3" />
-            {fixPending ? "Preparing..." : fixLabel}
+            {fixPending
+              ? t("pullRequestDetail.action.preparing")
+              : (fixLabel ?? t("pullRequestDetail.handoff.fixInThread"))}
           </Button>
         ) : null}
         {canResolve ? (
@@ -240,7 +253,9 @@ export function ReviewThreadCard({
             disabled={pending}
             onClick={onToggleResolved}
           >
-            {thread.isResolved ? "Unresolve" : "Resolve"}
+            {thread.isResolved
+              ? t("pullRequestDetail.annotation.unresolve")
+              : t("pullRequestDetail.annotation.resolve")}
           </Button>
         ) : null}
       </div>
@@ -271,7 +286,7 @@ export function ReviewThreadCard({
                     value={comment.body}
                     cwd={workspaceRoot}
                     environmentId={environmentId}
-                    label="Edit comment"
+                    label={t("pullRequestDetail.timeline.editComment")}
                     saving={savingEdit}
                     onSave={(body) => void saveEdit(comment.id, body)}
                     onCancel={() => setEditingId(null)}
@@ -286,7 +301,7 @@ export function ReviewThreadCard({
                     />
                     {canEditComment(comment) ? (
                       <PullRequestEditButton
-                        aria-label="Edit comment"
+                        aria-label={t("pullRequestDetail.timeline.editComment")}
                         onClick={() => setEditingId(comment.id)}
                       />
                     ) : null}
@@ -303,7 +318,9 @@ export function ReviewThreadCard({
                 disabled={loadingMore}
                 onClick={() => void loadMore()}
               >
-                {loadingMore ? "Loading..." : "Load more comments"}
+                {loadingMore
+                  ? t("pullRequestDetail.annotation.loading")
+                  : t("pullRequestDetail.annotation.loadMore")}
               </Button>
             </div>
           ) : null}
@@ -327,6 +344,7 @@ export function PullRequestThreadReply({
   onReply: (body: string) => Promise<boolean>;
   onSent?: () => void;
 }) {
+  const t = useT();
   const [replying, setReplying] = useState(false);
   const [reply, setReply] = useState("");
   const sendingRef = useRef(false);
@@ -351,7 +369,7 @@ export function PullRequestThreadReply({
   if (!replying) {
     return (
       <Button size="xs" variant="ghost" className="mt-2" onClick={() => setReplying(true)}>
-        Reply
+        {t("pullRequestDetail.common.reply")}
       </Button>
     );
   }
@@ -361,8 +379,8 @@ export function PullRequestThreadReply({
         autoFocus
         size="sm"
         value={reply}
-        placeholder="Reply"
-        aria-label="Reply to this conversation"
+        placeholder={t("pullRequestDetail.common.reply")}
+        aria-label={t("pullRequestDetail.annotation.replyAria")}
         onChange={(event) => setReply(event.target.value)}
         onKeyDown={(event) =>
           submitKeys({
@@ -375,10 +393,10 @@ export function PullRequestThreadReply({
       />
       <div className="mt-2 flex justify-end gap-2">
         <Button size="xs" variant="ghost" onClick={() => setReplying(false)}>
-          Cancel
+          {t("pullRequestDetail.common.cancel")}
         </Button>
         <Button size="xs" disabled={busy || reply.trim().length === 0} onClick={() => void send()}>
-          Reply
+          {t("pullRequestDetail.common.reply")}
         </Button>
       </div>
     </div>

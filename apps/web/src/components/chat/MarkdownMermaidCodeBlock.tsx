@@ -1,6 +1,7 @@
 import { CodeIcon, WorkflowIcon } from "lucide-react";
 import { Suspense, use, useState, type ReactNode } from "react";
 
+import { useT } from "../../i18n";
 import { RenderErrorBoundary } from "../RenderErrorBoundary";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -25,12 +26,15 @@ export function MarkdownMermaidCodeBlock({
   children: ReactNode;
   rootProps?: MarkdownBlockDataAttributes | undefined;
 }) {
+  const t = useT();
   const [showCode, setShowCode] = useState(false);
   const searching = use(MarkdownFindContext);
   const revealSource = () => setShowCode(true);
   const sourceRevealRef = findRevealRef(revealSource);
   const showDiagram = !showCode && !isStreaming && code.trim().length > 0;
-  const toggleLabel = showCode ? "Show diagram" : "Show code";
+  const toggleLabel = showCode
+    ? t("timeline.markdown.showDiagram")
+    : t("timeline.markdown.showCode");
   return (
     <MarkdownCodeBlock
       code={code}

@@ -5,6 +5,7 @@ import {
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 
@@ -39,6 +40,7 @@ export function PullRequestMarkdownEditor({
   readonly onCancel: () => void;
 }) {
   const canWriteSourceControl = useEnvironmentScope(environmentId, AuthSourceControlWriteScope);
+  const t = useT();
   const [draft, setDraft] = useState(value);
   const [preview, setPreview] = useState(false);
   const [seed, setSeed] = useState(value);
@@ -76,7 +78,7 @@ export function PullRequestMarkdownEditor({
       }}
     >
       <ToggleGroup
-        aria-label="Markdown editor mode"
+        aria-label={t("pullRequestDetail.markdownEditor.modeAria")}
         variant="segmented"
         value={[preview ? "preview" : "write"]}
         disabled={saving}
@@ -85,13 +87,15 @@ export function PullRequestMarkdownEditor({
           if (mode === "write" || mode === "preview") setPreview(mode === "preview");
         }}
       >
-        <Toggle value="write">Write</Toggle>
-        <Toggle value="preview">Preview</Toggle>
+        <Toggle value="write">{t("pullRequestDetail.markdownEditor.write")}</Toggle>
+        <Toggle value="preview">{t("pullRequestDetail.markdownEditor.preview")}</Toggle>
       </ToggleGroup>
       {preview ? (
         <div className="rounded-lg border border-border/60 px-3 py-2">
           {empty ? (
-            <p className="text-xs text-muted-foreground">Nothing to preview.</p>
+            <p className="text-xs text-muted-foreground">
+              {t("pullRequestDetail.markdownEditor.nothingToPreview")}
+            </p>
           ) : (
             <PullRequestMarkdown
               text={draft}
@@ -114,7 +118,7 @@ export function PullRequestMarkdownEditor({
       )}
       <div className="flex justify-end gap-2">
         <Button size="xs" variant="ghost" disabled={saving} onClick={onCancel}>
-          Cancel
+          {t("pullRequestDetail.common.cancel")}
         </Button>
         <Button
           size="xs"
@@ -130,7 +134,7 @@ export function PullRequestMarkdownEditor({
             onSave(draft);
           }}
         >
-          {saving ? "Saving..." : "Save"}
+          {saving ? t("pullRequestDetail.common.saving") : t("pullRequestDetail.common.save")}
         </Button>
       </div>
     </div>

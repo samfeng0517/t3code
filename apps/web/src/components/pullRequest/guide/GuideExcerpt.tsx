@@ -10,6 +10,7 @@ import { ArrowUpRightIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useRenderedAppearance } from "~/hooks/useTheme";
+import { useT } from "~/i18n";
 import {
   getRenderablePatch,
   resolveDiffThemeName,
@@ -140,6 +141,7 @@ export function GuideExcerpt({
   loadDiffFiles: FileDiffContentsLoader;
   onOpenFile: (path: string) => void;
 }) {
+  const t = useT();
   // Keep selections outside ExcerptDiff to survive head reloads.
   const [draft, setDraft] = useState<ExcerptDraft | null>(null);
   const slice = excerptSlice(file, excerpt);
@@ -165,16 +167,19 @@ export function GuideExcerpt({
         />
       ) : loading ? (
         <p className="rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground">
-          Loading {excerpt.path}...
+          {t("pullRequestDetail.guide.excerptLoading", { path: excerpt.path })}
         </p>
       ) : (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground">
           <span className="min-w-0 truncate">
-            <span className="font-mono text-foreground">{excerpt.path}</span> lines {excerpt.start}-
-            {excerpt.end} are not in the loaded diff.
+            {t("pullRequestDetail.guide.excerptMissing", {
+              path: excerpt.path,
+              start: excerpt.start,
+              end: excerpt.end,
+            })}
           </span>
           <Button size="xs" variant="outline" onClick={() => onOpenFile(excerpt.path)}>
-            Open in Code
+            {t("pullRequestDetail.guide.openInCode")}
           </Button>
         </div>
       )}
@@ -203,6 +208,7 @@ function ExcerptDiff({
   commenting: ExcerptCommenting | null;
   onOpenFile: (path: string) => void;
 }) {
+  const t = useT();
   const resolvedTheme = useRenderedAppearance();
   const loadExcerptFiles = excerptLoader(excerpt, slice.rows, loadDiffFiles);
 
@@ -324,13 +330,19 @@ function ExcerptDiff({
                 rangeLabel={`${excerpt.path}:${getReviewPositionAnchor(draft.position).line}`}
                 text=""
                 placeholder={
-                  commenting.canComment ? "Add a comment…" : "Ask the agent about these lines…"
+                  commenting.canComment
+                    ? t("pullRequestDetail.guide.commentPlaceholder")
+                    : t("pullRequestDetail.guide.askPlaceholder")
                 }
-                submitLabel={commenting.canComment ? "Add to review" : "Ask agent"}
+                submitLabel={
+                  commenting.canComment
+                    ? t("pullRequestDetail.guide.addToReview")
+                    : t("pullRequestDetail.guide.askAgent")
+                }
                 {...(commenting.canComment && onAskAgent !== null
                   ? {
                       secondaryAction: {
-                        label: "Ask agent",
+                        label: t("pullRequestDetail.guide.askAgent"),
                         onAction: (text: string) => askAgent(text),
                       },
                     }
@@ -357,13 +369,17 @@ function ExcerptDiff({
         renderHeaderMetadata={() => (
           <span className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="tabular-nums">
-              {excerpt.side === "old" ? "removed code, " : ""}showing {slice.shown} of {slice.total}{" "}
-              diff lines
+              {t(
+                excerpt.side === "old"
+                  ? "pullRequestDetail.guide.linesShownRemoved"
+                  : "pullRequestDetail.guide.linesShown",
+                { shown: slice.shown, total: slice.total },
+              )}
             </span>
             <Button
               size="icon-xs"
               variant="ghost-muted"
-              aria-label={`Open ${excerpt.path} in Code`}
+              aria-label={t("pullRequestDetail.guide.openPathInCode", { path: excerpt.path })}
               onClick={() => onOpenFile(excerpt.path)}
             >
               <ArrowUpRightIcon aria-hidden />

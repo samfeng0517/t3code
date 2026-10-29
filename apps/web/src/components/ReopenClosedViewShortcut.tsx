@@ -45,6 +45,7 @@ import {
 } from "../threadRoutes";
 import { GIT_PAGE_REF, gitTabKey, useGitTabsStore } from "./git/gitTabsStore";
 import { dispatchPreviewAction } from "./preview/previewActionBus";
+import { t } from "~/i18n";
 import { toastManager } from "./ui/toast";
 
 const PREVIEW_FORWARDED_LAYOUT_COMMANDS = [
@@ -175,7 +176,7 @@ export function ReopenClosedViewShortcut() {
       .catch((error: unknown) => {
         toastManager.add({
           type: "error",
-          title: "Could not reopen view",
+          title: t("legacySidebar.misc.reopenView.failed"),
           description: error instanceof Error ? error.message : String(error),
         });
       });

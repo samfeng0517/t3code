@@ -1,4 +1,5 @@
 import { type SlowRpcAckRequest, subscribeSlowRpcAckRequests } from "../rpc/requestLatencyState";
+import { t, useT } from "~/i18n";
 import { toastManager } from "./ui/toast";
 
 function describeSlowRequests(requests: ReadonlyArray<SlowRpcAckRequest>): string {
@@ -7,10 +8,16 @@ function describeSlowRequests(requests: ReadonlyArray<SlowRpcAckRequest>): strin
     Math.min(...requests.map((request) => request.thresholdMs)) / 1000,
   );
 
-  return `${count} request${count === 1 ? "" : "s"} waiting longer than ${thresholdSeconds}s.`;
+  return t(
+    count === 1
+      ? "legacySidebar.misc.slowRpc.summary.one"
+      : "legacySidebar.misc.slowRpc.summary.other",
+    { count, seconds: thresholdSeconds },
+  );
 }
 
 function SlowRequestDetails({ requests }: { requests: ReadonlyArray<SlowRpcAckRequest> }) {
+  const t = useT();
   return (
     <ul className="space-y-2.5 text-xs text-muted-foreground">
       {requests.map((request) => (
@@ -20,7 +27,9 @@ function SlowRequestDetails({ requests }: { requests: ReadonlyArray<SlowRpcAckRe
         >
           <div className="wrap-break-word font-medium text-foreground">{request.tag}</div>
           <div className="mt-0.5 text-3xs opacity-75">
-            Started {new Date(request.startedAt).toLocaleTimeString()}
+            {t("legacySidebar.misc.slowRpc.started", {
+              time: new Date(request.startedAt).toLocaleTimeString(),
+            })}
           </div>
         </li>
       ))}
@@ -45,11 +54,14 @@ export function startSlowRpcRequestToasts(): () => void {
       data: {
         expandableContent: <SlowRequestDetails requests={slowRequests} />,
         expandableDescriptionTrigger: true,
-        expandableLabels: { collapse: "Hide requests", expand: "Show requests" },
+        expandableLabels: {
+          collapse: t("legacySidebar.misc.slowRpc.hide"),
+          expand: t("legacySidebar.misc.slowRpc.show"),
+        },
       },
       description: describeSlowRequests(slowRequests),
       timeout: 0,
-      title: "Some requests are slow",
+      title: t("legacySidebar.misc.slowRpc.title"),
       type: "warning" as const,
     };
 

@@ -4,6 +4,7 @@ import {
   captureDeviceScreenshot,
   DeviceScreenshotError,
 } from "@t3tools/client-runtime/device/screenshot";
+import { useT } from "~/i18n";
 import { refreshDeviceHubAccess, useDeviceHubAccess } from "~/state/device";
 import { DeviceControlsRail } from "./DeviceControlsRail";
 import { DeviceStreamView } from "./DeviceStreamView";
@@ -24,6 +25,7 @@ export function DeviceWorkspace(props: {
 }) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [axOverlay, setAxOverlay] = useState(false);
+  const t = useT();
   const [screenshotPending, setScreenshotPending] = useState(false);
   const [screenshotError, setScreenshotError] = useState<string | null>(null);
   // A capture always finishes, even if the panel hides or closes meanwhile; the user asked for it.
@@ -55,7 +57,7 @@ export function DeviceWorkspace(props: {
         if (cause instanceof DeviceScreenshotError && cause.status === 401)
           refreshDeviceHubAccess(props.environmentId);
         setScreenshotError(
-          cause instanceof Error ? cause.message : "Screenshot capture failed. Try again.",
+          cause instanceof Error ? cause.message : t("device.workspace.screenshotFailed"),
         );
       })
       .finally(() => {

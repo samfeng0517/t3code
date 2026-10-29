@@ -37,6 +37,10 @@ vi.mock("react", async (importOriginal) => ({
   useRef: (current: unknown) => ({ current }),
   useEffect: () => {},
 }));
+vi.mock("~/i18n", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/i18n")>();
+  return { ...actual, useT: () => actual.t };
+});
 vi.mock("@tanstack/react-pacer", () => ({
   useDebouncedValue: (value: unknown) => [value, { state: { isPending: false } }],
 }));
@@ -114,6 +118,7 @@ vi.mock("./ui/dialog", () => ({
   DialogTitle: "DialogTitle",
 }));
 
+import { setLanguagePreference } from "../i18n/languagePreferenceStore";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 
 function findAction(node: ReactNode, label: string): (() => unknown) | null {
@@ -152,6 +157,7 @@ function prepareAction(label: "Local" | "Worktree") {
 
 describe("pull request worktree permissions", () => {
   beforeEach(() => {
+    setLanguagePreference("en");
     state.canOperate = false;
     state.canWriteSourceControl = true;
     state.hookValues = [];

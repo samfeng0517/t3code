@@ -6,7 +6,8 @@ import {
   ProviderInstanceId,
   type ServerSettings,
 } from "@t3tools/contracts";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { setLanguagePreference } from "~/i18n/languagePreferenceStore";
 import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
 import * as Cause from "effect/Cause";
 import { resolveWorktreeCleanup } from "@t3tools/shared/projectSettings";
@@ -24,6 +25,9 @@ import {
   selectScopedSettingsEnvironments,
 } from "./scopedSettings";
 import { resolveSettingsScope } from "./settingsScope";
+
+beforeEach(() => setLanguagePreference("en"));
+afterEach(() => setLanguagePreference("system"));
 
 function environment(
   id: string,

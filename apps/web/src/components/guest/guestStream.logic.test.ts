@@ -12,7 +12,8 @@ import {
   type ThreadGuestMessage,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { setLanguagePreference } from "~/i18n/languagePreferenceStore";
 
 import { makeThreadProjectionFixture } from "../../test-fixtures";
 import {
@@ -25,6 +26,9 @@ import {
   unplacedGuestMessages,
   type GuestStreamState,
 } from "./guestStream.logic";
+
+beforeEach(() => setLanguagePreference("en"));
+afterEach(() => setLanguagePreference("system"));
 
 const view: GuestShareView = {
   shareId: GuestShareId.make("share-1"),

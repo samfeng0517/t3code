@@ -2,6 +2,7 @@ import {
   formatProviderSubagentStatus,
   type ProviderSubagentStatus,
 } from "@t3tools/client-runtime/state/thread-execution";
+import { useT } from "~/i18n";
 import { isOrchestrationV2WorkActive } from "@t3tools/contracts";
 import { ArrowUpLeftIcon } from "lucide-react";
 
@@ -18,6 +19,7 @@ export function ProviderSubagentBar(props: {
   readonly status: ProviderSubagentStatus | null;
   readonly onOpenParent: (() => void) | null;
 }) {
+  const t = useT();
   const { status } = props;
   const live = status !== null && isOrchestrationV2WorkActive(status.status);
   const modelDescription =
@@ -59,15 +61,20 @@ export function ProviderSubagentBar(props: {
         />
       </div>
       <span role="status" className="sr-only">
-        {`${modelDescription} subagent: ${announcement}`}
+        {t("legacySidebar.misc.subagent.announcement", {
+          model: modelDescription,
+          status: announcement,
+        })}
       </span>
       <span className="shrink-0 text-muted-foreground @max-[640px]/composer-surface:sr-only">
-        Runs on its own
+        {t("legacySidebar.misc.subagent.runsOnItsOwn")}
       </span>
       {props.onOpenParent ? (
         <Button size="sm" variant="ghost" onClick={props.onOpenParent}>
           <ArrowUpLeftIcon />
-          <span className="@max-[320px]/composer-surface:sr-only">Open parent</span>
+          <span className="@max-[320px]/composer-surface:sr-only">
+            {t("legacySidebar.misc.subagent.openParent")}
+          </span>
         </Button>
       ) : null}
     </div>

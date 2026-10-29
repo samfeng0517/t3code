@@ -1,4 +1,5 @@
 import * as DateTime from "effect/DateTime";
+import { t as globalT, type Translate } from "~/i18n";
 
 import { resolveDesktopPairingUrl, resolveHostedPairingUrl } from "./pairingUrls";
 import { getPairingTokenFromUrl, setPairingTokenOnUrl } from "@t3tools/shared/remote";
@@ -62,10 +63,11 @@ export function isQrShareableEndpoint(endpoint: AdvertisedEndpoint): boolean {
  * means unchecked. */
 export function missingTailscaleEndpointDescription(
   state: Pick<DesktopServerExposureState, "mode" | "tailscaleServeEnabled"> | null,
+  t: Translate = globalT,
 ): string {
   return state && state.mode !== "network-accessible" && !state.tailscaleServeEnabled
-    ? "Turn on Network access to detect Tailscale."
-    : "Start Tailscale to set up HTTPS access through MagicDNS.";
+    ? t("settingsMisc.connections.tailscaleNetworkAccess")
+    : t("settingsMisc.connections.tailscaleStart");
 }
 
 export function isWslSettingsRowVisible(input: {
@@ -80,12 +82,15 @@ export function isWslSettingsRowVisible(input: {
  * Once client/server versions match, this passive Version label follows the sidebar update action,
  * including retryable failures. Rechecks retain downloaded-update labels; `state` is null outside desktop.
  */
-export function resolveLocalVersionStatusLabel(state: DesktopUpdateState | null): string {
-  if (!state) return "Up to date";
+export function resolveLocalVersionStatusLabel(
+  state: DesktopUpdateState | null,
+  t: Translate = globalT,
+): string {
+  if (!state) return t("settingsMisc.connections.version.upToDate");
   if (state.status === "downloading") {
     return state.availableVersion
-      ? `Downloading update ${state.availableVersion}`
-      : "Downloading update";
+      ? t("settingsMisc.connections.version.downloadingWith", { version: state.availableVersion })
+      : t("settingsMisc.connections.version.downloading");
   }
   const action = resolveDesktopUpdateButtonAction(state);
   if (
@@ -94,14 +99,16 @@ export function resolveLocalVersionStatusLabel(state: DesktopUpdateState | null)
     (state.status === "checking" && state.downloadedVersion !== null)
   ) {
     const version = getDesktopUpdateDownloadedVersion(state);
-    return version ? `Update ${version} downloaded` : "Update downloaded";
+    return version
+      ? t("settingsMisc.connections.version.downloadedWith", { version })
+      : t("settingsMisc.connections.version.downloaded");
   }
   if (action === "download") {
     return state.availableVersion
-      ? `Update ${state.availableVersion} available`
-      : "Update available";
+      ? t("settingsMisc.connections.version.availableWith", { version: state.availableVersion })
+      : t("settingsMisc.connections.version.available");
   }
-  return "Up to date";
+  return t("settingsMisc.connections.version.upToDate");
 }
 
 export type QrEndpointOption = {

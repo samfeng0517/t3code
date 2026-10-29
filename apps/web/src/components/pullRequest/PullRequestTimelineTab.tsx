@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { useT, type MessageKey, type Translate } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import { pullRequestEnvironment } from "~/state/pullRequests";
@@ -155,24 +156,38 @@ function ActorTimelineMarker({
   );
 }
 
-function friendlyReviewState(value: string): string {
+const REVIEW_STATE_KEYS: Readonly<Record<string, MessageKey>> = {
+  commented: "pullRequestDetail.timeline.reviewState.commented",
+  approved: "pullRequestDetail.timeline.reviewState.approved",
+  "changes requested": "pullRequestDetail.timeline.reviewState.changesRequested",
+  dismissed: "pullRequestDetail.timeline.reviewState.dismissed",
+  pending: "pullRequestDetail.timeline.reviewState.pending",
+};
+
+function friendlyReviewState(value: string, t: Translate): string {
   const words = value.toLowerCase().replaceAll("_", " ").replaceAll("-", " ");
+  const key = REVIEW_STATE_KEYS[words];
+  if (key !== undefined) return t(key);
   return words.replace(/^\w/u, (letter) => letter.toUpperCase());
 }
 
 function ReviewStateBadge({ state }: { state: string }) {
+  const t = useT();
   return (
-    <span className="text-3xs font-medium text-muted-foreground">{friendlyReviewState(state)}</span>
+    <span className="text-3xs font-medium text-muted-foreground">
+      {friendlyReviewState(state, t)}
+    </span>
   );
 }
 
 function OpenOnHostButton({ url, onOpen }: { url: string | null; onOpen: (url: string) => void }) {
+  const t = useT();
   return url === null ? null : (
     <Button
       size="icon-xs"
       variant="ghost-muted"
       className="-mr-1 shrink-0"
-      aria-label="Open activity on host"
+      aria-label={t("pullRequestDetail.timeline.openOnHost")}
       onClick={() => onOpen(url)}
     >
       <ExternalLinkIcon className="size-3" />
@@ -195,6 +210,7 @@ function ConversationCard({
   reactions: ReactionSurface;
   showPath?: boolean;
 }) {
+  const t = useT();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const updateComment = useAtomCommand(pullRequestEnvironment.updateComment, {
@@ -210,7 +226,7 @@ function ConversationCard({
     });
     setSaving(false);
     if (result._tag === "Failure") {
-      toastManager.add({ type: "error", title: "Could not save the comment" });
+      toastManager.add({ type: "error", title: t("pullRequestDetail.timeline.commentSaveFailed") });
       return;
     }
     setEditing(false);
@@ -240,7 +256,10 @@ function ConversationCard({
             </PullRequestMetaLine>
           </div>
           {editable !== null && !editing ? (
-            <PullRequestEditButton aria-label="Edit comment" onClick={() => setEditing(true)} />
+            <PullRequestEditButton
+              aria-label={t("pullRequestDetail.timeline.editComment")}
+              onClick={() => setEditing(true)}
+            />
           ) : null}
           {reactions.canReact || event.reactions.length > 0 ? (
             <PullRequestReactionBar
@@ -263,7 +282,7 @@ function ConversationCard({
             cwd={cwd}
             environmentId={reactions.environmentId}
             threadRef={reactions.threadRef}
-            label="Edit comment"
+            label={t("pullRequestDetail.timeline.editComment")}
             saving={saving}
             onSave={(body) => void save(body)}
             onCancel={() => setEditing(false)}
@@ -306,6 +325,7 @@ function ConversationGroup({
   onOpen: (url: string) => void;
   reactions: ReactionSurface;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const actors = uniqueConversationActors(events);
   const first = events[0];
@@ -329,11 +349,21 @@ function ConversationGroup({
           >
             <span className="min-w-0 flex-1">
               <span className="block text-xs font-semibold">
-                {events.length.toLocaleString()} {events.length === 1 ? "comment" : "comments"}
+                {t(
+                  events.length === 1
+                    ? "pullRequestDetail.timeline.commentOne"
+                    : "pullRequestDetail.timeline.commentOther",
+                  { count: events.length.toLocaleString() },
+                )}
               </span>
               <span className="block truncate text-3xs text-muted-foreground">
-                {actors.length.toLocaleString()} {actors.length === 1 ? "author" : "authors"} ·{" "}
-                <RelativeTime timestamp={first.at} />
+                {t(
+                  actors.length === 1
+                    ? "pullRequestDetail.timeline.authorOne"
+                    : "pullRequestDetail.timeline.authorOther",
+                  { count: actors.length.toLocaleString() },
+                )}{" "}
+                · <RelativeTime timestamp={first.at} />
               </span>
             </span>
             <ChevronDownIcon
@@ -384,6 +414,7 @@ function ReviewThreadEvent({
   reactions: ReactionSurface;
   onReply: ((body: string) => Promise<boolean>) | null;
 }) {
+  const t = useT();
   const dismissed = pullRequestReviewOutcome(event.reviewState) === "dismissed";
   const [expanded, setExpanded] = useState(!thread.isResolved && !dismissed);
   const replyCount = thread.replies.length + thread.moreReplies;
@@ -409,18 +440,30 @@ function ReviewThreadEvent({
         {thread.isResolved ? (
           <span className="inline-flex shrink-0 items-center gap-1 font-medium text-success-foreground">
             <CircleCheckIcon aria-hidden className="size-3" />
-            Resolved
+            {t("pullRequestDetail.timeline.resolved")}
           </span>
         ) : null}
-        {dismissed ? <span className="shrink-0 font-medium">Review dismissed</span> : null}
-        {thread.isOutdated ? <span className="shrink-0 font-medium">Outdated</span> : null}
+        {dismissed ? (
+          <span className="shrink-0 font-medium">
+            {t("pullRequestDetail.timeline.reviewDismissed")}
+          </span>
+        ) : null}
+        {thread.isOutdated ? (
+          <span className="shrink-0 font-medium">{t("pullRequestDetail.timeline.outdated")}</span>
+        ) : null}
         {expanded ? null : (
           <span className="shrink-0">
             · {event.actor?.login ?? "ghost"}
             {replyCount > 0 ? (
               <>
                 {" "}
-                · {replyCount.toLocaleString()} {replyCount === 1 ? "reply" : "replies"}
+                ·{" "}
+                {t(
+                  replyCount === 1
+                    ? "pullRequestDetail.timeline.replyOne"
+                    : "pullRequestDetail.timeline.replyOther",
+                  { count: replyCount.toLocaleString() },
+                )}
               </>
             ) : null}
           </span>
@@ -478,11 +521,12 @@ function CommitEvent({
   event: PullRequestTimelineEvent;
   onOpen: (oid: string) => void;
 }) {
+  const t = useT();
   return (
     <button
       type="button"
       className="group relative mb-5 block w-full cursor-pointer rounded-sm pl-12 text-left outline-none [contain-intrinsic-block-size:48px] [content-visibility:auto] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      aria-label={`View commit ${event.id}`}
+      aria-label={t("pullRequestDetail.timeline.viewCommit", { id: event.id })}
       onClick={() => onOpen(event.id)}
     >
       <ActorTimelineMarker
@@ -492,7 +536,7 @@ function CommitEvent({
       <div className="flex min-w-0 items-center gap-2.5 py-1.5">
         <div className="min-w-0 flex-1">
           <div className="truncate text-xs font-semibold text-foreground transition-colors group-hover:text-primary">
-            {event.body ?? "Untitled commit"}
+            {event.body ?? t("pullRequestDetail.timeline.untitledCommit")}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-3xs text-muted-foreground">
             <code className="font-mono">{event.id.slice(0, 7)}</code>
@@ -514,21 +558,22 @@ function CommitEvent({
 }
 
 function LifecycleEvent({ event, term }: { event: PullRequestTimelineEvent; term: string }) {
+  const t = useT();
   const title = capitalizeTerm(term);
   const presentation =
     event.kind === "opened"
       ? {
           icon: <PullRequestGlyph.pullRequest className="size-3.5" />,
-          label: `${title} opened`,
+          label: t("pullRequestDetail.timeline.lifecycleOpened", { singular: title }),
         }
       : event.kind === "merged"
         ? {
             icon: <PullRequestGlyph.merged className="size-3.5" />,
-            label: `${title} merged`,
+            label: t("pullRequestDetail.timeline.merged", { singular: title }),
           }
         : {
             icon: <PullRequestGlyph.closed className="size-3.5" />,
-            label: `${title} closed`,
+            label: t("pullRequestDetail.timeline.closed", { singular: title }),
           };
 
   return (
@@ -562,6 +607,7 @@ function ReviewVerdictEvent({
   onOpen: (url: string) => void;
   reactions: ReactionSurface;
 }) {
+  const t = useT();
   return (
     <div className="group relative mb-5 pl-12 [contain-intrinsic-block-size:48px] [content-visibility:auto]">
       <ActorTimelineMarker
@@ -586,10 +632,14 @@ function ReviewVerdictEvent({
                   />
                 }
               >
-                {pullRequestReviewOutcomeLabel(outcome)}
-                {stale ? <span className="sr-only">, before the latest commits</span> : null}
+                {pullRequestReviewOutcomeLabel(outcome, t)}
+                {stale ? (
+                  <span className="sr-only">
+                    {t("pullRequestDetail.timeline.beforeLatestCommits")}
+                  </span>
+                ) : null}
               </TooltipTrigger>
-              <TooltipPopup>{pullRequestReviewOutcomeStaleLabel(outcome)}</TooltipPopup>
+              <TooltipPopup>{pullRequestReviewOutcomeStaleLabel(outcome, t)}</TooltipPopup>
             </Tooltip>
           </div>
           <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -651,7 +701,8 @@ export function PullRequestTimelineTab({
   onOpenCommit: (oid: string) => void;
   onRefresh: () => void;
 }) {
-  const events = buildPullRequestTimeline(detail);
+  const t = useT();
+  const events = buildPullRequestTimeline(detail, t);
   const term = sourceControlClients.get(detail.provider).changeRequest.singular;
   const newestCommitAt = newestPullRequestCommitAt(detail.commits);
   const replyToThread = useAtomCommand(pullRequestEnvironment.replyToThread, {
@@ -664,7 +715,7 @@ export function PullRequestTimelineTab({
       input: { ...reference, threadId, body },
     });
     if (result._tag === "Failure") {
-      toastManager.add({ type: "error", title: "Reply could not be posted" });
+      toastManager.add({ type: "error", title: t("pullRequestDetail.timeline.replyFailed") });
       return false;
     }
     onRefresh();
@@ -747,7 +798,7 @@ export function PullRequestTimelineTab({
         {events.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
             <PullRequestGlyph.pullRequest className="mb-2 size-5" />
-            <p className="text-xs">No activity yet.</p>
+            <p className="text-xs">{t("pullRequestDetail.timeline.empty")}</p>
           </div>
         ) : null}
       </div>

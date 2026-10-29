@@ -2,6 +2,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 
+import { useT } from "~/i18n";
 import { useCloseAppModal } from "./sidebar/mainAppLocation";
 import { Button } from "./ui/button";
 import { DialogBackdrop } from "./ui/dialog";
@@ -63,19 +64,22 @@ export function AppRouteModal({ label, children }: { label: string; children: Re
 }
 
 export function AppRouteModalClose() {
+  const t = useT();
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <DialogPrimitive.Close
-            aria-label="Close"
+            aria-label={t("common.close")}
             render={<Button size="icon-sm" variant="ghost" />}
           />
         }
       >
         <XIcon />
       </TooltipTrigger>
-      <TooltipPopup side="bottom">Close (Esc)</TooltipPopup>
+      <TooltipPopup side="bottom">
+        {t("legacySidebar.misc.routeModal.closeWithShortcut")}
+      </TooltipPopup>
     </Tooltip>
   );
 }

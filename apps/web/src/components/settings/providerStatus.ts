@@ -4,6 +4,8 @@ import type {
   ServerProviderCompatibilityAdvisory,
 } from "@t3tools/contracts";
 
+import { t as globalT, type MessageKey, type Translate } from "~/i18n";
+
 export const PROVIDER_STATUS_STYLES = {
   disabled: {
     dot: "bg-muted-foreground/50",
@@ -46,68 +48,72 @@ export function getProviderStatusKey(provider: ServerProvider | undefined): Prov
   return provider?.status ?? "warning";
 }
 
-export function getProviderSummary(provider: ServerProvider | undefined) {
+export function getProviderSummary(provider: ServerProvider | undefined, t: Translate = globalT) {
   if (!provider) {
     return {
-      headline: "Checking provider status",
-      detail: "Waiting for the server to report installation and authentication details.",
+      headline: t("providerSetup.status.checking.headline"),
+      detail: t("providerSetup.status.checking.detail"),
     };
   }
   if (provider.availability === "unavailable") {
     return {
-      headline: "Unavailable",
+      headline: t("providerSetup.status.unavailable"),
       detail:
-        provider.unavailableReason ?? provider.message ?? "The provider could not be started.",
+        provider.unavailableReason ??
+        provider.message ??
+        t("providerSetup.status.unavailable.detail"),
     };
   }
   if (!provider.enabled || provider.status === "disabled") {
     return {
-      headline: "Disabled",
-      detail:
-        provider.message ?? "This provider is installed but disabled for new sessions in T3 Code.",
+      headline: t("providerSetup.status.disabled"),
+      detail: provider.message ?? t("providerSetup.status.disabled.detail"),
     };
   }
   if (!provider.installed) {
     return {
-      headline: "Not found",
-      detail: provider.message ?? "CLI not detected on PATH.",
+      headline: t("providerSetup.status.notFound"),
+      detail: provider.message ?? t("providerSetup.status.notFound.detail"),
     };
   }
   if (provider.auth.status === "unauthenticated") {
     const authLabel = provider.auth.label ?? provider.auth.type;
     return {
-      headline: authLabel ? `Not authenticated · ${authLabel}` : "Not authenticated",
+      headline: authLabel
+        ? t("providerSetup.status.unauthenticatedWithLabel", { label: authLabel })
+        : t("providerSetup.status.unauthenticated"),
       detail: provider.message ?? null,
     };
   }
   if (isAntigravitySignInUnchecked(provider)) {
     return {
-      headline: "Installed · Sign-in not checked",
+      headline: t("providerSetup.status.signInUnchecked"),
       detail: provider.message ?? null,
     };
   }
   if (provider.status === "warning") {
     return {
-      headline: "Needs attention",
-      detail:
-        provider.message ?? "The provider is installed, but the server could not fully verify it.",
+      headline: t("providerSetup.status.warning"),
+      detail: provider.message ?? t("providerSetup.status.warning.detail"),
     };
   }
   if (provider.status === "error") {
     return {
-      headline: "Unavailable",
-      detail: provider.message ?? "The provider failed its startup checks.",
+      headline: t("providerSetup.status.unavailable"),
+      detail: provider.message ?? t("providerSetup.status.error.detail"),
     };
   }
   if (provider.auth.status === "authenticated") {
     const authLabel = provider.auth.label ?? provider.auth.type;
     return {
-      headline: authLabel ? `Authenticated · ${authLabel}` : "Authenticated",
+      headline: authLabel
+        ? t("providerSetup.status.authenticatedWithLabel", { label: authLabel })
+        : t("providerSetup.status.authenticated"),
       detail: provider.message ?? null,
     };
   }
   return {
-    headline: "Available",
+    headline: t("providerSetup.status.available"),
     detail: provider.message ?? null,
   };
 }
@@ -123,15 +129,16 @@ export function getProviderVersionLabel(version: string | null | undefined) {
 }
 
 const COMPATIBILITY_TITLES = {
-  graceful: "Limited support",
-  unsupported: "Unsupported version",
-  broken: "Known broken version",
-} as const;
+  graceful: "providerSetup.status.compat.graceful",
+  unsupported: "providerSetup.status.compat.unsupported",
+  broken: "providerSetup.status.compat.broken",
+} as const satisfies Record<string, MessageKey>;
 
 export function getProviderVersionAdvisoryPresentation(
   advisory: ServerProviderVersionAdvisory | undefined,
   compatibility?: ServerProviderCompatibilityAdvisory | undefined,
   showCompatibility = true,
+  t: Translate = globalT,
 ): {
   readonly title: string;
   readonly detail: string;
@@ -154,10 +161,12 @@ export function getProviderVersionAdvisoryPresentation(
     // Latest package versions cannot be updated into recommendations requiring another package.
     const isAlreadyLatest = advisory?.status === "current";
     return {
-      title: COMPATIBILITY_TITLES[compatibility.status],
+      title: t(COMPATIBILITY_TITLES[compatibility.status]),
       detail:
         compatibility.message ??
-        (recommendation ? `Use ${recommendation} for full support.` : "Update for full support."),
+        (recommendation
+          ? t("providerSetup.status.compat.useVersion", { version: recommendation })
+          : t("providerSetup.status.compat.update")),
       updateCommand:
         targetVersion || latestIsIncompatible || isAlreadyLatest
           ? null
@@ -175,7 +184,7 @@ export function getProviderVersionAdvisoryPresentation(
     return null;
   }
 
-  const label = "Update available";
+  const label = t("providerSetup.status.updateAvailable");
   const version = advisory.latestVersion;
   const versionLabel = getProviderVersionLabel(version);
 
@@ -184,8 +193,8 @@ export function getProviderVersionAdvisoryPresentation(
     detail:
       advisory.message ??
       (versionLabel
-        ? `${label}: install ${versionLabel}.`
-        : `${label}: install the latest provider version.`),
+        ? t("providerSetup.status.installVersion", { label, version: versionLabel })
+        : t("providerSetup.status.installLatest", { label })),
     updateCommand: advisory.updateCommand,
     emphasis: "normal" as const,
     targetVersion: null,

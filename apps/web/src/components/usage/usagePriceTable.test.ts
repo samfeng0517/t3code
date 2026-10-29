@@ -1,7 +1,11 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+
+import { setLanguagePreference } from "~/i18n/languagePreferenceStore";
 import { usagePriceCell, usagePriceTableChanges, type UsagePriceDraft } from "./usagePriceTable";
 import type { UsagePriceTarget } from "./usagePriceTargets";
+
+beforeEach(() => setLanguagePreference("en"));
 
 const price = { inputCostPerMillionTokens: 2, outputCostPerMillionTokens: 8 };
 const target = (

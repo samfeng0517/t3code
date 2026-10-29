@@ -16,6 +16,7 @@ import {
   usePendingReviewComments,
   usePullRequestReviewStore,
 } from "./pullRequestReviewStore";
+import { useT } from "~/i18n";
 
 export function PullRequestComposer({
   environmentId,
@@ -39,6 +40,7 @@ export function PullRequestComposer({
   onReviewSubmitted: () => void;
   openReviewRequest?: number | undefined;
 }) {
+  const t = useT();
   const term = sourceControlClients.get(detail.provider).changeRequest.singular;
   const [open, setOpen] = useState(false);
   const [reviewPending, setReviewPending] = useState(false);
@@ -80,10 +82,15 @@ export function PullRequestComposer({
         render={<Button size="icon" variant="glass" />}
         aria-label={
           pendingComments.length > 0
-            ? `Review ${term}, ${pendingComments.length} ${pendingComments.length === 1 ? "comment" : "comments"} pending`
+            ? t(
+                pendingComments.length === 1
+                  ? "pullRequestDetail.composer.reviewPendingOne"
+                  : "pullRequestDetail.composer.reviewPendingOther",
+                { singular: term, count: pendingComments.length },
+              )
             : reviewStarted || !canComment
-              ? `Review ${term}`
-              : `Comment on ${term}`
+              ? t("pullRequestDetail.composer.review", { singular: term })
+              : t("pullRequestDetail.composer.commentOn", { singular: term })
         }
       >
         <MessageSquareIcon className="size-4" />
@@ -103,12 +110,12 @@ export function PullRequestComposer({
         sideOffset={8}
         width="lg"
         initialFocus={mode === "review" ? reviewRef : commentRef}
-        aria-label={`${capitalizeTerm(term)} composer`}
+        aria-label={t("pullRequestDetail.composer.title", { singular: capitalizeTerm(term) })}
       >
         <div className="mb-3 flex items-center justify-between gap-2">
           {canComment && verdicts.length > 0 ? (
             <ToggleGroup
-              aria-label="Composer mode"
+              aria-label={t("pullRequestDetail.composer.modeAria")}
               variant="segmented"
               value={[mode]}
               onValueChange={(next) => {
@@ -116,14 +123,20 @@ export function PullRequestComposer({
                 if (value === "comment" || value === "review") setRequestedMode(value);
               }}
             >
-              <Toggle value="comment">Comment</Toggle>
+              <Toggle value="comment">{t("pullRequestDetail.common.comment")}</Toggle>
               <Toggle value="review">
-                {pendingComments.length > 0 ? `Review (${pendingComments.length})` : "Review"}
+                {pendingComments.length > 0
+                  ? t("pullRequestDetail.composer.modeReviewCount", {
+                      count: pendingComments.length,
+                    })
+                  : t("pullRequestDetail.composer.modeReview")}
               </Toggle>
             </ToggleGroup>
           ) : (
             <PopoverTitle>
-              {mode === "review" ? `Review ${term}` : `Comment on ${term}`}
+              {mode === "review"
+                ? t("pullRequestDetail.composer.review", { singular: term })
+                : t("pullRequestDetail.composer.commentOn", { singular: term })}
             </PopoverTitle>
           )}
           <div className="flex items-center gap-1">
@@ -131,8 +144,8 @@ export function PullRequestComposer({
               <Button
                 size="icon-xs"
                 variant="ghost"
-                aria-label="Discard pending line comments"
-                title="Discard pending line comments"
+                aria-label={t("pullRequestDetail.composer.discardPending")}
+                title={t("pullRequestDetail.composer.discardPending")}
                 disabled={reviewPending}
                 onClick={() => clearComments(reviewKey)}
               >
@@ -141,7 +154,7 @@ export function PullRequestComposer({
             ) : null}
             <PopoverClose
               render={<Button size="icon-xs" variant="ghost" />}
-              aria-label="Close composer"
+              aria-label={t("pullRequestDetail.composer.close")}
             >
               <XIcon className="size-3.5" />
             </PopoverClose>

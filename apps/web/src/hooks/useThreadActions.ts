@@ -65,7 +65,7 @@ export class ThreadArchiveBlockedError extends Schema.TaggedError<ThreadArchiveB
   },
 ) {
   override get message(): string {
-    return "Cannot archive while the provider is active.";
+    return t("shell.threadActions.archiveBlocked");
   }
 }
 
@@ -77,7 +77,7 @@ export class ThreadSettlementUnsupportedError extends Schema.TaggedError<ThreadS
   },
 ) {
   override get message(): string {
-    return "This environment's server does not support settling yet. Update the server to use Settle.";
+    return t("shell.threadActions.settleUnsupported");
   }
 }
 
@@ -89,7 +89,7 @@ export class ThreadSnoozeUnsupportedError extends Schema.TaggedError<ThreadSnooz
   },
 ) {
   override get message(): string {
-    return "This environment's server does not support snoozing yet. Update the server to use Snooze.";
+    return t("shell.threadActions.snoozeUnsupported");
   }
 }
 
@@ -101,7 +101,7 @@ export class ThreadSnoozeBlockedError extends Schema.TaggedError<ThreadSnoozeBlo
   },
 ) {
   override get message(): string {
-    return "This thread is waiting on you. Respond to the pending request before snoozing it.";
+    return t("shell.threadActions.snoozeBlocked");
   }
 }
 
@@ -122,7 +122,7 @@ export class ThreadAutoSettleOptOutUnsupportedError extends Schema.TaggedError<T
   },
 ) {
   override get message(): string {
-    return "This environment's server does not support turning auto-settle off per thread yet. Update the server to use it.";
+    return t("shell.threadActions.autoSettleUnsupported");
   }
 }
 
@@ -134,7 +134,7 @@ export class ThreadPinningUnsupportedError extends Schema.TaggedError<ThreadPinn
   },
 ) {
   override get message(): string {
-    return "This environment's server does not support pinning yet. Update the server to use Pin.";
+    return t("shell.threadActions.pinUnsupported");
   }
 }
 
@@ -146,7 +146,7 @@ export class ThreadPinReorderUnsupportedError extends Schema.TaggedError<ThreadP
   },
 ) {
   override get message(): string {
-    return "This environment's server does not support reordering pinned threads yet. Update the server to reorder pins.";
+    return t("shell.threadActions.pinReorderUnsupported");
   }
 }
 
@@ -158,7 +158,7 @@ export class ThreadActiveReorderUnsupportedError extends Schema.TaggedError<Thre
   },
 ) {
   override get message(): string {
-    return "Update this environment's server to reorder active threads.";
+    return t("shell.threadActions.activeReorderUnsupported");
   }
 }
 
@@ -189,8 +189,8 @@ export async function navigateAfterThreadDeletion(navigate: () => Promise<void>)
     toastManager.add(
       stackedThreadToast({
         type: "error",
-        title: "Thread deleted, but navigation failed",
-        description: error instanceof Error ? error.message : "An error occurred.",
+        title: t("shell.threadActions.deletedNavigationFailed"),
+        description: error instanceof Error ? error.message : t("common.errorOccurred"),
       }),
     );
   }
@@ -235,7 +235,7 @@ function threadOperationFailure(target: ScopedThreadRef) {
     : AsyncResult.failure(
         Cause.fail(
           new EnvironmentAuthorizationError({
-            message: "This connection cannot change threads.",
+            message: t("shell.threadActions.cannotChangeThreads"),
             requiredScope: AuthOrchestrationOperateScope,
           }),
         ),
@@ -380,7 +380,7 @@ export function useThreadActions() {
       action: "Archived",
       claim: action,
       undo: () => unarchiveThread(threadRef, { navigate: shouldNavigateToDraft }),
-      failureTitle: "Failed to undo archive",
+      failureTitle: t("shell.threadActions.undoArchiveFailed"),
     });
 
     if (shouldNavigateToDraft) {
@@ -568,7 +568,7 @@ export function useThreadActions() {
       : AsyncResult.failure(
           Cause.fail(
             new EnvironmentAuthorizationError({
-              message: "This connection can no longer remove worktrees.",
+              message: t("shell.threadActions.cannotRemoveWorktrees"),
               requiredScope: AuthSourceControlWriteScope,
             }),
           ),
@@ -589,7 +589,7 @@ export function useThreadActions() {
     if (cleanupFailure) {
       const removalFailed = removeResult._tag === "Failure";
       const error = squashAtomCommandFailure(cleanupFailure);
-      const message = error instanceof Error ? error.message : "An error occurred.";
+      const message = error instanceof Error ? error.message : t("common.errorOccurred");
       console.error("Worktree cleanup failed after thread deletion", {
         threadId: threadRef.threadId,
         projectCwd: threadProject.workspaceRoot,
@@ -600,10 +600,13 @@ export function useThreadActions() {
         stackedThreadToast({
           type: "error",
           title: removalFailed
-            ? "Failed to delete worktree"
-            : "Worktree deleted, but Git status refresh failed",
+            ? t("shell.threadActions.deleteWorktreeFailed")
+            : t("shell.threadActions.worktreeRefreshFailed"),
           description: removalFailed
-            ? `Could not remove ${displayWorktreePath ?? orphanedWorktreePath}. ${message}`
+            ? t("shell.threadActions.removeWorktreeFailed", {
+                path: displayWorktreePath ?? orphanedWorktreePath,
+                message,
+              })
             : message,
         }),
       );
@@ -696,7 +699,7 @@ export function useThreadActions() {
         action: "Unpinned",
         claim: action,
         undo: () => runUndoPlan(target, undoPlan),
-        failureTitle: "Failed to undo unpin",
+        failureTitle: t("shell.threadActions.undoUnpinFailed"),
       });
     } else {
       action.finish();
@@ -740,7 +743,7 @@ export function useThreadActions() {
       action: "Settled",
       claim: action,
       undo: () => runUndoPlan(target, undoPlan),
-      failureTitle: "Failed to undo settle",
+      failureTitle: t("shell.threadActions.undoSettleFailed"),
     });
     return result;
   };
@@ -853,7 +856,7 @@ export function useThreadActions() {
       action: "Snoozed",
       claim: action,
       undo: () => runUndoPlan(target, ThreadUndo.planThreadUndo("snooze")),
-      failureTitle: "Failed to wake thread",
+      failureTitle: t("sidebar.toast.wakeFailed"),
     });
     return result;
   };

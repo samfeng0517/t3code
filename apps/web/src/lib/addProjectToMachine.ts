@@ -12,6 +12,7 @@ import type {
 } from "@t3tools/contracts";
 import { create } from "zustand";
 
+import { t } from "../i18n";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { suggestAppAccessForRemote } from "../components/sourceControlAppAccessToast";
 import { environmentProjectClonesAtom, silenceProjectCloneToasts } from "../state/projectClones";
@@ -43,7 +44,7 @@ export interface AddProjectToMachineInput {
 
 function failureMessage(result: Parameters<typeof squashAtomCommandFailure>[0]): string {
   const error = squashAtomCommandFailure(result);
-  return error instanceof Error ? error.message : "An error occurred.";
+  return error instanceof Error ? error.message : t("common.errorOccurred");
 }
 
 /**
@@ -115,7 +116,7 @@ export async function addProjectToMachine(input: AddProjectToMachineInput): Prom
         { label: "Read file to copy", reportFailure: false, refresh: true },
       );
       if (result._tag === "Failure") return { relativePath, error: failureMessage(result) };
-      if (result.value.truncated) return { relativePath, error: "Too large to copy." };
+      if (result.value.truncated) return { relativePath, error: t("shell.addToMachine.tooLarge") };
       return { relativePath, contents: result.value.contents };
     }),
   );
@@ -183,7 +184,12 @@ export async function addProjectToMachine(input: AddProjectToMachineInput): Prom
         ? null
         : {
             phase: "failed",
-            title: `Could not copy ${failed.length} ${failed.length === 1 ? "file" : "files"} to ${input.target.label}`,
+            title: t(
+              failed.length === 1
+                ? "shell.addToMachine.copyFailed.one"
+                : "shell.addToMachine.copyFailed.other",
+              { count: failed.length, machine: input.target.label },
+            ),
             failures: failed,
           },
     );

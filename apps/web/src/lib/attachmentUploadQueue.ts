@@ -29,6 +29,7 @@ import { assetEnvironment } from "../state/assets";
 import { attachmentEnvironment } from "../state/attachments";
 import { readEnvironmentScope, readPreparedConnection } from "../state/session";
 import type { AttachmentUploadState, ReadyAttachmentUpload } from "./attachmentUploadState";
+import { t } from "../i18n";
 
 const MAX_UPLOADS_PER_ENVIRONMENT = 3;
 const UPLOAD_TIMEOUT_MS = 5 * 60_000;
@@ -152,12 +153,12 @@ function uploadBytes(input: {
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
       } else {
-        reject(new Error(`Upload rejected (${xhr.status})`));
+        reject(new Error(t("chatView.upload.rejected", { status: xhr.status })));
       }
     });
-    xhr.addEventListener("error", () => reject(new Error("Upload failed")));
-    xhr.addEventListener("timeout", () => reject(new Error("Upload timed out")));
-    xhr.addEventListener("abort", () => reject(new Error("Upload cancelled")));
+    xhr.addEventListener("error", () => reject(new Error(t("chatView.upload.failed"))));
+    xhr.addEventListener("timeout", () => reject(new Error(t("chatView.upload.timedOut"))));
+    xhr.addEventListener("abort", () => reject(new Error(t("chatView.upload.cancelled"))));
     xhr.send(input.file);
   });
 
@@ -169,7 +170,7 @@ async function runUpload(job: UploadJob): Promise<void> {
     setUploadState(job.image.id, {
       status: "failed",
       environmentId: job.environmentId,
-      reason: "This connection cannot upload attachments.",
+      reason: t("chatView.upload.cannotUpload"),
       ...(job.previous ? { previous: job.previous } : {}),
     });
     return;
@@ -217,8 +218,8 @@ async function runUpload(job: UploadJob): Promise<void> {
         environmentId: job.environmentId,
         reason:
           verification.status === "missing"
-            ? "Uploaded file expired. Remove it and attach it again."
-            : "Uploaded file could not be verified. Retry when the server reconnects.",
+            ? t("chatView.upload.expired")
+            : t("chatView.upload.couldNotVerify"),
         ...(job.previous ? { previous: job.previous } : {}),
       });
       return;
@@ -235,7 +236,7 @@ async function runUpload(job: UploadJob): Promise<void> {
     setUploadState(job.image.id, {
       status: "failed",
       environmentId: job.environmentId,
-      reason: "Unsupported image type",
+      reason: t("chatView.upload.unsupportedImageType"),
       ...(job.previous ? { previous: job.previous } : {}),
     });
     return;
@@ -245,7 +246,7 @@ async function runUpload(job: UploadJob): Promise<void> {
     setUploadState(job.image.id, {
       status: "failed",
       environmentId: job.environmentId,
-      reason: "Original file is no longer available",
+      reason: t("chatView.upload.originalUnavailable"),
       ...(job.previous ? { previous: job.previous } : {}),
     });
     return;
@@ -256,7 +257,7 @@ async function runUpload(job: UploadJob): Promise<void> {
     setUploadState(job.image.id, {
       status: "failed",
       environmentId: job.environmentId,
-      reason: "This connection cannot upload attachments.",
+      reason: t("chatView.upload.cannotUpload"),
       ...(job.previous ? { previous: job.previous } : {}),
     });
     return;
@@ -333,14 +334,14 @@ async function runUpload(job: UploadJob): Promise<void> {
     environmentId: job.environmentId,
     reason:
       result.step === "mint"
-        ? "Upload could not start"
+        ? t("chatView.upload.couldNotStart")
         : result.step === "resolve-url"
           ? readEnvironmentScope(job.environmentId, AuthOrchestrationOperateScope)
-            ? "Not connected"
-            : "This connection cannot upload attachments."
+            ? t("chatView.upload.notConnected")
+            : t("chatView.upload.cannotUpload")
           : result.error instanceof Error
             ? result.error.message
-            : "Upload failed",
+            : t("chatView.upload.failed"),
     ...(result.attachmentId ? { attachmentId: result.attachmentId } : {}),
     ...(job.previous ? { previous: job.previous } : {}),
   });
@@ -366,7 +367,7 @@ function pumpUploads(): void {
           setUploadState(job.image.id, {
             status: "failed",
             environmentId: job.environmentId,
-            reason: "Upload failed",
+            reason: t("chatView.upload.failed"),
             ...(job.previous ? { previous: job.previous } : {}),
           });
         }

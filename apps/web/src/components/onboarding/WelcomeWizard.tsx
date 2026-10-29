@@ -374,7 +374,8 @@ function ConnectionStep({
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {!environment.entry.enabled && environment.connection.phase !== "unsupported"
                       ? t("onboarding.connection.off")
-                      : presentSavedCloudEnvironmentConnection(environment.connection).buttonLabel}
+                      : presentSavedCloudEnvironmentConnection(environment.connection, t)
+                          .buttonLabel}
                   </span>
                 </span>
                 {environment.displayUrl ? (
@@ -987,7 +988,7 @@ function AgentCard({
   const meta = providerClients.get(ProviderDriverKind.make(driver));
   const displayName =
     provider?.displayName || (driver === "claudeAgent" ? "Claude Code" : (meta?.label ?? driver));
-  const summary = getProviderSummary(provider);
+  const summary = getProviderSummary(provider, t);
   const providerState = getOnboardingProviderState(provider);
 
   return (

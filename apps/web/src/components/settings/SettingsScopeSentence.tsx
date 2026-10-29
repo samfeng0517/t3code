@@ -27,6 +27,7 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { useOptionalSettingsScope } from "./SettingsScopeContext";
+import { useT } from "~/i18n";
 import { resolveSettingsScope, type SettingsScopeSearch } from "./settingsScope";
 import {
   ALL_ENVIRONMENTS_VALUE,
@@ -63,6 +64,7 @@ interface SettingsScopeMenuProps {
 }
 
 export function SettingsScopeSentence() {
+  const t = useT();
   const scope = useOptionalSettingsScope();
   const pathname = useLocation({ select: (location) => location.pathname });
   const { environments } = useEnvironments();
@@ -77,12 +79,14 @@ export function SettingsScopeSentence() {
   return (
     <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 px-3 text-sm text-muted-foreground sm:px-4">
       <span className="flex min-w-0 items-center gap-1.5">
-        <span className="shrink-0">Applying settings for</span>
+        <span className="shrink-0">{t("settingsMisc.scope.applyingFor")}</span>
         <ProjectScopeMenu {...props} />
       </span>
       <span className="flex min-w-0 items-center gap-1.5">
         <span className="shrink-0">
-          {scope.search.machine || scope.scope.kind === "checkout" ? "on" : "across"}
+          {scope.search.machine || scope.scope.kind === "checkout"
+            ? t("settingsMisc.scope.on")
+            : t("settingsMisc.scope.across")}
         </span>
         <EnvironmentScopeMenu {...props} />
       </span>
@@ -99,6 +103,7 @@ interface ScopeOption {
 }
 
 function ScopeOptionLabel({ option }: { option: ScopeOption }) {
+  const t = useT();
   return (
     <>
       {option.icon}
@@ -109,7 +114,9 @@ function ScopeOptionLabel({ option }: { option: ScopeOption }) {
         ) : null}
       </span>
       {option.offline ? (
-        <span className="shrink-0 text-xs text-muted-foreground">Offline</span>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {t("settingsMisc.scope.offline")}
+        </span>
       ) : null}
     </>
   );
@@ -134,6 +141,7 @@ function ScopeMenu({
   searchLabel: string;
   onChange: (next: string) => void;
 }) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const Trigger = options.length > 6 ? ComboboxTrigger : MenuTrigger;
   const trigger = (
@@ -181,7 +189,7 @@ function ScopeMenu({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          <ComboboxEmpty>No matches found.</ComboboxEmpty>
+          <ComboboxEmpty>{t("settingsMisc.scope.noMatches")}</ComboboxEmpty>
           <ComboboxList>
             {(option: ScopeOption) => (
               <ComboboxItem key={option.value} value={option}>
@@ -232,7 +240,8 @@ function EnvironmentScopeMenu({
   onChange,
   singleEnvironment,
 }: SettingsScopeMenuProps) {
-  const resolved = resolveSettingsScope(value, groups, environments);
+  const t = useT();
+  const resolved = resolveSettingsScope(value, groups, environments, t);
   const environmentValue = environmentAxisValue(
     value,
     resolved.kind === "checkout" ? resolved.environmentId : null,
@@ -249,7 +258,7 @@ function EnvironmentScopeMenu({
     : environments;
   return (
     <ScopeMenu
-      ariaLabel="Environment scope"
+      ariaLabel={t("settingsMisc.scope.environmentScope")}
       icon={
         selected ? (
           <EnvironmentMachineIcon
@@ -263,20 +272,20 @@ function EnvironmentScopeMenu({
         selected
           ? settingsScopeEnvironmentLabel(selected, environments)
           : environmentValue !== ALL_ENVIRONMENTS_VALUE
-            ? "Unavailable environment"
+            ? t("settingsMisc.scope.unavailableEnvironment")
             : singleEnvironment
-              ? "No environments"
-              : "All environments"
+              ? t("settingsMisc.scope.noEnvironments")
+              : t("settingsMisc.scope.allEnvironments")
       }
       value={environmentValue}
       onChange={(next) => onChange(selectEnvironmentAxis(value, next))}
-      searchLabel="Search environments"
+      searchLabel={t("settingsMisc.scope.searchEnvironments")}
       allOption={
         singleEnvironment
           ? null
           : {
               value: ALL_ENVIRONMENTS_VALUE,
-              label: "All environments",
+              label: t("settingsMisc.scope.allEnvironments"),
               icon: <LayersIcon aria-hidden className="size-3.5 shrink-0" />,
             }
       }
@@ -304,6 +313,7 @@ function EnvironmentScopeMenu({
 }
 
 function ProjectScopeMenu({ value, groups, environments, onChange }: SettingsScopeMenuProps) {
+  const t = useT();
   const selected = groups.find((group) => group.projectKey === value.project);
   const projects = projectScopeMenuGroups(groups, value).map((group) => ({
     group,
@@ -311,13 +321,18 @@ function ProjectScopeMenu({ value, groups, environments, onChange }: SettingsSco
   }));
   return (
     <ScopeMenu
-      ariaLabel="Project scope"
+      ariaLabel={t("settingsMisc.scope.projectScope")}
       icon={selected ? <ProjectFavicon project={selected} className="size-3.5 shrink-0" /> : null}
-      label={selected?.displayName ?? (value.project ? "Unavailable project" : "All projects")}
+      label={
+        selected?.displayName ??
+        (value.project
+          ? t("settingsMisc.scope.unavailableProject")
+          : t("settingsMisc.scope.allProjects"))
+      }
       value={projectAxisValue(value)}
       onChange={(next) => onChange(selectProjectAxis(value, next))}
-      searchLabel="Search projects"
-      allOption={{ value: ALL_PROJECTS_VALUE, label: "All projects" }}
+      searchLabel={t("settingsMisc.scope.searchProjects")}
+      allOption={{ value: ALL_PROJECTS_VALUE, label: t("settingsMisc.scope.allProjects") }}
       options={projects.map(({ group, machines }) => {
         const sameName = projects.filter(
           (other) =>

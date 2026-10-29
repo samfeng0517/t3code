@@ -5,12 +5,14 @@ import {
 } from "@t3tools/client-runtime/source-control-clients";
 import { ArrowRightIcon } from "lucide-react";
 
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 
 import { resolvePullRequestState } from "./pullRequest/pullRequestPresentation";
 
 export function PullRequestContextDetails({ metadata }: { metadata: PullRequestContextMetadata }) {
-  const state = resolvePullRequestState(metadata);
+  const t = useT();
+  const state = resolvePullRequestState(metadata, t);
   // A context chip carries the change request's URL alone, so the URL names its host.
   const { singular } = (
     sourceControlClients.findByChangeRequestUrl(metadata.url) ?? sourceControlClients.get(undefined)

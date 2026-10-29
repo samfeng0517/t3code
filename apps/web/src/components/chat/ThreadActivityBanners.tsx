@@ -20,6 +20,7 @@ import {
   TerminalIcon,
 } from "lucide-react";
 import { Fragment } from "react";
+import { t as globalT, type Translate } from "~/i18n";
 import { tickTextContent } from "~/lib/tickTextContent";
 import { cn } from "~/lib/utils";
 import { Button, InlineButton } from "../ui/button";
@@ -32,8 +33,10 @@ export function childInputNowItem(input: {
   readonly childThreadInputs: ReadonlyArray<EnvironmentThreadShell>;
   readonly parentAwaitingUser: boolean;
   readonly onOpenThread: (threadId: ThreadId) => void;
+  readonly t?: Translate;
 }): ThreadNowItem | null {
   const { childThreadInputs, onOpenThread } = input;
+  const t = input.t ?? globalT;
   const first = childThreadInputs[0];
   if (!first || input.parentAwaitingUser) return null;
   return {
@@ -58,7 +61,9 @@ export function childInputNowItem(input: {
     )),
     actions: (
       <InlineButton onClick={() => onOpenThread(first.id)}>
-        {first.hasPendingApprovals ? "Open approval" : "Open question"}
+        {first.hasPendingApprovals
+          ? t("timeline.nowItem.openApproval")
+          : t("timeline.nowItem.openQuestion")}
       </InlineButton>
     ),
   };
@@ -70,8 +75,10 @@ export function goalNowItem(input: {
   readonly goal: OrchestrationV2ProviderGoal;
   readonly isWorking: boolean;
   readonly onSendCommand: (text: string, failureMessage: string) => Promise<void>;
+  readonly t?: Translate;
 }): ThreadNowItem {
   const { isWorking, onSendCommand } = input;
+  const t = input.t ?? globalT;
   const presentation = presentProviderGoal(input.goal, isWorking);
   return {
     id: `goal:${input.threadId}`,
@@ -87,18 +94,20 @@ export function goalNowItem(input: {
         {presentation.canResume && !isWorking ? (
           <>
             <InlineButton
-              onClick={() => void onSendCommand("/goal resume", "Failed to resume goal.")}
+              onClick={() =>
+                void onSendCommand("/goal resume", t("timeline.nowItem.goalResumeFailed"))
+              }
             >
-              Resume
+              {t("timeline.nowItem.goalResume")}
             </InlineButton>
             <span aria-hidden>·</span>
           </>
         ) : null}
         <InlineButton
           tone="muted"
-          onClick={() => void onSendCommand("/goal clear", "Failed to clear goal.")}
+          onClick={() => void onSendCommand("/goal clear", t("timeline.nowItem.goalClearFailed"))}
         >
-          Clear
+          {t("timeline.nowItem.goalClear")}
         </InlineButton>
       </>
     ),
@@ -114,8 +123,10 @@ export function backgroundWorkNowItem(input: {
   readonly stopping: boolean;
   readonly onStop: () => Promise<void>;
   readonly onOpenThread: (threadId: ThreadId) => void;
+  readonly t?: Translate;
 }): ThreadNowItem | null {
   const { onOpenThread } = input;
+  const t = input.t ?? globalT;
   const presentation = presentPendingBackgroundWork(input.tasks);
   if (presentation === null) return null;
   const rows = presentation.items.map((task) => {
@@ -137,7 +148,9 @@ export function backgroundWorkNowItem(input: {
     .filter((row) => row.activity)
     .toSorted((left, right) => right.updatedAtMs - left.updatedAtMs)[0];
   const isCommand = (row: (typeof rows)[number]) => row.task.kind !== "subagent";
-  const verb = presentation.waiting ? "Waiting on" : "Running";
+  const verb = presentation.waiting
+    ? t("timeline.nowItem.waitingOn")
+    : t("timeline.nowItem.running");
   const onlyThreadId = only?.childThreadId;
   const startedAtMs = only?.startedAtMs ?? null;
   return {
@@ -172,11 +185,11 @@ export function backgroundWorkNowItem(input: {
         )}
         {onlyThreadId === undefined ? null : (
           <InlineButton tone="muted" onClick={() => onOpenThread(onlyThreadId)}>
-            Open
+            {t("timeline.nowItem.open")}
           </InlineButton>
         )}
         <InlineButton disabled={input.stopDisabled} onClick={() => void input.onStop()}>
-          {input.stopping ? "Stopping..." : "Stop"}
+          {input.stopping ? t("timeline.nowItem.stopping") : t("timeline.nowItem.stop")}
         </InlineButton>
       </>
     ),
@@ -191,15 +204,19 @@ export function branchMismatchBannerItem(input: {
   readonly restoring: boolean;
   readonly onRestore: () => void;
   readonly onDismiss: () => void;
+  readonly t?: Translate;
 }): ComposerBannerStackItem {
   const { mismatch } = input;
+  const t = input.t ?? globalT;
   return {
     id: `branch-mismatch:${input.mismatchKey}`,
     variant: "info",
     icon: <GitBranchIcon />,
     title: (
       <span className="flex min-w-0 items-baseline gap-1.5">
-        <span className="shrink-0 font-normal text-muted-foreground">Branch changed from</span>
+        <span className="shrink-0 font-normal text-muted-foreground">
+          {t("timeline.nowItem.branchChangedFrom")}
+        </span>
         <Tooltip>
           <TooltipTrigger
             render={
@@ -209,18 +226,20 @@ export function branchMismatchBannerItem(input: {
             }
           />
           <TooltipPopup side="top">
-            This thread last ran on {mismatch.threadBranch}. Sending will continue on{" "}
-            {mismatch.currentBranch}.
+            {t("timeline.nowItem.branchChangedTooltip", {
+              threadBranch: mismatch.threadBranch,
+              currentBranch: mismatch.currentBranch,
+            })}
           </TooltipPopup>
         </Tooltip>
       </span>
     ),
     actions: (
       <Button size="xs" variant="ghost" disabled={input.restoreDisabled} onClick={input.onRestore}>
-        {input.restoring ? "Restoring..." : "Restore branch"}
+        {input.restoring ? t("timeline.nowItem.restoring") : t("timeline.nowItem.restoreBranch")}
       </Button>
     ),
-    dismissLabel: "Dismiss branch change notice",
+    dismissLabel: t("timeline.nowItem.dismissBranchChange"),
     onDismiss: input.onDismiss,
   };
 }

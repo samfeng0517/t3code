@@ -1,4 +1,5 @@
 import type { EnvironmentId, SshDeviceHostConfig } from "@t3tools/contracts";
+import { t as globalT } from "~/i18n";
 
 export interface DeviceHostEnvironment {
   readonly environmentId: EnvironmentId;
@@ -65,9 +66,7 @@ export function updateDeviceHosts(
   const findDestination = (destination: SshDeviceHostConfig) => {
     const matches = hosts.filter((candidate) => sameDestination(candidate, destination));
     if (matches.length > 1) {
-      throw new Error(
-        "Multiple hosts match this SSH destination. Select the environment to edit its hosts.",
-      );
+      throw new Error(globalT("device.hosts.ambiguousDestination"));
     }
     return matches[0];
   };

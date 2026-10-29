@@ -1,4 +1,5 @@
 import { workspaceAreaProps } from "../lib/workspaceFocus";
+import { useT } from "../i18n";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { queuedRunEditBlockedReason } from "@t3tools/client-runtime/queued-run-edit";
 import { ScrollToEndButton, WorkspaceFileDropOverlay } from "./chat/TimelineOverlays";
@@ -315,6 +316,7 @@ import { resolveThreadSyncPhase } from "../threadSync";
 import {
   hasAvailableCompactionProvider,
   hasDismissedResumeCompaction,
+  resolveContextWindowModelDisplayName,
   shouldOfferResumeCompaction,
 } from "./chat/ContextWindowMeter.logic";
 import {
@@ -406,6 +408,7 @@ type ChatViewProps =
     };
 
 export default function ChatView(props: ChatViewProps) {
+  const t = useT();
   const {
     environmentId,
     threadId,
@@ -625,8 +628,8 @@ export default function ChatView(props: ChatViewProps) {
     if (!inserted) {
       toastManager.add({
         type: "warning",
-        title: "The composer is not ready",
-        description: "Try citing the selection after the connection or pending input is resolved.",
+        title: t("chatView.citeNotReady.title"),
+        description: t("chatView.citeNotReady.description"),
       });
     }
     return inserted;
@@ -705,8 +708,8 @@ export default function ChatView(props: ChatViewProps) {
   const legendListRef = useRef<LegendListRef | null>(null);
   const getTimelineScrollableNode = () => legendListRef.current?.getScrollableNode() ?? null;
   const getTimelineScrollableNodeStable = useStableCallback(getTimelineScrollableNode);
-  const conversationArea = workspaceAreaProps("conversation", 1, "Conversation");
-  const composerArea = workspaceAreaProps("composer", 2, "Message input");
+  const conversationArea = workspaceAreaProps("conversation", 1, t("chatView.area.conversation"));
+  const composerArea = workspaceAreaProps("composer", 2, t("chatView.area.messageInput"));
   const [composerOverlayElement, setComposerOverlayElement] = useState<HTMLDivElement | null>(null);
   const [composerTimelineInset, setComposerTimelineInset] = useState(0);
   const composerTimelineInsetRef = useRef(0);
@@ -847,7 +850,7 @@ export default function ChatView(props: ChatViewProps) {
   const parentThreadLink = (() => {
     if (parentSubagentThreadRef !== null) {
       return {
-        title: parentSubagentThread?.title ?? "Parent thread",
+        title: parentSubagentThread?.title ?? t("chatView.header.parentThread"),
         open: (): void => {
           void navigate({
             to: "/$environmentId/$threadId",
@@ -880,7 +883,7 @@ export default function ChatView(props: ChatViewProps) {
       ? null
       : {
           threadId: parentSubagentThreadRef.threadId,
-          title: parentSubagentThread?.title ?? "Parent thread",
+          title: parentSubagentThread?.title ?? t("chatView.header.parentThread"),
         };
   const threadError = isServerThread
     ? (localServerError ?? serverRuntime?.lastError ?? null)
@@ -1422,7 +1425,7 @@ export default function ChatView(props: ChatViewProps) {
   const downloadFileAttachment = async (attachment: ChatFileAttachment) => {
     const connection = readPreparedConnection(environmentId);
     if (!connection) {
-      toastManager.add({ type: "error", title: "The environment is not connected." });
+      toastManager.add({ type: "error", title: t("chatView.attachments.environmentNotConnected") });
       return;
     }
 
@@ -1440,8 +1443,8 @@ export default function ChatView(props: ChatViewProps) {
     } catch (error) {
       toastManager.add({
         type: "error",
-        title: "Could not download " + attachment.name,
-        description: error instanceof Error ? error.message : "The attachment is unavailable.",
+        title: t("chatView.attachments.couldNotDownload", { name: attachment.name }),
+        description: error instanceof Error ? error.message : t("chatView.attachments.unavailable"),
       });
     }
   };
@@ -1780,7 +1783,7 @@ export default function ChatView(props: ChatViewProps) {
       const error = squashAtomCommandFailure(result);
       setThreadError(
         activeThread.id,
-        error instanceof Error ? error.message : "Failed to interrupt the current turn.",
+        error instanceof Error ? error.message : t("chatView.interruptFailed"),
       );
     }
   };
@@ -1802,8 +1805,8 @@ export default function ChatView(props: ChatViewProps) {
     if (prompt !== null && !composer.insertTextAtEnd(prompt, { ensureLeadingBoundary: true })) {
       toastManager.add({
         type: "error",
-        title: "Unable to add to chat",
-        description: "The composer is busy; try again once it is ready.",
+        title: t("composer.toast.addToChatFailed"),
+        description: t("composer.toast.composerBusy"),
       });
       return;
     }
@@ -2435,12 +2438,12 @@ export default function ChatView(props: ChatViewProps) {
   const compactDisabled = compactThreadUnavailable;
   const compactDisabledReason = compactDisabled
     ? !canOperateThread
-      ? "This connection cannot change threads."
+      ? t("chatView.send.cannotChangeThreads")
       : !activeProject
-        ? "Choose a project before compacting"
+        ? t("chatView.compact.chooseProject")
         : !manualCompactionProviderAvailable
-          ? "Compaction is unavailable for this provider"
-          : "Compacting is unavailable right now"
+          ? t("chatView.compact.providerUnavailable")
+          : t("composer.compact.unavailable")
     : null;
   const resumeCompactionTokens =
     activeContextWindow &&
@@ -2487,35 +2490,42 @@ export default function ChatView(props: ChatViewProps) {
   };
   const handleRestoreThreadBranchStable = useStableCallback(handleRestoreThreadBranch);
   const feedbackBannerItems = feedbackSubmissions.flatMap((submission) => {
-    const item = feedbackBannerItem(submission, () => {
-      setFeedbackSubmissionsByThreadKey((current) => ({
-        ...current,
-        [routeThreadKey]: (current[routeThreadKey] ?? []).filter(
-          (entry) => entry.id !== submission.id,
-        ),
-      }));
-    });
+    const item = feedbackBannerItem(
+      submission,
+      () => {
+        setFeedbackSubmissionsByThreadKey((current) => ({
+          ...current,
+          [routeThreadKey]: (current[routeThreadKey] ?? []).filter(
+            (entry) => entry.id !== submission.id,
+          ),
+        }));
+      },
+      t,
+    );
     return item ? [item] : [];
   });
   const limitRecoveryBanner =
     serverRuntime?.status === "failed" &&
     serverRuntime.lastErrorClass === "usage_limit" &&
     activeThreadShell?.latestRun
-      ? usageLimitRecoveryBannerItem({
-          runId: activeThreadShell.latestRun.runId,
-          resetAt: serverRuntime.usageLimitResetAt ?? null,
-          stoppedAt: activeThreadShell.latestRun.completedAt ?? activeThreadShell.updatedAt,
-          recovery: activeThreadShell.limitRecovery ?? null,
-          snoozedUntil: activeThreadShell.snoozedUntil,
-          timestampFormat,
-          onChange: async (limitRecovery) => {
-            const result = await updateThreadMetadata({
-              environmentId,
-              input: { threadId: activeThreadShell.id, limitRecovery },
-            });
-            if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+      ? usageLimitRecoveryBannerItem(
+          {
+            runId: activeThreadShell.latestRun.runId,
+            resetAt: serverRuntime.usageLimitResetAt ?? null,
+            stoppedAt: activeThreadShell.latestRun.completedAt ?? activeThreadShell.updatedAt,
+            recovery: activeThreadShell.limitRecovery ?? null,
+            snoozedUntil: activeThreadShell.snoozedUntil,
+            timestampFormat,
+            onChange: async (limitRecovery) => {
+              const result = await updateThreadMetadata({
+                environmentId,
+                input: { threadId: activeThreadShell.id, limitRecovery },
+              });
+              if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+            },
           },
-        })
+          t,
+        )
       : null;
   const composerBannerItems = (() => {
     const limitRecoveryItems = limitRecoveryBanner === null ? [] : [limitRecoveryBanner];
@@ -2546,6 +2556,7 @@ export default function ChatView(props: ChatViewProps) {
           dismissBranchMismatchForSession(activeBranchMismatchKey);
           setBranchMismatchDismissTick((tick) => tick + 1);
         },
+        t,
       }),
     ];
   })() as ComposerBannerStackItem[];
@@ -2678,7 +2689,7 @@ export default function ChatView(props: ChatViewProps) {
     });
   const onCompactContext = () => {
     if (compactDisabled) return;
-    void sendStandaloneCommand("/compact", "Failed to compact context.");
+    void sendStandaloneCommand("/compact", t("chatView.compact.failed"));
   };
 
   const {
@@ -2956,8 +2967,8 @@ export default function ChatView(props: ChatViewProps) {
     );
   const scrollToEndSummary =
     [
-      childInputNow === null ? null : "Subagent waiting",
-      queuedRunCount === 0 ? null : `${queuedRunCount} queued`,
+      childInputNow === null ? null : t("chatView.scrollSummary.subagentWaiting"),
+      queuedRunCount === 0 ? null : t("composer.queue.count", { count: queuedRunCount }),
     ]
       .filter((part) => part !== null)
       .join(" · ") || null;
@@ -3466,17 +3477,17 @@ export default function ChatView(props: ChatViewProps) {
                               isRevertingCheckpoint={isRevertingCheckpoint}
                               sendDisabledReason={
                                 !canOperateThread
-                                  ? "This connection cannot change threads."
+                                  ? t("chatView.send.cannotChangeThreads")
                                   : isEnvironmentChanging
-                                    ? "Preparing machine"
+                                    ? t("chatView.sendBlocked.preparingMachine")
                                     : isRevertingCheckpoint
-                                      ? "Rewinding conversation"
+                                      ? t("chatView.sendBlocked.rewinding")
                                       : feedbackUploading
-                                        ? "Sending feedback"
+                                        ? t("chatView.sendBlocked.sendingFeedback")
                                         : threadDetailLoading
-                                          ? "Messages loading"
+                                          ? t("chatView.sendBlocked.messagesLoading")
                                           : worktreeSetupBlocksSend
-                                            ? "Preparing worktree"
+                                            ? t("composer.send.status.preparingWorktree")
                                             : projectCloneSendBlockReason
                               }
                               isPreparingWorktree={isPreparingWorktree && !sendQueuesBehindSetup}
@@ -3686,6 +3697,14 @@ export default function ChatView(props: ChatViewProps) {
 
             <ThreadDetailsPanel
               anchor={threadPanelPopoverAnchorRef}
+              contextWindow={activeContextWindow}
+              contextModelDisplayName={resolveContextWindowModelDisplayName(
+                activeThread.modelSelection,
+                new Map(providerInstanceEntries.map((entry) => [entry.instanceId, entry.models])),
+              )}
+              onCompactContext={onComposerCompactContextStable}
+              compactDisabled={compactDisabled || isSendBusy}
+              compactDisabledReason={compactDisabledReason}
               handle={threadPanelPopoverHandle}
               forceNewWorktree={multipleModelSelections !== null}
               environmentId={activeThread.environmentId}
@@ -3823,6 +3842,7 @@ export default function ChatView(props: ChatViewProps) {
           filesAvailable={activeProject !== null}
           pullRequestAvailable={pullRequestSurfaceAvailable}
           pullRequestsAvailable={pullRequestsSurfaceAvailable}
+          changeRequestProviderKind={activeProject?.repositoryIdentity?.provider}
           deviceAvailable={activeThreadRef !== null}
         >
           {rightPanelContent}

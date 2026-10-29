@@ -938,6 +938,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const providerSendBlockReason = getAntigravitySendBlockReason(
     selectedProviderEntry?.snapshot,
     selectedModel,
+    t,
   );
   const sendDisabledReason =
     externalSendDisabledReason ??

@@ -1,6 +1,7 @@
 import type { EnvironmentId, PullRequestRef, PullRequestReviewGuide } from "@t3tools/contracts";
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 
+import { useT } from "~/i18n";
 import { createPullRequestDiffFileContentsLoader } from "~/lib/diffFileContents";
 import { isEditableFocused } from "~/lib/editableFocus";
 import { pullRequestEnvironment } from "~/state/pullRequests";
@@ -42,6 +43,7 @@ export function GuideTour({
   onFinish: (() => void) | null;
   onOpenFile: (path: string) => void;
 }) {
+  const t = useT();
   const key = guideProgressKey(guideRunKey(environmentId, reference), guide.headSha);
   const tour = useGuideProgress(key);
   const update = (change: (current: GuideProgress) => Partial<GuideProgress>) =>
@@ -104,11 +106,11 @@ export function GuideTour({
           {banner}
           {diff.error !== null ? (
             <p className="text-xs text-muted-foreground">
-              The diff could not be loaded, so excerpts are missing: {diff.error}
+              {t("pullRequestDetail.guide.diffMissing", { error: diff.error })}
             </p>
           ) : null}
           {stop === null ? (
-            <p className="text-sm text-muted-foreground">This change has no files to tour.</p>
+            <p className="text-sm text-muted-foreground">{t("pullRequestDetail.guide.noFiles")}</p>
           ) : (
             <GuideStop
               key={position}

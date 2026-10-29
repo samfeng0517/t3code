@@ -1,4 +1,5 @@
 import { type RunId } from "@t3tools/contracts";
+import { useT } from "~/i18n";
 import { type MouseEvent, type ReactNode, memo, useLayoutEffect, useRef, useState } from "react";
 import { type TurnDiffFileChange } from "../../types";
 import {
@@ -46,6 +47,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
     onOpenTurnDiff,
     onFileContextMenu,
   } = props;
+  const t = useT();
   const summaryStat = summarizeTurnDiffStats(files);
   const hasDirectories = files.some((file) => /[/\\]/.test(file.path));
 
@@ -60,7 +62,12 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
       >
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-foreground">
           <span>
-            {files.length} changed file{files.length === 1 ? "" : "s"}
+            {t(
+              files.length === 1
+                ? "legacySidebar.misc.changedFiles.count.one"
+                : "legacySidebar.misc.changedFiles.count.other",
+              { count: files.length },
+            )}
           </span>
           {hasNonZeroStat(summaryStat) && (
             <DiffStatLabel
@@ -80,9 +87,11 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
                     type="button"
                     size="icon-xs"
                     variant="ghost-muted"
-                    aria-label={
-                      allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"
-                    }
+                    aria-label={t(
+                      allDirectoriesExpanded
+                        ? "legacySidebar.misc.changedFiles.collapseAll"
+                        : "legacySidebar.misc.changedFiles.expandAll",
+                    )}
                     data-scroll-anchor-ignore
                     onClick={onToggleAllDirectories}
                   />
@@ -94,7 +103,11 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
                 />
               </TooltipTrigger>
               <TooltipPopup side="top">
-                {allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"}
+                {t(
+                  allDirectoriesExpanded
+                    ? "legacySidebar.misc.changedFiles.collapseAll"
+                    : "legacySidebar.misc.changedFiles.expandAll",
+                )}
               </TooltipPopup>
             </Tooltip>
           )}
@@ -105,15 +118,19 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
                   type="button"
                   size="xs"
                   variant="ghost-muted"
-                  aria-label="Open diff"
+                  aria-label={t("legacySidebar.misc.changedFiles.openDiff")}
                   onClick={() => onOpenTurnDiff(runId, files[0]?.path)}
                 />
               }
             >
               <FileDiffIcon className="size-3" />
-              <span className="hidden @[24rem]/changed-files:inline">Open diff</span>
+              <span className="hidden @[24rem]/changed-files:inline">
+                {t("legacySidebar.misc.changedFiles.openDiff")}
+              </span>
             </TooltipTrigger>
-            <TooltipPopup side="top">Open the full diff</TooltipPopup>
+            <TooltipPopup side="top">
+              {t("legacySidebar.misc.changedFiles.openFullDiff")}
+            </TooltipPopup>
           </Tooltip>
         </div>
       </div>

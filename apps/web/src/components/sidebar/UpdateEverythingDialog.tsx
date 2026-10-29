@@ -4,7 +4,7 @@ import { Atom } from "effect/reactivity";
 import { ChevronRightIcon } from "lucide-react";
 import { Fragment, type RefObject, useRef } from "react";
 
-import { useT } from "~/i18n";
+import { useT, type MessageKey } from "~/i18n";
 import { environmentThreadShells } from "~/state/threads";
 import {
   AlertDialog,
@@ -77,11 +77,11 @@ export function UpdateEverythingDialog({
   );
 }
 
-const APP_LABELS = {
-  "this-app": "This app",
-  server: "Server",
-  "desktop-app": "Desktop app",
-} as const;
+const APP_LABEL_KEYS = {
+  "this-app": "sidebar.updateRun.thisApp",
+  server: "shell.updateDialog.server",
+  "desktop-app": "shell.updateDialog.desktopApp",
+} as const satisfies Record<string, MessageKey>;
 
 function UpdateEverythingDialogContent({
   version,
@@ -123,7 +123,12 @@ function UpdateEverythingDialogContent({
     <>
       <AlertDialogHeader className="shrink-0">
         <AlertDialogTitle>
-          Update {updating.length} {updating.length === 1 ? "machine" : "machines"}?
+          {t(
+            updating.length === 1
+              ? "shell.updateDialog.title.one"
+              : "shell.updateDialog.title.other",
+            { count: updating.length },
+          )}
         </AlertDialogTitle>
         <AlertDialogDescription>
           {version !== null ? (
@@ -133,7 +138,12 @@ function UpdateEverythingDialogContent({
           ) : null}
           {version !== null && providerCount > 0 ? " · " : null}
           {providerCount > 0
-            ? `${providerCount} provider ${providerCount === 1 ? "update" : "updates"}`
+            ? t(
+                providerCount === 1
+                  ? "shell.updateDialog.providerUpdates.one"
+                  : "shell.updateDialog.providerUpdates.other",
+                { count: providerCount },
+              )
             : null}
         </AlertDialogDescription>
       </AlertDialogHeader>
@@ -142,9 +152,9 @@ function UpdateEverythingDialogContent({
           {/* Machine names truncate first. Provider lists wrap between names, never inside one. */}
           <div className="grid grid-cols-[minmax(4rem,max-content)_max-content_minmax(min-content,1fr)_max-content] gap-x-4 text-sm">
             <div className="col-span-full grid grid-cols-subgrid border-b pb-1.5 text-muted-foreground text-xs">
-              <span>Machine</span>
+              <span>{t("shell.updateDialog.machine")}</span>
               <span>T3 Code</span>
-              <span>Providers</span>
+              <span>{t("shell.updateDialog.providers")}</span>
               <span />
             </div>
             {updating.map((row) => (
@@ -156,19 +166,23 @@ function UpdateEverythingDialogContent({
                   <MiddleTruncate value={row.label} />
                 </span>
                 <span>
-                  {row.app !== null ? APP_LABELS[row.app] : null}
+                  {row.app !== null ? t(APP_LABEL_KEYS[row.app]) : null}
                   {row.app === null && row.skipped !== null ? (
-                    <span className="text-muted-foreground">Skipped</span>
+                    <span className="text-muted-foreground">{t("shell.updateDialog.skipped")}</span>
                   ) : null}
                   {row.app === "this-app" ? (
-                    <span className="block text-muted-foreground text-xs">restarts last</span>
+                    <span className="block text-muted-foreground text-xs">
+                      {t("shell.updateDialog.restartsLast")}
+                    </span>
                   ) : null}
                 </span>
                 <span>
                   {row.providers.map((provider, index) => (
                     <Fragment key={provider}>
                       <span className="whitespace-nowrap">{provider}</span>
-                      {index < row.providers.length - 1 ? ", " : null}
+                      {index < row.providers.length - 1
+                        ? t("sidebar.updateSummary.listSeparator")
+                        : null}
                     </Fragment>
                   ))}
                 </span>
@@ -184,7 +198,7 @@ function UpdateEverythingDialogContent({
             <Collapsible>
               <CollapsibleTrigger className="flex items-center gap-1 text-muted-foreground text-xs hover:text-foreground data-panel-open:[&_svg]:rotate-90">
                 <ChevronRightIcon className="size-3.5 transition-transform" aria-hidden />
-                {skipped.length} skipped
+                {t("shell.updateDialog.skippedCount", { count: skipped.length })}
               </CollapsibleTrigger>
               <CollapsiblePanel>
                 <div className="grid grid-cols-[minmax(0,max-content)_1fr] gap-x-3 gap-y-0.5 pt-1.5 ps-4.5 text-muted-foreground text-xs">
@@ -222,6 +236,11 @@ function UpdateEverythingDialogContent({
 }
 
 function RunningThreads({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const t = useT();
   const count = useAtomValue(runningThreadCountAtom(environmentId));
-  return count > 0 ? <span className="whitespace-nowrap text-warning">{count} running</span> : null;
+  return count > 0 ? (
+    <span className="whitespace-nowrap text-warning">
+      {t("shell.updateDialog.running", { count })}
+    </span>
+  ) : null;
 }

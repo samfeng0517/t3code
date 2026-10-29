@@ -391,6 +391,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   topFadeEnabled = false,
   historyControls,
 }: MessagesTimelineProps) {
+  const t = useT();
   const listIdentityKey = displayThreadKey ?? routeThreadKey;
   // Snapshot restore positions on identity changes; ongoing scroll writes must not move them.
   // Find open at the opening is part of the snapshot: opening find later
@@ -1117,16 +1118,22 @@ const ConversationTimeline = memo(function ConversationTimeline({
       <div className="messages-timeline-row-frame">
         <div className="chat-content-lane pt-1 sm:pt-2">
           <TimelineSystemDivider
-            label="Subagent of"
+            label={t("legacySidebar.misc.timeline.subagentOf")}
             detail={
               parentThreadLink.environmentLabel === undefined
                 ? parentThreadLink.title
-                : `${parentThreadLink.title} on ${parentThreadLink.environmentLabel}`
+                : t("legacySidebar.misc.timeline.onEnvironment", {
+                    title: parentThreadLink.title,
+                    environment: parentThreadLink.environmentLabel,
+                  })
             }
             icon={BotIcon}
             {...(parentThreadLink.open === undefined
               ? {}
-              : { actionLabel: "Open parent thread", onAction: parentThreadLink.open })}
+              : {
+                  actionLabel: t("legacySidebar.misc.timeline.openParent"),
+                  onAction: parentThreadLink.open,
+                })}
           />
         </div>
       </div>
@@ -1306,7 +1313,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
           className="flex h-full items-center justify-center ps-(--chat-lane-inset-start) pe-(--chat-lane-inset-end)"
           style={{ paddingBottom: emptyPlaceholderInset }}
         >
-          <p className="text-sm text-muted-foreground">Send a message to start the conversation.</p>
+          <p className="text-sm text-muted-foreground">{t("legacySidebar.misc.timeline.empty")}</p>
         </div>
       </>
     );
@@ -1560,6 +1567,7 @@ function ContextCompactionTimelineRow({
 }: {
   row: Extract<TimelineRow, { kind: "context-compaction" }>;
 }) {
+  const t = useT();
   const label =
     row.title && row.label.startsWith("Context compacted")
       ? row.title + row.label.slice("Context compacted".length)
@@ -1573,9 +1581,9 @@ function ContextCompactionTimelineRow({
       )}
       {row.tokenCounts ? (
         <>
-          {row.title ?? "Context compacted"} {row.tokenCounts.before}
+          {row.title ?? t("legacySidebar.misc.timeline.contextCompacted")} {row.tokenCounts.before}
           <ArrowRightIcon aria-hidden="true" className="size-3" />
-          {row.tokenCounts.after} tokens
+          {t("legacySidebar.misc.timeline.tokens", { count: row.tokenCounts.after })}
         </>
       ) : (
         label
@@ -1632,6 +1640,7 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
 }
 
 function AttemptFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "attempt-fold" }> }) {
+  const t = useT();
   const ctx = use(TimelineRowCtx);
 
   return (
@@ -1648,7 +1657,9 @@ function AttemptFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "at
         icon={row.expanded ? ChevronDown : ChevronRight}
       />
       <span className="text-xs font-medium text-foreground/80">{row.label}</span>
-      <span className="text-2xs text-muted-foreground">Cut off by a steer</span>
+      <span className="text-2xs text-muted-foreground">
+        {t("legacySidebar.misc.timeline.cutOffBySteer")}
+      </span>
     </button>
   );
 }

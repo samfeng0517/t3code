@@ -1,4 +1,5 @@
 import type { CommandOutputView } from "@t3tools/client-runtime/state/command-output";
+import { useT } from "~/i18n";
 import type { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { TERMINAL_PALETTES, terminalOutputSpans } from "@t3tools/shared/terminalOutput";
 import { useLayoutEffect, useRef } from "react";
@@ -29,6 +30,7 @@ export function CommandOutputPanel(props: {
   readonly itemId: TurnItemId;
   readonly source?: TurnItemSource["commandOutput"] | undefined;
 }) {
+  const t = useT();
   const input = { threadId: props.threadId, itemId: props.itemId };
   const { data, error } = useEnvironmentQuery<CommandOutputView, unknown>(
     props.source
@@ -47,16 +49,28 @@ export function CommandOutputPanel(props: {
   });
 
   if (text.length === 0) {
-    if (error) return <div className="text-destructive">Couldn&apos;t load output: {error}</div>;
-    if (data === null) return <div className="text-muted-foreground italic">Loading output…</div>;
-    return data.running ? null : <div className="text-muted-foreground italic">No output.</div>;
+    if (error)
+      return (
+        <div className="text-destructive">
+          {t("legacySidebar.misc.output.loadFailed", { error: String(error) })}
+        </div>
+      );
+    if (data === null)
+      return (
+        <div className="text-muted-foreground italic">{t("legacySidebar.misc.output.loading")}</div>
+      );
+    return data.running ? null : (
+      <div className="text-muted-foreground italic">{t("legacySidebar.misc.output.none")}</div>
+    );
   }
   // Parse after all hooks to preserve the text/theme compiler cache.
   const spans = terminalOutputSpans(text, TERMINAL_PALETTES[resolvedTheme]);
   return (
     <div>
       {data?.output.truncated ? (
-        <div className="text-muted-foreground italic">Earlier output not shown</div>
+        <div className="text-muted-foreground italic">
+          {t("legacySidebar.misc.output.earlierHidden")}
+        </div>
       ) : null}
       <div
         ref={scrollRef}

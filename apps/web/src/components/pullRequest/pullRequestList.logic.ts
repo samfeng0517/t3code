@@ -21,6 +21,7 @@ import type {
 
 import { toSortableTimestamp } from "@t3tools/client-runtime/state/thread-sort";
 import type { PullRequestListSort } from "./pullRequestListPreferences";
+import type { MessageKey } from "~/i18n";
 
 export interface EnvironmentPullRequestEntry extends PullRequestListEntry {
   readonly environmentId: EnvironmentId;
@@ -38,7 +39,7 @@ export type PullRequestGroupKey = "reviewRequested" | "authored" | "others";
 
 export interface PullRequestGroup<Entry extends PullRequestListEntry = PullRequestListEntry> {
   readonly key: PullRequestGroupKey;
-  readonly label: string;
+  readonly label: MessageKey | "";
   readonly entries: ReadonlyArray<Entry>;
 }
 
@@ -59,10 +60,10 @@ type ScopedEntry = PullRequestListEntry & { readonly environmentId?: string };
 const pullRequestViewerKey = (entry: ScopedEntry): string =>
   `${entry.environmentId ?? ""} ${entry.host}`;
 
-const GROUP_LABELS: Record<PullRequestGroupKey, string> = {
-  reviewRequested: "Review requested",
-  authored: "Authored",
-  others: "Others",
+const GROUP_LABELS: Record<PullRequestGroupKey, MessageKey> = {
+  reviewRequested: "pullRequestDetail.list.groupReviewRequested",
+  authored: "pullRequestDetail.list.groupAuthored",
+  others: "pullRequestDetail.list.groupOthers",
 };
 
 function normalize(value: string | null | undefined): string | null {

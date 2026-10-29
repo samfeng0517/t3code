@@ -820,7 +820,7 @@ export const settingsPagesZhTW: Readonly<Record<keyof typeof settingsPagesEn, st
   "settingsPages.integrations.linkTarget.app": "T3 Code",
   "settingsPages.integrations.linkTarget.title": "連結開啟位置",
   "settingsPages.integrations.linkTarget.description":
-    "對話與終端機中的連結要在哪裡開啟。按住 ⌘ 或 Ctrl 點擊連結，則一律以預設瀏覽器開啟。",
+    "對話與終端機中的連結要在哪裡開啟。按住 ⌘ 或 Ctrl 按一下連結，則一律以預設瀏覽器開啟。",
   "settingsPages.integrations.linkTarget.resetLabel": "連結開啟位置",
   "settingsPages.integrations.searchEngine.custom": "自訂",
   "settingsPages.integrations.bookmarks.title": "書籤",
@@ -836,7 +836,7 @@ export const settingsPagesZhTW: Readonly<Record<keyof typeof settingsPagesEn, st
     "請輸入包含 %s 的 http 或 https 網址。在此之前會使用 DuckDuckGo 搜尋。",
   "settingsPages.integrations.pullRequestLinks.title": "在 T3 Code 中開啟 Pull Request",
   "settingsPages.integrations.pullRequestLinks.description":
-    "點擊 Pull Request 連結會在 T3 Code 中開啟。關閉後，Pull Request 連結會像其他連結一樣，在你的 Git 主機上開啟。",
+    "按一下 Pull Request 連結會在 T3 Code 中開啟。關閉後，Pull Request 連結會像其他連結一樣，在你的 Git 主機上開啟。",
   "settingsPages.integrations.pullRequestLinks.resetLabel": "在 T3 Code 中開啟 Pull Request",
   "settingsPages.integrations.devices.section": "裝置",
   "settingsPages.integrations.devices.disconnected": "環境已中斷連線",
@@ -1087,8 +1087,8 @@ export const settingsPagesZhTW: Readonly<Record<keyof typeof settingsPagesEn, st
     "若要編輯這些設定，請以「檢視中繼」與「管理中繼」兩項權限配對此連線。",
   "settingsPages.connections.remote.emptyTitle": "沒有已儲存的遠端環境",
   "settingsPages.connections.remote.emptyCloud":
-    "點擊「新增環境」以配對另一個環境，或從 T3 Connect 連線。",
-  "settingsPages.connections.remote.empty": "點擊「新增環境」以配對另一個環境。",
+    "按一下「新增環境」以配對另一個環境，或從 T3 Connect 連線。",
+  "settingsPages.connections.remote.empty": "按一下「新增環境」以配對另一個環境。",
   "settingsPages.connections.toast.exposureFailed": "無法更新網路公開設定。",
   "settingsPages.connections.toast.networkAccessFailed": "無法更新網路存取",
   "settingsPages.connections.toast.tailscaleConfigureFailed": "無法設定 Tailscale HTTPS。",

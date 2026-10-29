@@ -41,7 +41,7 @@ const STATUS_DOT_CLASS: Record<ScheduledTask["lastRunStatus"], string> = {
 function taskScheduleLine(task: ScheduledTask, t: Translate) {
   return (
     <>
-      {scheduleLabel(task.schedule)}
+      {scheduleLabel(task.schedule, t)}
       {task.enabled && task.nextRunAt !== null ? (
         <>
           {t("threadDetails.automations.nextPrefix")}

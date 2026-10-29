@@ -18,11 +18,13 @@ import { dismissProjectFileCopy, useProjectFileCopy } from "../../lib/addProject
 import { type ComposerBannerStackItem } from "./ComposerBannerStack";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
+import { useT } from "../../i18n";
 /**
  * A project still being cloned or copied into place: the composer banner with its cancel,
  * retry, and remove actions, and the reason sending waits until it is done.
  */
 export function useProjectCloneBanner(activeProjectRef: ScopedProjectRef | null) {
+  const t = useT();
   const activeProjectClone = useProjectClone(activeProjectRef);
   const cancelProjectClone = useAtomCommand(sourceControlEnvironment.cancelProjectClone, {
     reportFailure: false,
@@ -42,7 +44,7 @@ export function useProjectCloneBanner(activeProjectRef: ScopedProjectRef | null)
         stackedThreadToast({
           type: "error",
           title,
-          description: error instanceof Error ? error.message : "An error occurred.",
+          description: error instanceof Error ? error.message : t("common.errorOccurred"),
         }),
       );
     }
@@ -51,11 +53,11 @@ export function useProjectCloneBanner(activeProjectRef: ScopedProjectRef | null)
   const activeProjectFileCopy = useProjectFileCopy(activeProjectRef);
   const projectCloneSendBlockReason =
     activeProjectClone?.phase === "running"
-      ? "Cloning repository"
+      ? t("chatView.projectClone.cloningRepository")
       : activeProjectClone !== null && activeProjectClone.phase !== "done"
-        ? "Repository not cloned"
+        ? t("chatView.projectClone.repositoryNotCloned")
         : activeProjectFileCopy?.phase === "copying"
-          ? "Copying files"
+          ? t("chatView.projectClone.copyingFiles")
           : null;
   const projectCloneBannerItem = (() => {
     if (activeProjectFileCopy?.phase === "failed" && activeProjectRef) {
@@ -78,19 +80,19 @@ export function useProjectCloneBanner(activeProjectRef: ScopedProjectRef | null)
         id: `project-clone:${projectId}`,
         variant: "info",
         icon: <DownloadIcon />,
-        title: `Cloning ${name}`,
+        title: t("chatView.projectClone.cloning", { name }),
         description: projectCloneProgressSummary(activeProjectClone),
         actions: (
           <Button
             size="xs"
             variant="ghost"
             onClick={() =>
-              void runProjectCloneActionStable("Failed to cancel clone", () =>
+              void runProjectCloneActionStable(t("chatView.projectClone.failedToCancel"), () =>
                 cancelProjectClone({ environmentId, input: { projectId } }),
               )
             }
           >
-            Cancel
+            {t("common.cancel")}
           </Button>
         ),
       };
@@ -100,8 +102,10 @@ export function useProjectCloneBanner(activeProjectRef: ScopedProjectRef | null)
       id: `project-clone:${projectId}`,
       variant: cancelled ? "warning" : "error",
       icon: <DownloadIcon />,
-      title: cancelled ? `Cancelled cloning ${name}` : `Failed to clone ${name}`,
-      description: cancelled ? "Retry to bring in the repository." : activeProjectClone.error,
+      title: cancelled
+        ? t("chatView.projectClone.cancelled", { name })
+        : t("chatView.projectClone.failed", { name }),
+      description: cancelled ? t("chatView.projectClone.retryToBringIn") : activeProjectClone.error,
       actions: (
         <>
           <Button
@@ -109,18 +113,18 @@ export function useProjectCloneBanner(activeProjectRef: ScopedProjectRef | null)
             variant="ghost"
             onClick={() => void removeClonedProject({ environmentId, projectId })}
           >
-            Remove project
+            {t("chatView.projectClone.removeProject")}
           </Button>
           <Button
             size="xs"
             variant="ghost"
             onClick={() =>
-              void runProjectCloneActionStable("Failed to retry clone", () =>
+              void runProjectCloneActionStable(t("chatView.projectClone.failedToRetry"), () =>
                 retryProjectClone({ environmentId, input: { projectId } }),
               )
             }
           >
-            Retry
+            {t("chatView.common.retry")}
           </Button>
         </>
       ),

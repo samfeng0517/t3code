@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { useT } from "~/i18n";
 import type { ServerUpdateState } from "@t3tools/client-runtime/state/server";
 import { useState } from "react";
 
@@ -28,6 +29,7 @@ import { ComposerServerUpdateIcon } from "./ComposerServerUpdateStatus";
 export function useAutoBalanceUpdateBanner(
   environments: readonly EnvironmentPresentation[],
 ): ComposerBannerStackItem | null {
+  const t = useT();
   const updateStates = useAtomValue(
     environmentUpdateStatesAtom(
       environmentIdsKey(environments.map(({ environmentId }) => environmentId)),
@@ -80,8 +82,13 @@ export function useAutoBalanceUpdateBanner(
   );
   const count = running || failed || machines.length;
   const status = running ? "running" : failed ? "failed" : "idle";
-  const prefix = running ? "Updating" : failed ? "Could not update" : "Update available for";
-  const title = `${prefix} ${count} ${count === 1 ? "machine" : "machines"}`;
+  const titleKey = running ? "updating" : failed ? "failed" : "available";
+  const title = t(
+    count === 1
+      ? `legacySidebar.misc.serverUpdateBanner.${titleKey}.one`
+      : `legacySidebar.misc.serverUpdateBanner.${titleKey}.other`,
+    { count },
+  );
   return {
     id: `auto-balance-server-updates-${dismissedNotices.size}`,
     variant: failed ? "error" : "default",
@@ -92,7 +99,7 @@ export function useAutoBalanceUpdateBanner(
         <PopoverTrigger
           render={<InlineButton />}
           className="max-w-full"
-          aria-label={`${title}. View machines`}
+          aria-label={t("legacySidebar.misc.serverUpdateBanner.viewMachines", { title })}
         >
           <span className="min-w-0 truncate">{title}</span>
         </PopoverTrigger>
@@ -105,14 +112,18 @@ export function useAutoBalanceUpdateBanner(
                   <ServerUpdateProgress state={machine.state} />
                 ) : !machine.remoteUpdate ? (
                   <>
-                    <div className="text-muted-foreground">Manual update required</div>
+                    <div className="text-muted-foreground">
+                      {t("legacySidebar.misc.serverUpdateBanner.manualRequired")}
+                    </div>
                     <ServerUpdateAction {...machine} />
                   </>
                 ) : (
                   <div className="text-muted-foreground">
                     {machine.connected
-                      ? `Ready to update to ${machine.targetVersion}`
-                      : "Reconnect this machine to update"}
+                      ? t("legacySidebar.misc.serverUpdateBanner.readyToUpdate", {
+                          version: machine.targetVersion,
+                        })
+                      : t("legacySidebar.misc.serverUpdateBanner.reconnect")}
                   </div>
                 )}
               </div>
@@ -122,7 +133,14 @@ export function useAutoBalanceUpdateBanner(
       </Popover>
     ),
     description:
-      manual > 0 ? `${manual} ${manual === 1 ? "needs" : "need"} a manual update` : undefined,
+      manual > 0
+        ? t(
+            manual === 1
+              ? "legacySidebar.misc.serverUpdateBanner.manualDescription.one"
+              : "legacySidebar.misc.serverUpdateBanner.manualDescription.other",
+            { count: manual },
+          )
+        : undefined,
     actions:
       running === 0 && targets.length > 0 ? (
         <ServerUpdatesAction
@@ -130,14 +148,19 @@ export function useAutoBalanceUpdateBanner(
           variant="ghost"
           label={
             failed > 0
-              ? "Retry"
+              ? t("legacySidebar.misc.serverUpdateBanner.retry")
               : targets.length === machines.length
-                ? "Update all"
-                : `Update ${targets.length} ${targets.length === 1 ? "machine" : "machines"}`
+                ? t("legacySidebar.misc.serverUpdateBanner.updateAll")
+                : t(
+                    targets.length === 1
+                      ? "legacySidebar.misc.serverUpdateBanner.updateCount.one"
+                      : "legacySidebar.misc.serverUpdateBanner.updateCount.other",
+                    { count: targets.length },
+                  )
           }
         />
       ) : undefined,
-    dismissLabel: "Dismiss update notice",
+    dismissLabel: t("legacySidebar.misc.serverUpdateBanner.dismiss"),
     ...(running
       ? {}
       : {

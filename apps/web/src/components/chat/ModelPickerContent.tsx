@@ -63,6 +63,7 @@ import {
   type ProviderInstanceEntry,
 } from "../../providerInstances";
 import { providerModelKey, sortProviderModelItems } from "../../modelOrdering";
+import { useT } from "../../i18n";
 
 type ModelPickerItem = {
   slug: string;
@@ -206,6 +207,7 @@ function ModelPickerProviderNotices({
   onOpenProviderSetup: ((instanceId: ProviderInstanceId) => void) | undefined;
 }) {
   const navigate = useNavigate();
+  const t = useT();
   return (
     <>
       {setupEntries.length > 0 ? (
@@ -213,7 +215,7 @@ function ModelPickerProviderNotices({
           {setupEntries.map((entry) => (
             <div key={entry.instanceId} className="px-1 py-1.5 text-xs leading-snug">
               <p className="line-clamp-3 text-muted-foreground">
-                {getProviderStatusMessage(entry.snapshot)}
+                {getProviderStatusMessage(entry.snapshot, t)}
               </p>
               <InlineButton
                 className="mt-1"
@@ -222,7 +224,9 @@ function ModelPickerProviderNotices({
                   onOpenProviderSetup?.(entry.instanceId);
                 }}
               >
-                {setupEntries.length > 1 ? `Set up ${entry.displayName}` : "Open provider setup"}
+                {setupEntries.length > 1
+                  ? t("chatView.modelPicker.setUp", { name: entry.displayName })
+                  : t("chatView.providerStatus.openSetup")}
               </InlineButton>
             </div>
           ))}
@@ -242,7 +246,7 @@ function ModelPickerProviderNotices({
               void navigate({ to: "/settings/providers" });
             }}
           >
-            Provider settings
+            {t("chatView.modelPicker.providerSettings")}
           </InlineButton>
         </p>
       ))}
@@ -374,6 +378,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     onRequestClose,
     onOpenProviderSetup,
   } = props;
+  const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
   const modelListRef = useRef<LegendListRef | null>(null);
   const pickerContentRef = useRef<HTMLDivElement>(null);
@@ -791,7 +796,9 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       setSearchQuery("");
       handleSelectInstance(next);
       announce(
-        next === "favorites" ? "Favorites" : (entryByInstanceId.get(next)?.displayName ?? next),
+        next === "favorites"
+          ? t("chatView.modelPicker.favorites")
+          : (entryByInstanceId.get(next)?.displayName ?? next),
         "model-picker",
       );
       return;
@@ -816,7 +823,10 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     const name = flatModels.find(
       (item) => item.slug === selectedSlug && item.instanceId === model.instanceId,
     )?.name;
-    announce(`Model: ${name ?? selectedSlug}`, "model-picker");
+    announce(
+      t("chatView.modelPicker.modelAnnounce", { name: name ?? selectedSlug }),
+      "model-picker",
+    );
   };
 
   return (
@@ -846,7 +856,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               ? {
                   disabledInstanceIds: lockedDisabledInstanceIds,
                   getDisabledInstanceTooltip: (entry: ProviderInstanceEntry) =>
-                    `${entry.displayName} is unavailable in this thread. Start a new thread to switch providers.`,
+                    t("chatView.modelPicker.unavailableInThread", { name: entry.displayName }),
                 }
               : {})}
           />
@@ -902,7 +912,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           >
             <ComboboxSearchInput
               ref={searchInputRef}
-              placeholder="Search models..."
+              placeholder={t("chatView.modelPicker.searchModels")}
               value={searchQuery}
               onChange={(e) => {
                 if (!isSearching) setSearchHeight(pickerContentRef.current?.offsetHeight ?? 0);
@@ -975,9 +985,13 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                       className="group w-full cursor-pointer"
                     >
                       <div className="min-w-0 flex-1 text-left">
-                        <div className="text-sm font-normal leading-snug">Legacy models</div>
+                        <div className="text-sm font-normal leading-snug">
+                          {t("chatView.modelPicker.legacyModels")}
+                        </div>
                         <div className="mt-1 text-xs font-normal leading-snug text-muted-foreground">
-                          {legacySection.legacyModels.length} models
+                          {t("chatView.modelPicker.modelCount", {
+                            count: legacySection.legacyModels.length,
+                          })}
                         </div>
                       </div>
                       <ChevronRightIcon
@@ -1029,8 +1043,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               updateRequiredNotices={updateRequiredNotices}
               emptyLabel={
                 selectedInstanceId === "favorites" && !isSearching
-                  ? "No favorites yet"
-                  : "No models found"
+                  ? t("chatView.modelPicker.noFavorites")
+                  : t("chatView.modelPicker.noModels")
               }
               onRequestClose={onRequestClose}
               onOpenProviderSetup={onOpenProviderSetup}

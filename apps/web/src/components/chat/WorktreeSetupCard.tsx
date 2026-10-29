@@ -1,8 +1,4 @@
-import {
-  worktreeSetupStageLabel,
-  type WorktreeSetupSnapshot,
-  type WorktreeSetupStage,
-} from "@t3tools/contracts";
+import { type WorktreeSetupSnapshot, type WorktreeSetupStage } from "@t3tools/contracts";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import {
   CheckIcon,
@@ -17,6 +13,7 @@ import { ChevronDown, ChevronRight } from "lucide";
 import { useState, type ReactNode } from "react";
 
 import { Button } from "~/components/ui/button";
+import { useT, type MessageKey, type Translate } from "~/i18n";
 import { MorphIcon } from "~/components/MorphIcon";
 import { Spinner } from "~/components/ui/spinner";
 import { MiddleTruncate } from "../ui/middle-truncate";
@@ -124,27 +121,36 @@ function finishedWithIssues(snapshot: WorktreeSetupSnapshot): boolean {
   );
 }
 
-function headerLabel(snapshot: WorktreeSetupSnapshot): string {
+const STAGE_LABEL_KEYS: Record<WorktreeSetupStage["id"], MessageKey> = {
+  fetch: "legacySidebar.misc.worktreeSetup.stage.fetch",
+  checkout: "legacySidebar.misc.worktreeSetup.stage.checkout",
+  submodules: "legacySidebar.misc.worktreeSetup.stage.submodules",
+  "setup-script": "legacySidebar.misc.worktreeSetup.stage.setupScript",
+  agent: "legacySidebar.misc.worktreeSetup.stage.agent",
+};
+
+function headerLabel(snapshot: WorktreeSetupSnapshot, t: Translate): string {
   switch (snapshot.phase) {
     case "running":
-      return "Setting up worktree…";
+      return t("legacySidebar.misc.worktreeSetup.running");
     case "done":
       return snapshot.stages.some((stage) => stage.status === "failed")
-        ? "Worktree ready, setup script failed"
+        ? t("legacySidebar.misc.worktreeSetup.readySetupFailed")
         : hasWarningStage(snapshot)
-          ? "Worktree ready, with warnings"
-          : "Worktree ready";
+          ? t("legacySidebar.misc.worktreeSetup.readyWarnings")
+          : t("legacySidebar.misc.worktreeSetup.ready");
     case "failed":
-      return "Worktree setup failed";
+      return t("legacySidebar.misc.worktreeSetup.failed");
     case "cancelled":
-      return "Worktree setup cancelled";
+      return t("legacySidebar.misc.worktreeSetup.cancelled");
   }
 }
 
 function SetupHeaderRow({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
+  const t = useT();
   const running = snapshot.phase === "running";
   const failed = snapshot.phase === "failed";
-  const text = headerLabel(snapshot);
+  const text = headerLabel(snapshot, t);
   const tone = failed
     ? "text-destructive-foreground"
     : finishedWithIssues(snapshot)
@@ -184,14 +190,15 @@ function StageRow({
   setupEndedAt: string | null;
   scriptName: string | null;
 }) {
+  const t = useT();
   const label =
-    stage.id === "setup-script" && scriptName ? scriptName : worktreeSetupStageLabel(stage.id);
+    stage.id === "setup-script" && scriptName ? scriptName : t(STAGE_LABEL_KEYS[stage.id]);
   const running = stage.status === "running";
   const trailing =
     stage.status === "pending"
       ? null
       : stage.status === "skipped"
-        ? (stage.detail ?? "skipped")
+        ? (stage.detail ?? t("legacySidebar.misc.worktreeSetup.skipped"))
         : stage.id === "checkout" && running && stage.percent !== null
           ? `${stage.percent}%`
           : stage.detail;
@@ -263,11 +270,12 @@ function OutputTail({ lines, failed }: { lines: ReadonlyArray<string>; failed: b
 }
 
 function SetupDetails({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
+  const t = useT();
   return (
     <dl className="mt-1 mb-1.5 ml-8 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
       {snapshot.branch ? (
         <>
-          <dt className="text-foreground/80">Branch</dt>
+          <dt className="text-foreground/80">{t("legacySidebar.misc.worktreeSetup.branch")}</dt>
           <dd className="min-w-0 font-mono">
             <MiddleTruncate value={snapshot.branch} className="flex" />
           </dd>
@@ -275,7 +283,7 @@ function SetupDetails({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
       ) : null}
       {snapshot.baseRef ? (
         <>
-          <dt className="text-foreground/80">Base</dt>
+          <dt className="text-foreground/80">{t("legacySidebar.misc.worktreeSetup.base")}</dt>
           <dd className="min-w-0 font-mono">
             <MiddleTruncate value={snapshot.baseRef} className="flex" />
           </dd>
@@ -283,7 +291,7 @@ function SetupDetails({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
       ) : null}
       {snapshot.worktreePath ? (
         <>
-          <dt className="text-foreground/80">Path</dt>
+          <dt className="text-foreground/80">{t("legacySidebar.misc.worktreeSetup.path")}</dt>
           <dd className="min-w-0 font-mono">
             <MiddleTruncate value={snapshot.worktreePath} className="flex" />
           </dd>
@@ -291,7 +299,7 @@ function SetupDetails({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
       ) : null}
       {snapshot.setupScript ? (
         <>
-          <dt className="text-foreground/80">Setup</dt>
+          <dt className="text-foreground/80">{t("legacySidebar.misc.worktreeSetup.setup")}</dt>
           <dd className="truncate font-mono">{snapshot.setupScript.command}</dd>
         </>
       ) : null}
@@ -300,6 +308,7 @@ function SetupDetails({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
 }
 
 function CollapsedSummaryRow({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
+  const t = useT();
   const status: WorktreeSetupStage["status"] =
     snapshot.phase === "failed" || snapshot.phase === "cancelled"
       ? "failed"
@@ -308,7 +317,7 @@ function CollapsedSummaryRow({ snapshot }: { snapshot: WorktreeSetupSnapshot }) 
         : hasWarningStage(snapshot)
           ? "warning"
           : "done";
-  const label = headerLabel(snapshot);
+  const label = headerLabel(snapshot, t);
   return (
     <WorkLogRow
       data-worktree-setup-stage="summary"
@@ -337,6 +346,7 @@ export function WorktreeSetupCard({
 }: WorktreeSetupCardProps & {
   embedded?: boolean;
 }) {
+  const t = useT();
   const running = snapshot.phase === "running";
   const [detailsOpen, setDetailsOpen] = useState(false);
   const setupStage = snapshot.stages.find((stage) => stage.id === "setup-script");
@@ -351,7 +361,10 @@ export function WorktreeSetupCard({
       (setupStage.status === "running" && setupStage.tail.length > 0));
 
   return (
-    <section aria-label="Worktree setup" data-worktree-setup-phase={snapshot.phase}>
+    <section
+      aria-label={t("legacySidebar.misc.worktreeSetup.aria")}
+      data-worktree-setup-phase={snapshot.phase}
+    >
       {showHeader ? <SetupHeaderRow snapshot={snapshot} /> : null}
       {collapsed ? (
         <>
@@ -397,24 +410,24 @@ export function WorktreeSetupCard({
           onClick={() => setDetailsOpen((open) => !open)}
         >
           <MorphIcon aria-hidden icon={detailsOpen ? ChevronDown : ChevronRight} />
-          Details
+          {t("legacySidebar.misc.worktreeSetup.details")}
         </Button>
         {showTerminal ? (
           <Button type="button" size="xs" variant="ghost-muted" onClick={onOpenTerminal}>
             <TerminalIcon aria-hidden />
-            Open terminal
+            {t("legacySidebar.misc.worktreeSetup.openTerminal")}
           </Button>
         ) : null}
         {onWorkLocally ? (
           <Button type="button" size="xs" variant="ghost-muted" onClick={onWorkLocally}>
             <LaptopIcon aria-hidden />
-            Work locally
+            {t("legacySidebar.misc.worktreeSetup.workLocally")}
           </Button>
         ) : null}
         {onCancel && running ? (
           <Button type="button" size="xs" variant="ghost-muted" onClick={onCancel}>
             <XIcon aria-hidden />
-            Cancel
+            {t("common.cancel")}
           </Button>
         ) : null}
       </div>

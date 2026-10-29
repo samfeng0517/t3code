@@ -1,4 +1,5 @@
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -20,6 +21,7 @@ export function PullRequestCopyableCode({
   readonly tooltipSide?: "top" | "bottom";
   readonly onError?: (error: Error) => void;
 }) {
+  const t = useT();
   const { copyToClipboard, isCopied } = useCopyToClipboard({
     target,
     timeout: 1600,
@@ -55,11 +57,11 @@ export function PullRequestCopyableCode({
             isCopied ? "opacity-100" : "opacity-0",
           )}
         >
-          Copied
+          {t("pullRequestDetail.common.copied")}
         </span>
       </TooltipTrigger>
       <TooltipPopup variant="code" side={tooltipSide}>
-        {`${isCopied ? "Copied" : copyLabel}: ${value}`}
+        {`${isCopied ? t("pullRequestDetail.common.copied") : copyLabel}: ${value}`}
       </TooltipPopup>
     </Tooltip>
   );

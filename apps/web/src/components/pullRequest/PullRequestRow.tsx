@@ -9,6 +9,7 @@ import {
 } from "./PullRequestSpeedActions";
 import { memo, type RefCallback } from "react";
 
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { getSourceControlPresentationForKind } from "~/sourceControlPresentation";
 
@@ -100,6 +101,7 @@ function PullRequestRowImpl({
   sweeping?: boolean;
   onCloseSweepStart?: (entry: EnvironmentPullRequestEntry, event: PointerEvent) => void;
 }) {
+  const t = useT();
   const { Icon, providerName, terminology } = getSourceControlPresentationForKind(entry.provider);
   return (
     <div
@@ -137,8 +139,9 @@ function PullRequestRowImpl({
                 event.stopPropagation();
                 void showPullRequestLinkContextMenu({
                   url: entry.url,
-                  openLabel: openOnHostLabel(sourceControlClients.get(entry.provider)),
+                  openLabel: openOnHostLabel(sourceControlClients.get(entry.provider), t),
                   position: { x: event.clientX, y: event.clientY },
+                  t,
                 });
               }}
             >
@@ -205,13 +208,17 @@ function PullRequestRowImpl({
                       <span className="flex min-w-6 items-center gap-1 overflow-hidden rounded-full border border-border/60 px-1 text-3xs" />
                     }
                   >
-                    <span className="sr-only">matched in the description</span>
+                    <span className="sr-only">
+                      {t("pullRequests.row.matchedInDescriptionShort")}
+                    </span>
                     <SearchIcon aria-hidden className="size-3 shrink-0" />
                     <span aria-hidden className="hidden truncate @xs/pr-row-meta:block">
-                      matched in the description
+                      {t("pullRequests.row.matchedInDescriptionShort")}
                     </span>
                   </TooltipTrigger>
-                  <TooltipPopup side="top">Matched in the description</TooltipPopup>
+                  <TooltipPopup side="top">
+                    {t("pullRequests.row.matchedInDescription")}
+                  </TooltipPopup>
                 </Tooltip>
               ) : null}
               {showProvider ? (

@@ -29,7 +29,8 @@ import {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { setLanguagePreference } from "../i18n/languagePreferenceStore";
 import { Atom } from "effect/reactivity";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentThreadDetails } from "../state/threads";
@@ -440,6 +441,9 @@ describe("resolveThreadSwitchTimeline", () => {
 });
 
 describe("resolveComposerProviderSelection", () => {
+  beforeEach(() => setLanguagePreference("en"));
+  afterEach(() => setLanguagePreference("system"));
+
   const catalogModels: ServerProvider["models"] = [
     { slug: "gemini-pro", name: "Gemini Pro", isCustom: false, capabilities: null },
   ];

@@ -1,4 +1,5 @@
 import { isWebhookDedupeTemplate } from "@t3tools/contracts";
+import { t as globalT, type MessageKey, type Translate } from "~/i18n";
 import {
   EnvironmentId,
   MAX_WEBHOOK_DELIVERY_AGE_MINUTES,
@@ -96,51 +97,61 @@ export const WEBHOOK_SIGNATURE_DEFAULTS = {
   signaturePrefix: "sha256=",
 } as const;
 
-export function webhookDraftErrors(draft: DraftState) {
+export function webhookDraftErrors(draft: DraftState, t: Translate = globalT) {
   if (draft.scheduleMode !== "webhook") return [];
   if (parseMaxDeliveryAge(draft.maxDeliveryAgeMinutes) === undefined)
     return [
       {
-        title: "Invalid age limit",
-        description: `Enter whole minutes from 1 to ${MAX_WEBHOOK_DELIVERY_AGE_MINUTES}, or leave it blank.`,
+        title: t("settingsMisc.tasks.webhook.invalidAge.title"),
+        description: t("settingsMisc.tasks.webhook.invalidAge.description", {
+          max: MAX_WEBHOOK_DELIVERY_AGE_MINUTES,
+        }),
       },
     ];
   const errors: Array<{ title: string; description: string }> = [];
   for (const [label, value] of [
-    ["Replay key", draft.replayKey],
-    ["Coalesce key", draft.coalesceKey],
+    [t("settingsMisc.tasks.webhook.replayKey"), draft.replayKey],
+    [t("settingsMisc.tasks.webhook.coalesceKey"), draft.coalesceKey],
   ] as const) {
     if (value.trim() && !isWebhookDedupeTemplate(value.trim()))
       errors.push({
-        title: "Invalid webhook settings",
-        description: `${label} must contain a valid request placeholder.`,
+        title: t("settingsMisc.tasks.webhook.invalidSettings"),
+        description: t("settingsMisc.tasks.webhook.keyPlaceholder", { label }),
       });
   }
   const window = draft.coalesceWindowSeconds.trim();
   if (window && (!Number.isInteger(Number(window)) || Number(window) < 10 || Number(window) > 3600))
     errors.push({
-      title: "Invalid webhook settings",
-      description: "Coalesce window must be whole seconds from 10 to 3600.",
+      title: t("settingsMisc.tasks.webhook.invalidSettings"),
+      description: t("settingsMisc.tasks.webhook.windowInvalid"),
     });
   return errors;
 }
 
-export function webhookDeliveryLabel(delivery: {
-  readonly outcome: string;
-  readonly pendingWindow?: boolean | undefined;
-}) {
-  if (delivery.outcome === "accepted") return delivery.pendingWindow ? "Opened window" : "Ran";
-  const labels: Record<string, string> = {
-    dispatch_failed: "Run failed",
-    duplicate: "Duplicate",
-    coalesced: "Coalesced",
-    filtered: "Filtered",
-    rejected_signature: "Bad signature",
-    disabled: "Task paused",
-    rate_limited: "Rate limited",
-    expired: "Too old",
+export function webhookDeliveryLabel(
+  delivery: {
+    readonly outcome: string;
+    readonly pendingWindow?: boolean | undefined;
+  },
+  t: Translate = globalT,
+) {
+  if (delivery.outcome === "accepted") {
+    return delivery.pendingWindow
+      ? t("settingsMisc.tasks.delivery.openedWindow")
+      : t("settingsMisc.tasks.delivery.ran");
+  }
+  const labels: Record<string, MessageKey> = {
+    dispatch_failed: "settingsMisc.tasks.delivery.dispatch_failed",
+    duplicate: "settingsMisc.tasks.delivery.duplicate",
+    coalesced: "settingsMisc.tasks.delivery.coalesced",
+    filtered: "settingsMisc.tasks.delivery.filtered",
+    rejected_signature: "settingsMisc.tasks.delivery.rejected_signature",
+    disabled: "settingsMisc.tasks.delivery.disabled",
+    rate_limited: "settingsMisc.tasks.delivery.rate_limited",
+    expired: "settingsMisc.tasks.delivery.expired",
   };
-  return labels[delivery.outcome] ?? delivery.outcome.replaceAll("_", " ");
+  const labelKey = labels[delivery.outcome];
+  return labelKey ? t(labelKey) : delivery.outcome.replaceAll("_", " ");
 }
 
 export function scheduleFromDraft(draft: DraftState): ScheduledTaskUpsertSchedule | null {

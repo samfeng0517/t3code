@@ -22,7 +22,7 @@ import {
 } from "@t3tools/client-runtime/connection";
 import * as Option from "effect/Option";
 
-import { t as translate, useT } from "~/i18n";
+import { t as translate, useT, type Translate } from "~/i18n";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { cn } from "../../lib/utils";
 import { SettingsRow } from "./settingsLayout";
@@ -75,40 +75,43 @@ type SavedBackendListRowProps = {
   onAddRoute: (environment: EnvironmentPresentation) => void;
 };
 
-function savedBackendStatus(environment: EnvironmentPresentation): {
+function savedBackendStatus(
+  environment: EnvironmentPresentation,
+  t: Translate = translate,
+): {
   readonly text: string;
   readonly tone: "muted" | "error";
 } {
   if (!environment.entry.enabled && environment.connection.phase !== "unsupported")
-    return { text: translate("settingsPages.connections.backend.off"), tone: "muted" };
+    return { text: t("settingsPages.connections.backend.off"), tone: "muted" };
   const { connection } = environment;
   switch (connection.phase) {
     case "connected":
-      return { text: translate("settingsPages.connections.backend.connected"), tone: "muted" };
+      return { text: t("settingsPages.connections.backend.connected"), tone: "muted" };
     case "connecting":
-      return { text: translate("settingsPages.connections.backend.connecting"), tone: "muted" };
+      return { text: t("settingsPages.connections.backend.connecting"), tone: "muted" };
     case "reconnecting":
       return {
         text: connection.error
-          ? translate("settingsPages.connections.backend.reconnectingError", {
+          ? t("settingsPages.connections.backend.reconnectingError", {
               error: connection.error,
             })
-          : translate("settingsPages.connections.backend.reconnecting"),
+          : t("settingsPages.connections.backend.reconnecting"),
         tone: "error",
       };
     case "unsupported":
-      return { text: translate("settingsPages.connections.backend.unsupported"), tone: "muted" };
+      return { text: t("settingsPages.connections.backend.unsupported"), tone: "muted" };
     case "error":
       return {
         text: connection.error
-          ? translate("settingsPages.connections.backend.failedError", { error: connection.error })
-          : translate("settingsPages.connections.backend.failed"),
+          ? t("settingsPages.connections.backend.failedError", { error: connection.error })
+          : t("settingsPages.connections.backend.failed"),
         tone: "error",
       };
     case "offline":
-      return { text: translate("settingsPages.connections.backend.offline"), tone: "muted" };
+      return { text: t("settingsPages.connections.backend.offline"), tone: "muted" };
     case "available":
-      return { text: translate("settingsPages.connections.backend.notConnected"), tone: "muted" };
+      return { text: t("settingsPages.connections.backend.notConnected"), tone: "muted" };
   }
 }
 
@@ -175,7 +178,7 @@ export function SavedBackendListRow({
   const serverUpdateState = useAtomValue(serverEnvironment.updateStateAtom(environmentId));
   const resumingServerUpdate =
     serverUpdateState.status === "running" && serverUpdateState.stage === "resuming";
-  const status = savedBackendStatus(environment);
+  const status = savedBackendStatus(environment, t);
   const serverVersion = environment.serverConfig?.environment.serverVersion ?? null;
   // Discovery empties its map on every refresh, so hold the last descriptor
   // seen or the glyph would blink back to the generic one each time.
@@ -216,7 +219,7 @@ export function SavedBackendListRow({
   );
   const routeCount = connectionRoutes(environment.entry).length;
   const subtitleText = [
-    environmentTransportLabel(environment, connectedTarget),
+    environmentTransportLabel(environment, connectedTarget, t),
     // The headline below names the failure in full.
     diagnosis
       ? null
@@ -654,7 +657,7 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
           title={t("settingsPages.connections.cloud.title")}
           description={
             signedOut
-              ? "Sign in to make this environment available to your other devices through T3 Connect."
+              ? t("settingsMisc.cloud.signInToShare")
               : linkRevoked
                 ? t("settingsPages.connections.cloud.revoked")
                 : managedTunnelActive
@@ -692,7 +695,7 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
           title={t("settingsPages.connections.cloud.publish.title")}
           description={
             signedOut
-              ? "Sign in to send activity to mobile notifications and Live Activities."
+              ? t("settingsMisc.cloud.signInToNotify")
               : t("settingsPages.connections.cloud.publish.description")
           }
           control={

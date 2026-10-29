@@ -23,6 +23,7 @@ import { composerFloatingLayerProps } from "./composerEventScope";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
+import { useT } from "~/i18n";
 import { expandedImageKey } from "./ExpandedImagePreview";
 import { registerThreadOverlay } from "./threadOverlayRetention";
 
@@ -71,6 +72,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   preview,
   onClose,
 }: ExpandedImageDialogProps) {
+  const t = useT();
   const [imageOffset, setImageOffset] = useState(0);
   const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null);
   const [accessibilityDetailsSrc, setAccessibilityDetailsSrc] = useState<string | null>(null);
@@ -92,7 +94,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   const item = preview.images[index];
   const source: MediaActionSource = item?.actionsSource ?? {
     kind: item?.type === "video" ? "video" : "image",
-    name: item?.name ?? "Media",
+    name: item?.name ?? t("timeline.expandedMedia.fallbackName"),
     src: item?.src ?? null,
   };
   const openFile = source.onOpenFile;
@@ -132,7 +134,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   };
 
   if (!item) return null;
-  const mediaLabel = item.type === "video" ? "video" : "image";
+  const mediaKind = item.type === "video" ? "video" : "image";
   const openOriginalLink =
     item.originalUrl && resolveExternalWebLinkHost(item.originalUrl) !== null ? (
       <OpenMediaLink originalUrl={item.originalUrl} />
@@ -141,10 +143,10 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   const showingAccessibilityDetails =
     Boolean(accessibilityDetails) && accessibilityDetailsSrc === item.src;
   const contentsLabel = showingAccessibilityDetails
-    ? "Show screenshot"
+    ? t("timeline.expandedMedia.showScreenshot")
     : accessibilityDetails?.format === "json"
-      ? "Show accessibility JSON"
-      : "Show extracted text";
+      ? t("timeline.expandedMedia.showAccessibilityJson")
+      : t("timeline.expandedMedia.showExtractedText");
 
   return (
     <Dialog
@@ -172,7 +174,9 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           if (event.target === event.currentTarget) close();
         }}
       >
-        <DialogTitle className="sr-only">Expanded {mediaLabel} preview</DialogTitle>
+        <DialogTitle className="sr-only">
+          {t(`timeline.expandedMedia.title.${mediaKind}`)}
+        </DialogTitle>
         <Button
           type="button"
           ref={closeButtonRef}
@@ -180,7 +184,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           variant="media-close"
           className="absolute right-0 top-0 z-20"
           onClick={close}
-          aria-label={`Close ${mediaLabel} preview`}
+          aria-label={t(`timeline.expandedMedia.close.${mediaKind}`)}
         >
           <XIcon />
         </Button>
@@ -190,7 +194,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             size="icon"
             variant="media-navigation"
             className="left-0 top-auto bottom-0 translate-y-0 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2"
-            aria-label="Previous media"
+            aria-label={t("timeline.expandedMedia.previous")}
             onClick={() => navigateImage(-1)}
           >
             <ChevronLeftIcon className="size-5" />
@@ -211,8 +215,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
               <ExpandedMediaFailure>
                 <p>
                   {openOriginalLink
-                    ? "This image could not be loaded."
-                    : "Image unavailable. The file may have been moved or deleted."}
+                    ? t("timeline.expandedMedia.loadFailed")
+                    : t("timeline.expandedMedia.unavailable")}
                 </p>
                 {openOriginalLink}
               </ExpandedMediaFailure>
@@ -266,7 +270,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             size="icon"
             variant="media-navigation"
             className="right-0 top-auto bottom-0 translate-y-0 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2"
-            aria-label="Next media"
+            aria-label={t("timeline.expandedMedia.next")}
             onClick={() => navigateImage(1)}
           >
             <ChevronRightIcon className="size-5" />

@@ -62,11 +62,11 @@ import {
   deviceHubReadiness,
   PlatformStatus,
   platformSetupStatus,
-  deviceHubDescription,
-  agentDeviceDescription,
+  deviceHubDescriptionKey,
+  agentDeviceDescriptionKey,
   DeviceHostDiagnostics,
 } from "~/components/device/DeviceSetup";
-import { t as translate, useT } from "~/i18n";
+import { t as translate, useT, type Translate } from "~/i18n";
 import { isElectron } from "../../env";
 
 import { Badge } from "../ui/badge";
@@ -288,14 +288,16 @@ const viewportSelectValue = (viewport: PreviewViewportSetting): string => {
 };
 
 /** Inline options lack an items map; bare SelectValue would display the stored fill token. */
-const viewportSelectLabel = (viewport: PreviewViewportSetting): string => {
+const viewportSelectLabel = (
+  viewport: PreviewViewportSetting,
+  t: Translate = translate,
+): string => {
   const value = viewportSelectValue(viewport);
-  if (value === FILL_VALUE) return translate("settingsPages.integrations.viewport.fill");
-  if (value === RESPONSIVE_VALUE)
-    return translate("settingsPages.integrations.viewport.responsive");
+  if (value === FILL_VALUE) return t("settingsPages.integrations.viewport.fill");
+  if (value === RESPONSIVE_VALUE) return t("settingsPages.integrations.viewport.responsive");
   return (
     PREVIEW_VIEWPORT_PRESETS.find((preset) => preset.id === value)?.label ??
-    translate("settingsPages.integrations.viewport.responsive")
+    t("settingsPages.integrations.viewport.responsive")
   );
 };
 
@@ -384,7 +386,7 @@ function BrowserViewportSetting({ disabled }: { readonly disabled: boolean }) {
               className="w-full min-w-0 sm:w-44"
               aria-label={t("settingsPages.integrations.viewport.title")}
             >
-              <SelectValue>{viewportSelectLabel(viewport)}</SelectValue>
+              <SelectValue>{viewportSelectLabel(viewport, t)}</SelectValue>
             </SelectTrigger>
             <SelectPopup align="end" alignItemWithTrigger={false}>
               <SelectItem value={FILL_VALUE}>
@@ -1021,7 +1023,7 @@ function DeviceIntegrationControls({
         title={t("settingsPages.integrations.devices.hub.title")}
         serverScoped
         settingKeys={["enableDeviceSupport"]}
-        description={deviceHubDescription}
+        description={t(deviceHubDescriptionKey)}
         control={
           <>
             <DeviceToolVersions
@@ -1074,12 +1076,12 @@ function DeviceIntegrationControls({
                   <PlatformStatus
                     compact
                     platform="iOS"
-                    status={platformSetupStatus(state, "ios")}
+                    status={platformSetupStatus(state, "ios", t)}
                   />
                   <PlatformStatus
                     compact
                     platform="Android"
-                    status={platformSetupStatus(state, "android")}
+                    status={platformSetupStatus(state, "android", t)}
                   />
                 </div>
                 {/* Remote hosts report their own warnings in the device host list below. */}
@@ -1113,7 +1115,7 @@ function DeviceIntegrationControls({
         title={t("settingsPages.integrations.devices.agentAccess.title")}
         serverScoped
         settingKeys={["enableAgentDeviceAccess"]}
-        description={agentDeviceDescription}
+        description={t(agentDeviceDescriptionKey)}
         control={
           <>
             <DeviceToolVersions

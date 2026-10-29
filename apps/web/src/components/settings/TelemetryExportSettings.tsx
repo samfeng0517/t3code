@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { OtlpEndpointCheckResult, OtlpSignal, ServerObservability } from "@t3tools/contracts";
 import { useEffect, useEffectEvent, useState } from "react";
 
+import { useT, type Translate } from "~/i18n";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
@@ -18,21 +19,21 @@ const SIGNALS = [
     key: "otlpTracesUrl",
     sourceKey: "otlpTracesSource",
     variableKey: "otlpTracesVariable",
-    label: "Traces",
+    label: "settingsMisc.telemetry.traces",
     signal: "traces",
   },
   {
     key: "otlpMetricsUrl",
     sourceKey: "otlpMetricsSource",
     variableKey: "otlpMetricsVariable",
-    label: "Metrics",
+    label: "settingsMisc.telemetry.metrics",
     signal: "metrics",
   },
   {
     key: "otlpLogsUrl",
     sourceKey: "otlpLogsSource",
     variableKey: "otlpLogsVariable",
-    label: "Logs",
+    label: "settingsMisc.telemetry.logs",
     signal: "logs",
   },
 ] as const;
@@ -40,7 +41,10 @@ const SIGNALS = [
 type SignalDescriptor = (typeof SIGNALS)[number];
 type SignalKey = SignalDescriptor["key"];
 
-const OVERRIDE_LABELS = { environment: "Set by environment", bootstrap: "Set by desktop" } as const;
+const OVERRIDE_LABELS = {
+  environment: "settingsMisc.telemetry.setByEnvironment",
+  bootstrap: "settingsMisc.telemetry.setByDesktop",
+} as const;
 
 function runningOverride(
   running: ServerObservability | undefined,
@@ -56,28 +60,46 @@ type EndpointCheck = { readonly url: string; readonly result: OtlpEndpointCheckR
 
 const isHttpUrl = (url: string) => /^https?:\/\/./i.test(url);
 
-function endpointStatus(url: string, check: EndpointCheck | undefined) {
-  if (url === "") return { label: "Off", dot: "bg-muted-foreground/40" };
-  if (check?.url !== url) return { label: "Not checked", dot: "bg-muted-foreground/40" };
+function endpointStatus(url: string, check: EndpointCheck | undefined, t: Translate) {
+  if (url === "")
+    return { label: t("settingsMisc.telemetry.status.off"), dot: "bg-muted-foreground/40" };
+  if (check?.url !== url) {
+    return { label: t("settingsMisc.telemetry.status.notChecked"), dot: "bg-muted-foreground/40" };
+  }
   const { result } = check;
-  if (result === null) return { label: "Checking…", dot: "bg-warning" };
+  if (result === null)
+    return { label: t("settingsMisc.telemetry.status.checking"), dot: "bg-warning" };
   switch (result._tag) {
     case "Accepted":
-      return { label: `Connected · ${Math.round(result.latencyMs)} ms`, dot: "bg-success" };
+      return {
+        label: t("settingsMisc.telemetry.status.connected", {
+          latency: Math.round(result.latencyMs),
+        }),
+        dot: "bg-success",
+      };
     case "Rejected":
-      return { label: `Rejected · HTTP ${result.status}`, dot: "bg-destructive" };
+      return {
+        label: t("settingsMisc.telemetry.status.rejected", { status: result.status }),
+        dot: "bg-destructive",
+      };
     case "Unreachable":
-      return { label: result.timedOut ? "Timed out" : "Unreachable", dot: "bg-destructive" };
+      return {
+        label: result.timedOut
+          ? t("settingsMisc.telemetry.status.timedOut")
+          : t("settingsMisc.telemetry.status.unreachable"),
+        dot: "bg-destructive",
+      };
   }
 }
 
 export function TelemetryExportSettings() {
+  const t = useT();
   const { environment, scope } = useSettingsScope();
   if (scope.kind !== "environment" || !environment) {
     return (
-      <SettingsSection title="OpenTelemetry export" id="telemetry-export">
+      <SettingsSection title={t("settingsMisc.telemetry.title")} id="telemetry-export">
         <SettingsScopeNotice target="environment">
-          Choose one environment to configure its telemetry exports.
+          {t("settingsMisc.telemetry.chooseEnvironment")}
         </SettingsScopeNotice>
       </SettingsSection>
     );
@@ -86,6 +108,7 @@ export function TelemetryExportSettings() {
 }
 
 function TelemetryExportForm() {
+  const t = useT();
   const { environment } = useSettingsScope();
   const saved = useScopedSettings((settings) => settings.observability);
   const [draft, setDraft] = useState<Partial<typeof saved>>({});
@@ -143,7 +166,7 @@ function TelemetryExportForm() {
   }, [canCheck]);
 
   return (
-    <SettingsSection title="OpenTelemetry export" id="telemetry-export">
+    <SettingsSection title={t("settingsMisc.telemetry.title")} id="telemetry-export">
       <form
         className="grid gap-4 px-4 py-4 sm:px-5"
         onSubmit={async (event) => {
@@ -164,28 +187,27 @@ function TelemetryExportForm() {
           setSaving(false);
           if (result._tag === "Success") {
             setDraft({});
-            setMessage("Saved. Restart the server to apply.");
+            setMessage(t("settingsMisc.telemetry.savedRestart"));
           }
         }}
       >
-        <p className="text-xs text-muted-foreground">
-          Send traces, metrics, and logs to an OTLP HTTP receiver. Restart the server to apply.
-          Environment variables override these settings.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("settingsMisc.telemetry.intro")}</p>
         {!canEdit && (
           <p className="text-xs text-muted-foreground">
-            This connection lacks permission to change settings on{" "}
-            {environment?.label ?? "the selected environment"}.
+            {t("settingsMisc.telemetry.noPermission", {
+              environment: environment?.label ?? t("settingsMisc.telemetry.selectedEnvironment"),
+            })}
           </p>
         )}
         {SIGNALS.map((descriptor) => {
-          const { key, label, signal } = descriptor;
+          const { key, signal } = descriptor;
+          const label = t(descriptor.label);
           const override = runningOverride(running, descriptor);
           const url = override?.url ?? values[key].trim();
-          const check = canCheck ? endpointStatus(url, checks[key]) : null;
+          const check = canCheck ? endpointStatus(url, checks[key], t) : null;
           const status = override
             ? {
-                label: check ? `${override.label} · ${check.label}` : override.label,
+                label: check ? `${t(override.label)} · ${check.label}` : t(override.label),
                 dot: check?.dot ?? "bg-muted-foreground/40",
               }
             : check;
@@ -194,7 +216,9 @@ function TelemetryExportForm() {
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-1.5">
                   {status && <ConnectionStatusDot dotClassName={status.dot} />}
-                  <Label htmlFor={key}>{label} endpoint</Label>
+                  <Label htmlFor={key}>
+                    {t("settingsMisc.telemetry.endpointLabel", { signal: label })}
+                  </Label>
                 </div>
                 {status && <span className="text-xs text-muted-foreground">{status.label}</span>}
               </div>
@@ -204,7 +228,7 @@ function TelemetryExportForm() {
                   size="sm"
                   type="url"
                   pattern="[Hh][Tt][Tt][Pp][Ss]?://.*"
-                  title="Enter an HTTP or HTTPS endpoint, or leave empty to disable export."
+                  title={t("settingsMisc.telemetry.endpointHint")}
                   placeholder={`http://localhost:4318/v1/${signal}`}
                   value={values[key]}
                   disabled={saving || !canEdit}
@@ -227,17 +251,20 @@ function TelemetryExportForm() {
                     disabled={!isHttpUrl(url) || checks[key]?.result === null}
                     onClick={() => void checkEndpoint(key, signal, url)}
                   >
-                    Test
+                    {t("settingsMisc.telemetry.test")}
                   </Button>
                 )}
               </div>
               {(saved[key] !== (running?.[key] ?? "") || override?.variable) && (
                 <p className="break-all text-xs text-muted-foreground">
-                  Running: {running?.[key] || "Disabled"}
+                  {t("settingsMisc.telemetry.running", {
+                    value: running?.[key] || t("settingsMisc.telemetry.disabled"),
+                  })}
                   {override?.variable && (
                     <>
                       {" "}
-                      from <code className="font-mono">{override.variable}</code>
+                      {t("settingsMisc.telemetry.fromVariable")}{" "}
+                      <code className="font-mono">{override.variable}</code>
                     </>
                   )}
                 </p>
@@ -266,10 +293,10 @@ function TelemetryExportForm() {
                 }
               }}
             >
-              Discard
+              {t("settingsMisc.telemetry.discard")}
             </Button>
             <Button type="submit" size="xs" disabled={!changed || saving || !canEdit}>
-              {saving ? "Saving…" : "Save"}
+              {saving ? t("settingsMisc.telemetry.saving") : t("settingsMisc.telemetry.save")}
             </Button>
           </div>
         </div>

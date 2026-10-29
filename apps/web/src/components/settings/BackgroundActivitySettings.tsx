@@ -245,7 +245,9 @@ function BackgroundActivityAdvancedDialog({
                     />
                   </NumberFieldGroup>
                 </NumberField>
-                <span className="text-xs text-muted-foreground">seconds</span>
+                <span className="text-xs text-muted-foreground">
+                  {t("settingsMisc.background.seconds")}
+                </span>
               </div>
             </div>
 
@@ -291,7 +293,9 @@ function BackgroundActivityAdvancedDialog({
                     />
                   </NumberFieldGroup>
                 </NumberField>
-                <span className="text-xs text-muted-foreground">seconds</span>
+                <span className="text-xs text-muted-foreground">
+                  {t("settingsMisc.background.seconds")}
+                </span>
               </div>
             </div>
 

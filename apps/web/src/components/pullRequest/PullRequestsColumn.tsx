@@ -3,6 +3,7 @@ import { Plug2Icon, SearchIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { isElectron } from "~/env";
+import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { RefreshIcon } from "../ui/refresh-icon";
@@ -16,7 +17,11 @@ import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { workspaceAreaProps } from "../../lib/workspaceFocus";
 import { PullRequestCompactFilterMenu } from "./PullRequestCompactFilterMenu";
 import type { PullRequestFilterOption } from "./PullRequestListFilters";
-import { INVOLVEMENT_TABS, STATE_TABS } from "./pullRequestListOptions";
+import {
+  INVOLVEMENT_TABS,
+  localizePullRequestFilterOptions,
+  STATE_TABS,
+} from "./pullRequestListOptions";
 
 function ExpandableSearch({
   searchInput,
@@ -35,6 +40,7 @@ function ExpandableSearch({
    */
   onFocusWithin?: (focused: boolean) => void;
 }) {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement | null>(null);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the search input DOM node when the topbar search opens
   useEffect(() => {
@@ -60,7 +66,7 @@ function ExpandableSearch({
     <Button
       size="icon-sm"
       variant="ghost"
-      aria-label="Search pull requests"
+      aria-label={t("pullRequests.column.searchOpen")}
       onClick={() => onOpenChange(true)}
     >
       <SearchIcon className="size-4" />
@@ -109,7 +115,8 @@ export function PullRequestsColumn({
   listBody: ReactNode;
   scrollRef: RefObject<HTMLDivElement | null>;
 }) {
-  const contentArea = workspaceAreaProps("pull-requests", 1, "Pull requests");
+  const t = useT();
+  const contentArea = workspaceAreaProps("pull-requests", 1, t("pullRequests.column.title"));
   const markerRef = useRef<HTMLDivElement | null>(null);
   const [condensed, setCondensed] = useState(false);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- IntersectionObserver on the scroll marker condenses the topbar
@@ -174,28 +181,31 @@ export function PullRequestsColumn({
       >
         {titlebarControls}
         {condensed ? (
-          <WorkspaceBreadcrumb ariaLabel="Pull request scope" className="overflow-hidden">
+          <WorkspaceBreadcrumb
+            ariaLabel={t("pullRequests.column.scope")}
+            className="overflow-hidden"
+          >
             <WorkspaceBreadcrumbItem current className={cn(searchExpanded && "sr-only")}>
-              <h1 className="truncate">Pull requests</h1>
+              <h1 className="truncate">{t("pullRequests.column.title")}</h1>
             </WorkspaceBreadcrumbItem>
             {searchExpanded ? null : <WorkspaceBreadcrumbSeparator />}
             <WorkspaceBreadcrumbItem className="shrink gap-1.5">
               <PullRequestCompactFilterMenu
-                label="Filter by state"
+                label={t("pullRequests.column.filterState")}
                 value={state}
-                options={STATE_TABS}
+                options={localizePullRequestFilterOptions(STATE_TABS, t)}
                 onChange={onState}
                 className="shrink-0"
               />
               <PullRequestCompactFilterMenu
-                label="Filter by involvement"
+                label={t("pullRequests.column.filterInvolvement")}
                 value={involvement}
-                options={INVOLVEMENT_TABS}
+                options={localizePullRequestFilterOptions(INVOLVEMENT_TABS, t)}
                 onChange={onInvolvement}
               />
               {hostMenuOptions.length > 2 ? (
                 <PullRequestCompactFilterMenu
-                  label="Filter by host"
+                  label={t("pullRequests.column.filterHost")}
                   value={host ?? ""}
                   options={hostMenuOptions}
                   onChange={(next) => onHost(next === "" ? undefined : next)}
@@ -204,9 +214,9 @@ export function PullRequestsColumn({
             </WorkspaceBreadcrumbItem>
           </WorkspaceBreadcrumb>
         ) : (
-          <WorkspaceBreadcrumb ariaLabel="Pull requests breadcrumb">
+          <WorkspaceBreadcrumb ariaLabel={t("pullRequests.column.breadcrumb")}>
             <WorkspaceBreadcrumbItem current>
-              <h1 className="truncate">Pull requests</h1>
+              <h1 className="truncate">{t("pullRequests.column.title")}</h1>
             </WorkspaceBreadcrumbItem>
           </WorkspaceBreadcrumb>
         )}
@@ -241,11 +251,11 @@ export function PullRequestsColumn({
               {sortMenu}
               {filtersMenu}
               <PullRequestCompactFilterMenu
-                label="Filter by provider"
+                label={t("pullRequests.column.filterProvider")}
                 outlined
                 iconOnly={host !== undefined}
                 triggerIcon={<Plug2Icon aria-hidden className="size-4" />}
-                triggerLabel="All"
+                triggerLabel={t("pullRequests.column.providerAll")}
                 value={host ?? ""}
                 options={hostMenuOptions}
                 onChange={(next) => onHost(next === "" ? undefined : next)}
@@ -273,11 +283,12 @@ function PullRequestRefreshControl({
   refreshing: boolean;
   onRefresh: () => void;
 }) {
+  const t = useT();
   return (
     <Button
       size={compact ? "icon-sm" : "icon"}
       variant={compact ? "ghost" : "outline"}
-      aria-label="Refresh pull requests"
+      aria-label={t("pullRequests.column.refresh")}
       onClick={onRefresh}
       disabled={refreshing}
     >

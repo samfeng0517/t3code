@@ -1,5 +1,6 @@
 import { DEFAULT_CLIENT_SETTINGS, type DesktopSnapShotState } from "@t3tools/contracts";
-import { expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, expect, it } from "vite-plus/test";
+import { setLanguagePreference } from "~/i18n/languagePreferenceStore";
 import {
   captureSetupAccessReady,
   captureSetupBackend,
@@ -10,6 +11,9 @@ import {
   captureSetupShortcutReady,
   captureSetupShouldDisableOnClose,
 } from "./SnapShotSetupDialog.logic";
+
+beforeEach(() => setLanguagePreference("en"));
+afterEach(() => setLanguagePreference("system"));
 
 const gnome: DesktopSnapShotState = {
   mode: "portal",

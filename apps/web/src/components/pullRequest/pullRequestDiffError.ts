@@ -1,14 +1,21 @@
+import { t as globalT, type Translate } from "~/i18n";
+
 /** Diff failures currently include transport wrappers, so recognize the reason inside them. */
-export function describePullRequestDiffError(error: string, providerName: string, term: string) {
+export function describePullRequestDiffError(
+  error: string,
+  providerName: string,
+  term: string,
+  t: Translate = globalT,
+) {
   if (/\brate limit\b|\brate[-_]limited\b|\btoo many requests\b/i.test(error)) {
     return {
-      title: `${providerName} rate limit reached`,
-      description: `${providerName} is temporarily limiting requests, so this diff couldn't be loaded. Try again after the limit resets, or view the changes on ${providerName}.`,
+      title: t("pullRequestDetail.diffError.rateLimitTitle", { providerName }),
+      description: t("pullRequestDetail.diffError.rateLimitDescription", { providerName }),
     };
   }
 
   return {
-    title: "Couldn't load the changes",
-    description: `The environment couldn't load this ${term}'s diff. Try again, or view the changes on ${providerName}.`,
+    title: t("pullRequestDetail.diffError.loadFailedTitle"),
+    description: t("pullRequestDetail.diffError.loadFailedDescription", { term, providerName }),
   };
 }

@@ -16,6 +16,7 @@ import type { deriveThreadStructureRuntime } from "@t3tools/client-runtime/state
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { type SetStateAction } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useT } from "../../i18n";
 import { toastManager } from "../ui/toast";
 import { resolveAppModelSelectionForInstance } from "../../modelSelection";
 import { type DraftThreadEnvMode, useComposerDraftStore } from "../../composerDraftStore";
@@ -51,6 +52,7 @@ interface ComposerSelectionInput {
  * and where a new thread runs (local or a new worktree).
  */
 export function useComposerSelection(input: ComposerSelectionInput) {
+  const t = useT();
   const {
     environmentId,
     composerDraftTarget,
@@ -128,6 +130,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
           currentProviderInstanceId: runtimeProviderInstanceId,
         }
       : null,
+    t,
   );
 
   const onProviderModelSelect = (

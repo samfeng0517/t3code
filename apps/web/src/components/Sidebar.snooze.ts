@@ -9,6 +9,7 @@ import {
 
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { serverEnvironment } from "../state/server";
+import { t } from "../i18n";
 import { formatShortTimestamp } from "../timestampFormat";
 import { toastManager } from "./ui/toast";
 
@@ -39,8 +40,8 @@ export function pickSnoozePreset(
   if (!picked) {
     toastManager.add({
       type: "warning",
-      title: "Could not snooze thread",
-      description: "That snooze time has passed. Choose another time.",
+      title: t("shell.snooze.passedTitle"),
+      description: t("shell.snooze.passedDescription"),
     });
   }
   return picked;

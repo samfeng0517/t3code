@@ -4,6 +4,8 @@ import type {
   UsageModelPriceOverride,
 } from "@t3tools/contracts";
 
+import { t } from "~/i18n";
+
 export interface UsagePriceTarget {
   readonly environmentId: EnvironmentId;
   readonly label: string;
@@ -44,7 +46,7 @@ export async function writeUsagePrices(input: {
       if (target.unavailable !== null) {
         result = { status: "failed", error: target.unavailable };
       } else if (aliases.length > 0 && target.aliases === null) {
-        result = { status: "failed", error: "Update server to map models" };
+        result = { status: "failed", error: t("usage.prices.error.updateServer") };
       } else {
         try {
           const saved =
@@ -66,9 +68,9 @@ export async function writeUsagePrices(input: {
           result =
             saved._tag === "Success"
               ? { status: "saved" }
-              : { status: "failed", error: "Could not save. Try again." };
+              : { status: "failed", error: t("usage.prices.error.couldNotSave") };
         } catch {
-          result = { status: "failed", error: "Could not save. Try again." };
+          result = { status: "failed", error: t("usage.prices.error.couldNotSave") };
         }
       }
       input.onResult(target.environmentId, result);

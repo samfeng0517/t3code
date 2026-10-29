@@ -2,6 +2,7 @@ import { AsyncResult } from "effect/reactivity";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { toastManager } from "../components/ui/toast";
+import { setLanguagePreference } from "../i18n/languagePreferenceStore";
 import { announce, cancelAnnouncement } from "../lib/announce";
 import {
   releaseThreadUndoShortcut,
@@ -13,7 +14,10 @@ import * as ThreadUndo from "@t3tools/client-runtime/state/thread-undo";
 
 vi.mock("../lib/announce", () => ({ announce: vi.fn(), cancelAnnouncement: vi.fn() }));
 
-beforeEach(() => vi.useFakeTimers());
+beforeEach(() => {
+  setLanguagePreference("en");
+  vi.useFakeTimers();
+});
 afterEach(() => {
   vi.runAllTimers();
   vi.useRealTimers();

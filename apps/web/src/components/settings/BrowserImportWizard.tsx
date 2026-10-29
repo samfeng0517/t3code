@@ -1,10 +1,10 @@
 import { PermissionChecklist, PermissionContinueButton } from "../permissions/PermissionChecklist";
 import { usePermissionStatus } from "../permissions/usePermissionStatus";
-import type { BrowserImportSource } from "@t3tools/contracts";
-import { BROWSER_IMPORT_FAILURE_COPY } from "@t3tools/contracts";
+import type { BrowserImportFailureReason, BrowserImportSource } from "@t3tools/contracts";
 import { ArrowDownIcon, ArrowRightIcon, CheckIcon, HardDriveIcon } from "lucide-react";
 import { useRef, useState } from "react";
 
+import { useT, type Translate } from "~/i18n";
 import { cn, randomUUID } from "~/lib/utils";
 
 import { Button } from "../ui/button";
@@ -20,6 +20,7 @@ import {
 } from "../ui/dialog";
 import { Spinner } from "../ui/spinner";
 import {
+  browserImportFailureText,
   initialWizardStep,
   initialTargetSelection,
   canCloseWizard,
@@ -65,6 +66,7 @@ export function BrowserImportWizard({
   onCheckFullDiskAccess,
   onClose,
 }: BrowserImportWizardProps) {
+  const t = useT();
   const [source, setSource] = useState(initialSource);
   const [step, setStep] = useState<WizardStep>(() => initialWizardStep(initialSource));
   const [sourceProfileDirectory, setSourceProfileDirectory] = useState(
@@ -82,7 +84,7 @@ export function BrowserImportWizard({
     if (importInFlight.current) return;
     const chosen = resolveWizardTarget(target, newProfileId.current, targetProfiles);
     if (chosen === undefined) {
-      setTargetError("That profile is no longer available. Choose where to import these cookies.");
+      setTargetError(t("settingsMisc.browserImport.profileUnavailable"));
       setStep({ step: "configure" });
       return;
     }
@@ -186,32 +188,40 @@ function QuitStep({
   readonly onCancel: () => void;
   readonly onRechecked: () => void;
 }) {
+  const t = useT();
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Quit {source.name} to import</DialogTitle>
+        <DialogTitle>
+          {t("settingsMisc.browserImport.quit.title", { source: source.name })}
+        </DialogTitle>
         <DialogDescription>
-          {source.name} is open, so its cookies can&rsquo;t be read yet. Quit it, then continue.
+          {t("settingsMisc.browserImport.quit.description", { source: source.name })}
         </DialogDescription>
       </DialogHeader>
       <DialogFooter>
         <Button variant="outline" onClick={onCancel}>
-          Cancel
+          {t("common.cancel")}
         </Button>
-        <Button onClick={onRechecked}>I&rsquo;ve quit it</Button>
+        <Button onClick={onRechecked}>{t("settingsMisc.browserImport.quit.done")}</Button>
       </DialogFooter>
     </>
   );
 }
 
-function cookieCountLabel(count: number | undefined): string | undefined {
+function cookieCountLabel(count: number | undefined, t: Translate): string | undefined {
   if (count === undefined) return undefined;
-  if (count === 0) return "no cookies";
-  return `${count.toLocaleString()} ${count === 1 ? "cookie" : "cookies"}`;
+  if (count === 0) return t("settingsMisc.browserImport.cookies.none");
+  return cookieResultCount(count, t);
 }
 
-function cookieResultCount(count: number): string {
-  return `${count.toLocaleString()} ${count === 1 ? "cookie" : "cookies"}`;
+function cookieResultCount(count: number, t: Translate): string {
+  return t(
+    count === 1
+      ? "settingsMisc.browserImport.cookies.one"
+      : "settingsMisc.browserImport.cookies.other",
+    { count: count.toLocaleString() },
+  );
 }
 
 type ConfigureStepProps = {
@@ -243,6 +253,7 @@ function FullDiskAccessStep({
   readonly onGranted: () => void;
   readonly stillRequired: boolean;
 }) {
+  const t = useT();
   const [opening, setOpening] = useState(false);
   const [openingError, setOpeningError] = useState<string | null>(null);
   const permission = usePermissionStatus(async () => ({ fullDiskAccess: await onCheck() }), {
@@ -254,17 +265,17 @@ function FullDiskAccessStep({
     setOpeningError(null);
     void Promise.resolve()
       .then(onOpenSettings)
-      .catch(() => setOpeningError("Could not open System Settings. Try Allow again."))
+      .catch(() => setOpeningError(t("settingsMisc.browserImport.fda.openFailed")))
       .finally(() => setOpening(false));
   };
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Let T3 Code read {source.name}&rsquo;s cookies</DialogTitle>
+        <DialogTitle>
+          {t("settingsMisc.browserImport.fda.title", { source: source.name })}
+        </DialogTitle>
         <DialogDescription>
-          To import cookies from {source.name}, T3 Code needs Full Disk Access. Turn it on in System
-          Settings, then come back to finish the import. You can revoke it again once the import is
-          done.
+          {t("settingsMisc.browserImport.fda.description", { source: source.name })}
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
@@ -279,8 +290,10 @@ function FullDiskAccessStep({
                   aria-hidden="true"
                 />
               ),
-              title: "Full Disk Access",
-              description: `Read ${source.name}'s cookies for this import.`,
+              title: t("settingsMisc.browserImport.fda.permissionTitle"),
+              description: t("settingsMisc.browserImport.fda.permissionDescription", {
+                source: source.name,
+              }),
               granted: permission.status.fullDiskAccess,
               onAllow: () => void allow(),
             },
@@ -294,21 +307,21 @@ function FullDiskAccessStep({
         {!permission.isReady(["fullDiskAccess"]) ? (
           <p className="mt-3 text-xs text-muted-foreground">
             {stillRequired
-              ? "Access is still required. Quit and reopen T3 Code if you just allowed it, then retry the import."
-              : "If access doesn't update after you allow it, quit and reopen T3 Code, then retry the import."}
+              ? t("settingsMisc.browserImport.fda.stillRequired")
+              : t("settingsMisc.browserImport.fda.hint")}
           </p>
         ) : null}
       </DialogPanel>
       <DialogFooter>
         <Button variant="outline" onClick={onCancel}>
-          Cancel
+          {t("common.cancel")}
         </Button>
         <PermissionContinueButton
           ready={permission.isReady(["fullDiskAccess"])}
           busy={opening}
           onClick={onGranted}
         >
-          Continue
+          {t("common.continue")}
         </PermissionContinueButton>
       </DialogFooter>
     </>
@@ -327,6 +340,7 @@ function ConfigureStep({
   onCancel,
   onImport,
 }: ConfigureStepProps) {
+  const t = useT();
   const targetMissing =
     target.kind === "existing" &&
     !targetProfiles.some((profile) => profile.id === target.profileId);
@@ -334,30 +348,34 @@ function ConfigureStep({
   const targetFeedback =
     targetError ??
     (targetMissing
-      ? "That profile is no longer available. Choose where to import these cookies."
+      ? t("settingsMisc.browserImport.profileUnavailable")
       : targetUncreatable
-        ? "You've reached the profile limit. Choose an existing profile to import into."
+        ? t("settingsMisc.browserImport.profileLimit")
         : undefined);
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Import from {source.name}</DialogTitle>
+        <DialogTitle>
+          {t("settingsMisc.browserImport.configure.title", { source: source.name })}
+        </DialogTitle>
         <DialogDescription>
-          Choose which cookies to import for {destinationEnvironmentName}.
+          {t("settingsMisc.browserImport.configure.description", {
+            environment: destinationEnvironmentName,
+          })}
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           <section className="flex-1 space-y-2">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              From
+              {t("settingsMisc.browserImport.configure.from")}
             </p>
             {source.profiles.map((profile) => (
               <SelectableTile
                 key={profile.directory}
                 selected={sourceProfileDirectory === profile.directory}
                 title={profile.name}
-                subtitle={cookieCountLabel(profile.cookieCount)}
+                subtitle={cookieCountLabel(profile.cookieCount, t)}
                 onSelect={() => onSourceProfileChange(profile.directory)}
               />
             ))}
@@ -368,13 +386,13 @@ function ConfigureStep({
           </div>
           <section className="flex-1 space-y-2">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Into
+              {t("settingsMisc.browserImport.configure.into")}
             </p>
             {canCreateProfile ? (
               <SelectableTile
                 selected={target.kind === "new"}
-                title="New profile"
-                subtitle="Created for these cookies"
+                title={t("settingsMisc.browserImport.configure.newProfile")}
+                subtitle={t("settingsMisc.browserImport.configure.newProfileSubtitle")}
                 onSelect={() => onTargetChange({ kind: "new" })}
               />
             ) : null}
@@ -383,7 +401,7 @@ function ConfigureStep({
                 key={profile.id}
                 selected={target.kind === "existing" && target.profileId === profile.id}
                 title={profile.name}
-                subtitle="Existing profile"
+                subtitle={t("settingsMisc.browserImport.configure.existingProfile")}
                 onSelect={() => onTargetChange({ kind: "existing", profileId: profile.id })}
               />
             ))}
@@ -397,13 +415,13 @@ function ConfigureStep({
       </DialogPanel>
       <DialogFooter>
         <Button variant="outline" onClick={onCancel}>
-          Cancel
+          {t("common.cancel")}
         </Button>
         <Button
           disabled={sourceProfileDirectory === "" || targetMissing || targetUncreatable}
           onClick={onImport}
         >
-          Import
+          {t("settingsMisc.browserImport.configure.import")}
         </Button>
       </DialogFooter>
     </>
@@ -454,16 +472,21 @@ export function SelectableTile({
 }
 
 function ImportingStep() {
+  const t = useT();
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Importing cookies</DialogTitle>
-        <DialogDescription>This may take a moment.</DialogDescription>
+        <DialogTitle>{t("settingsMisc.browserImport.importing.title")}</DialogTitle>
+        <DialogDescription>
+          {t("settingsMisc.browserImport.importing.description")}
+        </DialogDescription>
       </DialogHeader>
       <DialogPanel>
         <div className="flex items-center gap-3 py-2">
           <Spinner size="md" tone="muted" />
-          <span className="text-sm text-muted-foreground">Importing…</span>
+          <span className="text-sm text-muted-foreground">
+            {t("settingsMisc.browserImport.importing.progress")}
+          </span>
         </div>
       </DialogPanel>
     </>
@@ -477,21 +500,26 @@ function CheckingStep({
   readonly sourceName: string;
   readonly check: "browser" | "fullDiskAccess";
 }) {
+  const t = useT();
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Checking {sourceName}</DialogTitle>
+        <DialogTitle>
+          {t("settingsMisc.browserImport.checking.title", { source: sourceName })}
+        </DialogTitle>
         <DialogDescription>
           {check === "fullDiskAccess"
-            ? "Checking Full Disk Access."
-            : "Checking whether the browser has closed."}
+            ? t("settingsMisc.browserImport.checking.fullDiskAccess")
+            : t("settingsMisc.browserImport.checking.browser")}
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
         <div className="flex items-center gap-3 py-2">
           <Spinner size="md" tone="muted" />
           <span className="text-sm text-muted-foreground">
-            {check === "fullDiskAccess" ? "Checking access…" : "Checking…"}
+            {check === "fullDiskAccess"
+              ? t("settingsMisc.browserImport.checking.access")
+              : t("settingsMisc.browserImport.checking.progress")}
           </span>
         </div>
       </DialogPanel>
@@ -514,35 +542,53 @@ function DoneStep({
   readonly destinationEnvironmentName: string;
   readonly onClose: () => void;
 }) {
+  const t = useT();
   return (
     <>
       <DialogHeader>
         <DialogTitle>
           {imported > 0
-            ? `Imported ${cookieResultCount(imported)}`
+            ? t("settingsMisc.browserImport.done.imported", {
+                cookies: cookieResultCount(imported, t),
+              })
             : skipped > 0
-              ? `Skipped ${cookieResultCount(skipped)}`
-              : "No cookies found"}
+              ? t("settingsMisc.browserImport.done.skippedTitle", {
+                  cookies: cookieResultCount(skipped, t),
+                })
+              : t("settingsMisc.browserImport.done.noCookies")}
         </DialogTitle>
         <DialogDescription>
           {imported > 0
-            ? `Added to ${targetName} for ${destinationEnvironmentName}.${skipped > 0 ? ` ${cookieResultCount(skipped)} skipped.` : ""}`
+            ? skipped > 0
+              ? t("settingsMisc.browserImport.done.addedSkipped", {
+                  profile: targetName,
+                  environment: destinationEnvironmentName,
+                  cookies: cookieResultCount(skipped, t),
+                })
+              : t("settingsMisc.browserImport.done.added", {
+                  profile: targetName,
+                  environment: destinationEnvironmentName,
+                })
             : skipped > 0
-              ? `No cookies were imported for ${destinationEnvironmentName}.`
-              : `There were no cookies to import for ${destinationEnvironmentName}.`}
+              ? t("settingsMisc.browserImport.done.noneImported", {
+                  environment: destinationEnvironmentName,
+                })
+              : t("settingsMisc.browserImport.done.nothingToImport", {
+                  environment: destinationEnvironmentName,
+                })}
         </DialogDescription>
       </DialogHeader>
       {skippedDomains.length > 0 ? (
         <DialogPanel>
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Skipped
+            {t("settingsMisc.browserImport.done.skippedLabel")}
           </p>
-          <p className="mt-1 text-sm text-foreground">{formatSkippedDomains(skippedDomains)}</p>
+          <p className="mt-1 text-sm text-foreground">{formatSkippedDomains(skippedDomains, t)}</p>
         </DialogPanel>
       ) : null}
       <DialogFooter>
         <DialogClose render={<Button />} onClick={onClose}>
-          Done
+          {t("common.done")}
         </DialogClose>
       </DialogFooter>
     </>
@@ -556,21 +602,24 @@ function BlockedStep({
   onRetry,
 }: {
   readonly source: BrowserImportSource;
-  readonly reason: keyof typeof BROWSER_IMPORT_FAILURE_COPY;
+  readonly reason: BrowserImportFailureReason;
   readonly onClose: () => void;
   readonly onRetry: (() => void) | undefined;
 }) {
+  const t = useT();
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Couldn&rsquo;t import from {source.name}</DialogTitle>
-        <DialogDescription>{BROWSER_IMPORT_FAILURE_COPY[reason]}</DialogDescription>
+        <DialogTitle>
+          {t("settingsMisc.browserImport.blocked.title", { source: source.name })}
+        </DialogTitle>
+        <DialogDescription>{browserImportFailureText(reason, t)}</DialogDescription>
       </DialogHeader>
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>
-          Close
+          {t("common.close")}
         </Button>
-        {onRetry ? <Button onClick={onRetry}>Try again</Button> : null}
+        {onRetry ? <Button onClick={onRetry}>{t("settingsMisc.common.tryAgain")}</Button> : null}
       </DialogFooter>
     </>
   );

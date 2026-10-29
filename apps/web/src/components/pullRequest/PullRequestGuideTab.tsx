@@ -2,6 +2,7 @@ import type { EnvironmentId, PullRequestRef, PullRequestReviewGuideStop } from "
 import { SparklesIcon, TriangleAlertIcon } from "lucide-react";
 import { useEffect, useEffectEvent } from "react";
 
+import { useT } from "~/i18n";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 
 import { Alert, AlertAction, AlertDescription } from "../ui/alert";
@@ -47,6 +48,7 @@ export function PullRequestGuideTab({
   onOpenFile: (path: string) => void;
   onTourShown?: (() => void) | undefined;
 }) {
+  const t = useT();
   const { query, data, running, canWrite, write } = useReviewGuideWriter({
     environmentId,
     reference,
@@ -91,7 +93,7 @@ export function PullRequestGuideTab({
     canWrite ? (
       <Button size={size} variant="outline" disabled={running} onClick={() => void write()}>
         {running ? <Spinner /> : <SparklesIcon aria-hidden className="size-3.5" />}
-        {running ? "Reading the change..." : label}
+        {running ? t("pullRequestDetail.guideTab.reading") : label}
       </Button>
     ) : null;
 
@@ -106,16 +108,23 @@ export function PullRequestGuideTab({
     return (
       <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-4 py-10 text-center">
         <p className="text-sm font-medium text-foreground">
-          {running ? "Writing a review guide" : "No review guide yet"}
+          {running
+            ? t("pullRequestDetail.guideTab.writingTitle")
+            : t("pullRequestDetail.guideTab.emptyTitle")}
         </p>
         <p className="max-w-md text-xs text-muted-foreground">
           {failure ??
             query.error ??
             (running
-              ? "An agent is reading the change. A large one takes a few minutes. You can leave; you will be told when it is ready."
-              : "A guide is a tour of the change: stops through the code in reading order, with the calls only a maintainer can make.")}
+              ? t("pullRequestDetail.guideTab.writingDescription")
+              : t("pullRequestDetail.guideTab.emptyDescription"))}
         </p>
-        {writeButton(failure === null ? "Write guide" : "Try again", "sm")}
+        {writeButton(
+          failure === null
+            ? t("pullRequestDetail.guideTab.write")
+            : t("pullRequestDetail.guideTab.tryAgain"),
+          "sm",
+        )}
       </div>
     );
   }
@@ -126,10 +135,12 @@ export function PullRequestGuideTab({
         {running ? <Spinner /> : <TriangleAlertIcon />}
         <AlertDescription>
           {running
-            ? "Rewriting this guide. You will be told when the new one is ready."
-            : (failure ?? "Written before the latest push.")}
+            ? t("pullRequestDetail.guideTab.rewriting")
+            : (failure ?? t("pullRequestDetail.guideTab.stale"))}
         </AlertDescription>
-        {!running && canWrite ? <AlertAction>{writeButton("Rewrite", "xs")}</AlertAction> : null}
+        {!running && canWrite ? (
+          <AlertAction>{writeButton(t("pullRequestDetail.guideTab.rewrite"), "xs")}</AlertAction>
+        ) : null}
       </Alert>
     ) : null;
 
