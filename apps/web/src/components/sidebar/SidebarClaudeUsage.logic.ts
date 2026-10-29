@@ -1,6 +1,7 @@
 import type { ServerProvider, ServerProviderUsageWindow } from "@t3tools/contracts";
 import {
   type LimitPace,
+  limitsReadFromTurns,
   paceOf,
   paceRemainingPercent,
   remainingPercent,
@@ -102,10 +103,15 @@ export function resolveClaudeUsageRows(
 export function resolveSidebarClaudeUsage(
   providers: ReadonlyArray<ClaudeUsageProvider>,
   now: number,
-): ReadonlyArray<ClaudeUsageRow> | null {
+): {
+  readonly rows: ReadonlyArray<ClaudeUsageRow>;
+  readonly readFromTurns: boolean;
+} | null {
   for (const provider of providers) {
     const rows = resolveClaudeUsageRows(provider, now);
-    if (rows) return rows;
+    if (rows && provider.usageLimits) {
+      return { rows, readFromTurns: limitsReadFromTurns(provider.usageLimits) };
+    }
   }
   return null;
 }

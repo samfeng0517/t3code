@@ -4,6 +4,7 @@ import {
   collectExternalUsageLinks,
   collectLimitNotices,
   collectLimitPools,
+  limitsReadFromTurns,
   CURSOR_USAGE_WINDOWS,
   cursorUsageWindowDetails,
   displayLimitWindows,
@@ -631,6 +632,11 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
         />
         {label}
       </h2>
+      {pool.accounts.some((account) => limitsReadFromTurns(account.limits)) ? (
+        <p className="text-xs text-muted-foreground">
+          {t("usage.limits.readFromTurns", { provider: label })}
+        </p>
+      ) : null}
       {windows.map((window) => {
         const details = pool.driver === "cursor" ? cursorUsageWindowDetails(window.id) : undefined;
         const detailKeys = details ? CURSOR_WINDOW_KEYS[details.id] : undefined;

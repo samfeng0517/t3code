@@ -16,6 +16,7 @@ export const sidebarZhTW: Readonly<Record<keyof typeof sidebarEn, string>> = {
   "sidebar.usage.weekly": "每週",
   "sidebar.usage.model": "每週 · {model}",
   "sidebar.usage.remaining": "剩 {percent}%",
+  "sidebar.usage.readFromTurns": "無法向 Claude 查詢，顯示最近對話回報的用量。",
   "sidebar.usage.pace.ahead": "用得比時間快：照這速度會提早用完",
   "sidebar.usage.pace.on": "用量跟時間同步",
   "sidebar.usage.pace.under": "用得比時間慢：剩下的時間還有餘裕",

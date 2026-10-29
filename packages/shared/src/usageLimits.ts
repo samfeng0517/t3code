@@ -195,7 +195,12 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
       accounts.set(key, next);
       return;
     }
-    const fresher = Date.parse(next.limits.checkedAt) > Date.parse(previous.limits.checkedAt);
+    // A real read beats windows streamed from turns, whatever their timestamps.
+    const nextFromTurns = limitsReadFromTurns(next.limits);
+    const fresher =
+      nextFromTurns === limitsReadFromTurns(previous.limits)
+        ? Date.parse(next.limits.checkedAt) > Date.parse(previous.limits.checkedAt)
+        : !nextFromTurns;
     const environments = [
       ...previous.environments,
       ...next.environments.filter(
@@ -234,7 +239,7 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
   for (const [environmentId, presentation] of presentations) {
     const label = presentation.entry.target.label;
     for (const provider of providersWithLimits(presentation.serverConfig?.providers ?? [])) {
-      if (!provider.usageLimits || limitsNotice(provider.usageLimits) !== null) continue;
+      if (!provider.usageLimits || !limitsDisplayable(provider.usageLimits)) continue;
       merge(resolveKey(nativeReport(provider)) ?? `${environmentId}:${provider.instanceId}`, {
         key: `${environmentId}:${provider.instanceId}`,
         driver: provider.driver,
@@ -256,7 +261,7 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
         ? `${presentation.entry.target.label} · ${source.label}`
         : source.label;
       for (const account of source.accounts) {
-        if (limitsNotice(account.usageLimits) !== null) continue;
+        if (!limitsDisplayable(account.usageLimits)) continue;
         const key = `${source.id}:${account.id}${account.workspaceId ? `:${account.workspaceId}` : ""}`;
         merge(resolveKey(account) ?? key, {
           key,
@@ -293,7 +298,10 @@ export function collectLimitNotices(presentations: LimitPresentations): readonly
     const environmentLabel = presentation.entry.target.label;
     for (const provider of providersWithLimits(presentation.serverConfig?.providers ?? [])) {
       if (provider.usageLimits?.unavailable?.reason === "unsupported") continue;
-      const notice = provider.usageLimits ? limitsNotice(provider.usageLimits) : null;
+      const notice =
+        provider.usageLimits && !limitsReadFromTurns(provider.usageLimits)
+          ? limitsNotice(provider.usageLimits)
+          : null;
       const name = provider.displayName?.trim() || String(provider.driver);
       if (notice) notices.push(`${label(environmentLabel, name)}: ${notice}`);
     }
@@ -508,6 +516,15 @@ function poolWindows(accounts: readonly LimitAccount[], now: number): readonly L
     };
   });
   return pools.sort((left, right) => WINDOW_KIND_ORDER[left.kind] - WINDOW_KIND_ORDER[right.kind]);
+}
+
+/** A failed read keeps windows streamed from recent turns; they show with a marker instead of a notice. */
+export function limitsReadFromTurns(limits: ServerProviderUsageLimits): boolean {
+  return limits.unavailable?.reason === "probeFailed" && limits.windows.length > 0;
+}
+
+function limitsDisplayable(limits: ServerProviderUsageLimits): boolean {
+  return limitsNotice(limits) === null || limitsReadFromTurns(limits);
 }
 
 export function limitsNotice(limits: ServerProviderUsageLimits): string | null {

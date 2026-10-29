@@ -17,6 +17,7 @@ import {
   collectLimitNotices,
   collectLimitPools,
   elapsedShare,
+  limitsReadFromTurns,
   paceOf,
   paceRemainingPercent,
   usesChatGptSharing,
@@ -131,6 +132,42 @@ describe("pools", () => {
       ],
     });
     expect(accounts[0]?.limits.windows[0]?.usedPercent).toBe(55);
+  });
+
+  it("should show windows streamed from turns but prefer a read duplicate when the limits probe failed", () => {
+    const streamed = provider({
+      driver: claude,
+      instanceId: ProviderInstanceId.make("claude"),
+      auth: { status: "authenticated", email: "same@example.com" },
+      usageLimits: {
+        checkedAt: "2026-09-03T11:30:00.000Z",
+        windows: [{ ...window, usedPercent: 50 }],
+        unavailable: { reason: "probeFailed" },
+      },
+    });
+    const read = {
+      ...streamed,
+      usageLimits: { checkedAt, windows: [{ ...window, usedPercent: 40 }] },
+    };
+    const only = new Map([
+      [EnvironmentId.make("env-a"), { ...laptop, serverConfig: { providers: [streamed] } }],
+    ]);
+    const [account] = collectLimitAccounts(only);
+    expect(account?.limits.windows[0]?.usedPercent).toBe(50);
+    expect(account && limitsReadFromTurns(account.limits)).toBe(true);
+    expect(collectLimitNotices(only)).toEqual([]);
+
+    const both = new Map([
+      ...only,
+      [
+        EnvironmentId.make("env-b"),
+        { entry: { target: { label: "Desktop" } }, serverConfig: { providers: [read] } },
+      ],
+    ]);
+    const merged = collectLimitAccounts(both);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.limits.windows[0]?.usedPercent).toBe(40);
+    expect(merged[0] && limitsReadFromTurns(merged[0].limits)).toBe(false);
   });
 
   it("merges OpenCode Go limits from machines with the same API key", () => {

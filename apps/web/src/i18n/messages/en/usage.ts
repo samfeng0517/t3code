@@ -103,6 +103,7 @@ export const usageEn = {
   "usage.limits.evenSpendingLine": "The line is where even spending would be.",
   "usage.limits.resetsAt": "Resets {time}",
   "usage.limits.empty": "No provider on the selected environments reports subscription limits.",
+  "usage.limits.readFromTurns": "Couldn't reach {provider}. Showing usage from recent turns.",
   "usage.limits.chatGptHint": "View usage in ChatGPT with your connected account.",
   "usage.limits.manage": "Manage usage",
   "usage.cursorWindow.total.label": "Overall",

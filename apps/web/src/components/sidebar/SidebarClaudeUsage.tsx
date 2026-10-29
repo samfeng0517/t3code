@@ -169,8 +169,9 @@ function SidebarClaudeUsageRows(props: { readonly providers: ReadonlyArray<Serve
   // The shared minute clock keeps redraws to once a minute and adds no timer of its own.
   const nowMinute = useNowMinute();
   const now = Date.parse(`${nowMinute}Z`);
-  const rows = resolveSidebarClaudeUsage(props.providers, now);
-  if (!rows) return null;
+  const usage = resolveSidebarClaudeUsage(props.providers, now);
+  if (!usage) return null;
+  const { rows } = usage;
   const showCountdown = rows.some((row) => row.reading.resetsAt !== null);
 
   const openLimits = () => {
@@ -198,6 +199,11 @@ function SidebarClaudeUsageRows(props: { readonly providers: ReadonlyArray<Serve
           showCountdown={showCountdown}
         />
       ))}
+      {usage.readFromTurns ? (
+        <span className="col-span-full pt-0.5 text-2xs leading-snug text-muted-foreground">
+          {t("sidebar.usage.readFromTurns")}
+        </span>
+      ) : null}
     </button>
   );
 }

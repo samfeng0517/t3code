@@ -14,6 +14,7 @@ export const sidebarEn = {
   "sidebar.usage.weekly": "Weekly",
   "sidebar.usage.model": "Weekly · {model}",
   "sidebar.usage.remaining": "{percent}% left",
+  "sidebar.usage.readFromTurns": "Couldn't reach Claude. Showing usage from recent turns.",
   "sidebar.usage.pace.ahead": "Ahead of pace: spending faster than the window elapses",
   "sidebar.usage.pace.on": "On pace with the window",
   "sidebar.usage.pace.under": "Under pace: headroom left for the rest of the window",

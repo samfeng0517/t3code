@@ -104,6 +104,7 @@ export const usageZhTW: Readonly<Record<keyof typeof usageEn, string>> = {
   "usage.limits.evenSpendingLine": "線條標示平均消耗時應在的位置。",
   "usage.limits.resetsAt": "{time} 重設",
   "usage.limits.empty": "所選環境上沒有任何提供者回報訂閱上限。",
+  "usage.limits.readFromTurns": "無法向 {provider} 查詢，顯示最近對話回報的用量。",
   "usage.limits.chatGptHint": "以已連結的帳號在 ChatGPT 查看用量。",
   "usage.limits.manage": "管理用量",
   "usage.cursorWindow.total.label": "整體",

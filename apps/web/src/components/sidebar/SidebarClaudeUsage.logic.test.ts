@@ -204,7 +204,16 @@ describe("resolveSidebarClaudeUsage", () => {
       ],
       NOW,
     );
-    expect(rows?.[0]?.reading.remainingPercent).toBe(80);
+    expect(rows?.rows[0]?.reading.remainingPercent).toBe(80);
+    expect(rows?.readFromTurns).toBe(false);
+  });
+
+  it("should mark the rows as read from turns when the limits probe failed", () => {
+    const usage = resolveSidebarClaudeUsage(
+      [claude([sessionWindow(29)], { unavailable: { reason: "probeFailed" } })],
+      NOW,
+    );
+    expect(usage?.readFromTurns).toBe(true);
   });
 });
 
