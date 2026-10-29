@@ -8036,6 +8036,18 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               ? yield* Ref.get(adapterOptions.scopedLimitNames)
               : { overageIncluded: undefined };
             const update = claudeRateLimitEventToUpdate(rateLimitInfo, names);
+            // The top-level utilization only appears near a threshold and overrides the window.
+            if (typeof rateLimitInfo.utilization === "number") {
+              yield* Effect.logInfo("claude rate limit event", {
+                status: rateLimitInfo.status,
+                rateLimitType: rateLimitInfo.rateLimitType ?? null,
+                utilization: rateLimitInfo.utilization,
+                resetsAt: rateLimitInfo.resetsAt ?? null,
+                surpassedThreshold: rateLimitInfo.surpassedThreshold ?? null,
+                unifiedWindows:
+                  (rateLimitInfo as { readonly unifiedWindows?: unknown }).unifiedWindows ?? null,
+              }).pipe(Effect.withSpan("ClaudeAdapterV2.rateLimitEvent"));
+            }
             const now = yield* DateTime.now;
             if (update && adapterOptions.onUsageLimits) {
               yield* adapterOptions.onUsageLimits({

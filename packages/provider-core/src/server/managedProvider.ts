@@ -35,6 +35,23 @@ function withUsageLimits(
   return usageLimits ? { ...rest, usageLimits } : rest;
 }
 
+// Traced with its source so a jump in the usage UI can be matched to the read behind it.
+const logUsageLimitsChange = Effect.fn("ManagedServerProvider.usageLimitsChanged")(function* (
+  source: "probe" | "failed-probe" | "stream",
+  snapshot: ServerProvider,
+) {
+  yield* Effect.logInfo("provider usage limits changed", {
+    source,
+    driver: snapshot.driver,
+    instanceId: snapshot.instanceId,
+    unavailable: snapshot.usageLimits?.unavailable?.reason ?? null,
+    windows:
+      snapshot.usageLimits?.windows.map(
+        (window) => `${window.id}=${window.usedPercent}@${window.resetsAt ?? "?"}`,
+      ) ?? [],
+  });
+});
+
 export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(function* <
   Settings,
 >(input: {
@@ -148,41 +165,51 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
     }
 
     const probedSnapshot = yield* input.checkProvider;
-    const { snapshot: nextSnapshot, generation: nextGeneration } = yield* Ref.modify(
-      snapshotStateRef,
-      (state) => {
-        const generation = input.enrichSnapshot
-          ? state.enrichmentGeneration + 1
-          : state.enrichmentGeneration;
-        // Failed reads retain limits only for the same account and original workspace.
-        const previous = state.snapshot.auth;
-        const differs = (a: string | undefined, b: string | undefined) =>
-          a !== undefined && b !== undefined && a !== b;
-        const switchedAccount =
-          differs(probedSnapshot.auth.email?.toLowerCase(), previous.email?.toLowerCase()) ||
-          (probedSnapshot.auth.workspaceId !== undefined &&
-            probedSnapshot.auth.workspaceId !== previous.workspaceId);
-        const usageLimits = switchedAccount
-          ? probedSnapshot.usageLimits
-          : resolveUsageLimitsAfterProbe({
-              published: state.snapshot.usageLimits,
-              probed: probedSnapshot.usageLimits,
-            });
-        const workspaceId =
-          usageLimits === probedSnapshot.usageLimits ? undefined : state.snapshot.auth.workspaceId;
-        const snapshot = withUsageLimits(
-          workspaceId && !probedSnapshot.auth.workspaceId
-            ? { ...probedSnapshot, auth: { ...probedSnapshot.auth, workspaceId } }
-            : probedSnapshot,
-          usageLimits,
-        );
-        return [
-          { snapshot, generation },
-          { snapshot, enrichmentGeneration: generation },
-        ] as const;
-      },
-    );
+    const {
+      snapshot: nextSnapshot,
+      generation: nextGeneration,
+      previousUsageLimits,
+    } = yield* Ref.modify(snapshotStateRef, (state) => {
+      const generation = input.enrichSnapshot
+        ? state.enrichmentGeneration + 1
+        : state.enrichmentGeneration;
+      // Failed reads retain limits only for the same account and original workspace.
+      const previous = state.snapshot.auth;
+      const differs = (a: string | undefined, b: string | undefined) =>
+        a !== undefined && b !== undefined && a !== b;
+      const switchedAccount =
+        differs(probedSnapshot.auth.email?.toLowerCase(), previous.email?.toLowerCase()) ||
+        (probedSnapshot.auth.workspaceId !== undefined &&
+          probedSnapshot.auth.workspaceId !== previous.workspaceId);
+      const usageLimits = switchedAccount
+        ? probedSnapshot.usageLimits
+        : resolveUsageLimitsAfterProbe({
+            published: state.snapshot.usageLimits,
+            probed: probedSnapshot.usageLimits,
+          });
+      const workspaceId =
+        usageLimits === probedSnapshot.usageLimits ? undefined : state.snapshot.auth.workspaceId;
+      const snapshot = withUsageLimits(
+        workspaceId && !probedSnapshot.auth.workspaceId
+          ? { ...probedSnapshot, auth: { ...probedSnapshot.auth, workspaceId } }
+          : probedSnapshot,
+        usageLimits,
+      );
+      return [
+        { snapshot, generation, previousUsageLimits: state.snapshot.usageLimits },
+        { snapshot, enrichmentGeneration: generation },
+      ] as const;
+    });
     yield* Ref.set(settingsRef, nextSettings);
+    // Failed reads are logged even when they keep the published limits, so a run of them shows.
+    if (probedSnapshot.usageLimits?.unavailable?.reason === "probeFailed") {
+      yield* logUsageLimitsChange("failed-probe", nextSnapshot);
+    } else if (
+      previousUsageLimits?.unavailable?.reason !== nextSnapshot.usageLimits?.unavailable?.reason ||
+      !Equal.equals(previousUsageLimits?.windows, nextSnapshot.usageLimits?.windows)
+    ) {
+      yield* logUsageLimitsChange("probe", nextSnapshot);
+    }
     yield* PubSub.publish(changesPubSub, nextSnapshot);
     yield* restartSnapshotEnrichment(nextSettings, nextSnapshot, nextGeneration);
     return nextSnapshot;
@@ -206,6 +233,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
         return [snapshot, { ...state, snapshot }] as const;
       });
       if (snapshotToPublish !== null) {
+        yield* logUsageLimitsChange("stream", snapshotToPublish);
         yield* PubSub.publish(changesPubSub, snapshotToPublish);
       }
     },
