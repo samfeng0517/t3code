@@ -133,6 +133,10 @@ import {
   usePrimaryEnvironmentId,
 } from "../state/environments";
 import { useProjects, useServerConfigs, useThreadShells, waitForProject } from "../state/entities";
+import {
+  changeRequestTermParams,
+  getProjectSourceControlPresentation,
+} from "../sourceControlPresentation";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
   appendBrowsePathSegment,
@@ -654,6 +658,13 @@ function OpenCommandPaletteDialog(props: {
   const currentProjectEnvironmentId =
     activeThread?.environmentId ?? activeDraftThread?.environmentId ?? null;
   const currentProjectId = activeThread?.projectId ?? activeDraftThread?.projectId ?? null;
+  const changeRequest = getProjectSourceControlPresentation(
+    projects.find(
+      (project) =>
+        project.environmentId === currentProjectEnvironmentId && project.id === currentProjectId,
+    )?.repositoryIdentity?.provider,
+  );
+  const changeRequestTerms = changeRequestTermParams(changeRequest.terminology);
   const scratchTargetEnvironmentId = scratchEnvironmentId(currentProjectEnvironmentId);
   const supportsTriage = (environmentId: EnvironmentId | null) =>
     environments.find((environment) => environment.environmentId === environmentId)?.serverConfig
@@ -1166,8 +1177,8 @@ function OpenCommandPaletteDialog(props: {
                 kind: "action",
                 value: "action:add-project:connect-environment",
                 searchTerms: ["connect", "environment", "connection", "settings"],
-                title: "Connect an environment",
-                description: "No connected environment can add a project",
+                title: t("shell.commandPalette.connectEnvironment"),
+                description: t("shell.commandPalette.connectEnvironmentDescription"),
                 icon: <SettingsIcon className={ITEM_ICON_CLASS} />,
                 keepOpen: true,
                 run: async () => {
@@ -1266,8 +1277,8 @@ function OpenCommandPaletteDialog(props: {
       kind: "action",
       value: "action:triage",
       searchTerms: ["triage", "bug", "issue", "report", "broken", "debug", "help", "support"],
-      title: "Triage an issue",
-      description: "An agent investigates a T3 Code problem and helps file an issue",
+      title: t("shell.commandPalette.triage"),
+      description: t("shell.commandPalette.triageDescription"),
       icon: <BugIcon className={ITEM_ICON_CLASS} />,
       run: () => startTriage(triageEnvironmentId),
     });
@@ -1370,8 +1381,8 @@ function OpenCommandPaletteDialog(props: {
           : ["copy", "thread", "thread id", "reference"],
       title:
         activeThreadReferenceCopyTarget.kind === "pull-request"
-          ? t("commandPalette.action.copyPullRequestLink")
-          : "Copy thread",
+          ? t("commandPalette.action.copyPullRequestLink", changeRequestTerms)
+          : t("shell.commandPalette.copyThread"),
       description: activeThreadReferenceCopyTarget.description,
       icon: <LinkIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "thread.copyReference",
@@ -1388,7 +1399,7 @@ function OpenCommandPaletteDialog(props: {
       kind: "action",
       value: "action:link-pull-request",
       searchTerms: ["link", "pull request", "pr", "attach", "stack"],
-      title: t("commandPalette.action.linkPullRequest"),
+      title: t("commandPalette.action.linkPullRequest", changeRequestTerms),
       icon: <PullRequestGlyph.link className={ITEM_ICON_CLASS} />,
       run: async () => {
         openLinkPullRequestDialog(threadRef);
@@ -1398,7 +1409,7 @@ function OpenCommandPaletteDialog(props: {
       kind: "action",
       value: "action:open-thread-pull-requests",
       searchTerms: ["pull requests", "linked", "stack", "prs"],
-      title: t("commandPalette.action.showLinkedPullRequests"),
+      title: t("commandPalette.action.showLinkedPullRequests", changeRequestTerms),
       disabled: visibleThreadPullRequests(activeThread.pullRequests).length === 0,
       icon: <PullRequestGlyph.link className={ITEM_ICON_CLASS} />,
       run: async () => {
@@ -1428,7 +1439,7 @@ function OpenCommandPaletteDialog(props: {
       kind: "action",
       value: "action:share-thread-with-guest",
       searchTerms: ["share", "guest", "invite", "link", "teammate"],
-      title: "Share with guest",
+      title: t("shell.threadMenu.shareWithGuest"),
       icon: <UserPlusIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
         openGuestShareDialog(threadRef);
@@ -1583,8 +1594,8 @@ function OpenCommandPaletteDialog(props: {
         "merge",
         "branch",
       ],
-      title: t("commandPalette.action.openPullRequests"),
-      icon: <PullRequestGlyph.pullRequest className={ITEM_ICON_CLASS} />,
+      title: t("commandPalette.action.openPullRequests", changeRequestTerms),
+      icon: <changeRequest.Icon className={ITEM_ICON_CLASS} />,
       run: async () => {
         await navigate({ to: "/pull-requests", search: readPullRequestListPreferences() });
       },
@@ -1615,7 +1626,10 @@ function OpenCommandPaletteDialog(props: {
   });
 
   for (const direction of [1, -1] as const) {
-    const title = direction === 1 ? "Focus Next Workspace Area" : "Focus Previous Workspace Area";
+    const title =
+      direction === 1
+        ? t("shell.commandPalette.focusNextArea")
+        : t("shell.commandPalette.focusPreviousArea");
     actionItems.push({
       kind: "action",
       value: `action:workspace-focus:${direction}`,
@@ -2464,8 +2478,8 @@ function OpenCommandPaletteDialog(props: {
       else
         toastManager.add({
           id: "thread-find-unavailable",
-          title: "Thread search is unavailable on this server.",
-          description: "Update the server to enable it.",
+          title: t("shell.commandPalette.threadFindUnavailable"),
+          description: t("shell.commandPalette.threadFindUnavailableDetail"),
         });
       return;
     }
@@ -2753,7 +2767,9 @@ function OpenCommandPaletteDialog(props: {
   ) : isThreadSearchPending && !isLinkedThreadSearch && !isBrowsing ? (
     // In the footer, so the list keeps its height while message results may
     // still arrive below it.
-    <span className="text-muted-foreground text-xs">Searching messages…</span>
+    <span className="text-muted-foreground text-xs">
+      {t("commandPalette.empty.searchingThreadMessages")}
+    </span>
   ) : null;
 
   return (

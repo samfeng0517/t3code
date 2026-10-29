@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo } from "react";
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
@@ -39,7 +40,12 @@ import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarClaudeUsage } from "./SidebarClaudeUsage";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 import { settledShelfToggleProps, useSettledShelfExpanded } from "./settledShelf";
-import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+import { useThreadRouteRef } from "~/hooks/useThreadRouteTarget";
+import {
+  changeRequestTermParams,
+  getProjectSourceControlPresentation,
+} from "~/sourceControlPresentation";
+import { useProject, useQuietThreadShell } from "~/state/entities";
 import { observeResize } from "~/lib/observeResize";
 
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
@@ -172,6 +178,23 @@ function SidebarUtilityItem({
   );
 }
 
+/** Names change requests after the open thread's host, since the page itself spans projects. */
+function SidebarPullRequestsItem({ onClick }: { onClick: () => void }) {
+  const t = useT();
+  const thread = useQuietThreadShell(useThreadRouteRef());
+  const project = useProject(
+    thread ? scopeProjectRef(thread.environmentId, thread.projectId) : null,
+  );
+  const changeRequest = getProjectSourceControlPresentation(project?.repositoryIdentity?.provider);
+  return (
+    <SidebarUtilityItem
+      icon={<changeRequest.Icon />}
+      label={t("sidebar.chrome.pullRequests", changeRequestTermParams(changeRequest.terminology))}
+      onClick={onClick}
+    />
+  );
+}
+
 const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const t = useT();
   const navigate = useNavigate();
@@ -231,11 +254,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             onClick={handleSettingsClick}
           />
           {pullRequestsSupported ? (
-            <SidebarUtilityItem
-              icon={<PullRequestGlyph.pullRequest />}
-              label={t("sidebar.chrome.pullRequests")}
-              onClick={handlePullRequestsClick}
-            />
+            <SidebarPullRequestsItem onClick={handlePullRequestsClick} />
           ) : null}
           <SidebarUtilityItem
             icon={<GitGraphIcon />}

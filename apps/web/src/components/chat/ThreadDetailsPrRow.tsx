@@ -5,7 +5,7 @@ import {
 } from "@t3tools/client-runtime/source-control-clients";
 import { PullRequestChangeBreakdownRows } from "../pullRequest/PullRequestChangeBreakdownStat";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
-import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
+import { getProjectSourceControlPresentation } from "~/sourceControlPresentation";
 import { selectEnvironmentQueryData } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId, ProjectId, PullRequestRef } from "@t3tools/contracts";
@@ -140,9 +140,10 @@ export function ThreadDetailsPrRow({
   const checksQuery = useEnvironmentQueryRefresh(checksAtom);
   const checksAreNewer = useEnvironmentQueryIsNewer(checksAtom, detailAtom);
   const detail = resolvePullRequestDetailChecks(detailData, checksData, checksAreNewer);
-  const terminology = sourceControlClients.get(
+  const sourceControl = getProjectSourceControlPresentation(
     detail?.provider ?? project?.repositoryIdentity?.provider,
-  ).changeRequest;
+  );
+  const terminology = sourceControl.terminology;
   const open = reference !== null && (detail?.state ?? pr?.state) === "open";
   const refreshKey = `${environmentId}:${project?.id}:${reference?.host}:${reference?.repository}:${number}`;
   useLiveRefresh(
@@ -225,10 +226,13 @@ export function ThreadDetailsPrRow({
   const statePresentation =
     detail === null
       ? null
-      : resolvePullRequestState({
-          state: detail.state,
-          isDraft: detail.isDraft,
-        });
+      : resolvePullRequestState(
+          {
+            state: detail.state,
+            isDraft: detail.isDraft,
+          },
+          t,
+        );
   const icon = statePresentation ? (
     <statePresentation.Icon
       aria-hidden
@@ -240,7 +244,7 @@ export function ThreadDetailsPrRow({
       className={cn(THREAD_DETAILS_PANEL_ICON_CLASS, status.colorClass)}
     />
   ) : (
-    <PullRequestGlyph.pullRequest className={THREAD_DETAILS_PANEL_ICON_CLASS} />
+    <sourceControl.Icon className={THREAD_DETAILS_PANEL_ICON_CLASS} />
   );
 
   const rowTooltip =
@@ -287,7 +291,7 @@ export function ThreadDetailsPrRow({
                   }
                 />
                 <div className="min-w-0 truncate text-foreground/75">
-                  {describePullRequestChecks(detail.checks)}
+                  {describePullRequestChecks(detail.checks, t)}
                 </div>
               </div>
             ) : null}

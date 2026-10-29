@@ -3,7 +3,7 @@ export const sidebarEn = {
   "sidebar.chrome.goToThreads": "Go to threads",
   "sidebar.chrome.back": "Back",
   "sidebar.chrome.settings": "Settings",
-  "sidebar.chrome.pullRequests": "Pull requests",
+  "sidebar.chrome.pullRequests": "{Plural}",
   "sidebar.chrome.git": "Git",
   "sidebar.chrome.usage": "Usage",
   "sidebar.chrome.showSettled": "Show settled threads",

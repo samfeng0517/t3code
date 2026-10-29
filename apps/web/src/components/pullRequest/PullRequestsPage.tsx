@@ -60,7 +60,12 @@ import {
   type PullRequestFilterOption,
 } from "./PullRequestListFilters";
 import { PullRequestCompactFilterMenu } from "./PullRequestCompactFilterMenu";
-import { INVOLVEMENT_TABS, SORT_OPTIONS, STATE_TABS } from "./pullRequestListOptions";
+import {
+  INVOLVEMENT_TABS,
+  localizePullRequestFilterOptions,
+  SORT_OPTIONS,
+  STATE_TABS,
+} from "./pullRequestListOptions";
 import { PullRequestsColumn } from "./PullRequestsColumn";
 import { PullRequestListGroups } from "./PullRequestListGroups";
 import {
@@ -77,6 +82,7 @@ import { PullRequestsUnavailableState } from "./PullRequestsUnavailableState";
 import { RightPanelTabs } from "../RightPanelTabs";
 import { isCommandPaletteOpen } from "~/commandPaletteBus";
 import { isElectron } from "~/env";
+import { useT } from "~/i18n";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "~/keybindings";
 import { registerCommands } from "~/shortcuts/dispatcher";
 import { isTerminalFocused } from "~/lib/terminalFocus";
@@ -139,6 +145,7 @@ const EMPTY_PREVIEW_DESKTOP_STATE = {};
 const EMPTY_TERMINAL_LABELS = new Map<string, string>();
 const EMPTY_PENDING_SURFACES = new Set<string>();
 export function PullRequestsPage() {
+  const t = useT();
   const search = useSearch({ from: "/_chat/pull-requests" });
   const sort = search.sort ?? "ready";
   const statsPolicy: PullRequestStatsPolicy =
@@ -1113,7 +1120,7 @@ export function PullRequestsPage() {
       rightPanelAvailable={rightPanelAvailable}
       rightPanelOpen={rightPanelState.isOpen}
       rightPanelShortcutLabel={shortcutLabelForCommand(keybindings, "rightPanel.toggle")}
-      rightPanelUnavailableLabel="Select a pull request first"
+      rightPanelUnavailableLabel={t("pullRequests.page.selectFirst")}
       onToggleTerminal={() => undefined}
       onToggleRightPanel={toggleRightPanel}
     />
@@ -1139,14 +1146,14 @@ export function PullRequestsPage() {
   const listBody = (
     <>
       {!capabilityKnown ? (
-        <PullRequestListGhost rows={7} caption="Loading pull requests…" />
+        <PullRequestListGhost rows={7} caption={t("pullRequests.page.loadingList")} />
       ) : !pullRequestsSupported ? (
         <PullRequestsUnavailableState
-          title="Pull requests unavailable"
-          error="Update your T3 Code servers to browse pull requests."
+          title={t("pullRequests.page.unsupportedTitle")}
+          error={t("pullRequests.page.unsupportedDescription")}
         />
       ) : firstLoad ? (
-        <PullRequestListGhost rows={7} caption="Loading pull requests…" />
+        <PullRequestListGhost rows={7} caption={t("pullRequests.page.loadingList")} />
       ) : listQuery.error && shownCount === 0 ? (
         <PullRequestsUnavailableState
           error={listQuery.error}
@@ -1193,9 +1200,9 @@ export function PullRequestsPage() {
 
       {listQuery.error && shownCount > 0 ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning-surface px-3 py-2 text-xs">
-          <span>{listQuery.error} Showing the last pull requests loaded.</span>
+          <span>{t("pullRequests.page.showingLast", { error: listQuery.error })}</span>
           <Button size="xs" variant="outline" onClick={() => listQuery.refresh()}>
-            Retry
+            {t("pullRequests.unavailable.retry")}
           </Button>
         </div>
       ) : null}
@@ -1204,7 +1211,9 @@ export function PullRequestsPage() {
           {loadingMore ? (
             <span className="flex items-center gap-2">
               <Spinner aria-hidden size="sm" />
-              {sentCursors === null ? "Updating pull requests" : "Loading more"}
+              {sentCursors === null
+                ? t("pullRequests.page.updating")
+                : t("pullRequests.page.loadingMore")}
             </span>
           ) : canContinue || pageSize < MAX_PAGE_SIZE ? (
             <Button
@@ -1213,10 +1222,10 @@ export function PullRequestsPage() {
               onClick={loadMore}
               disabled={listQuery.isPending || showingCarried}
             >
-              Load more pull requests
+              {t("pullRequests.empty.loadMore")}
             </Button>
           ) : (
-            <span>Narrow your search to find more pull requests.</span>
+            <span>{t("pullRequests.page.narrowSearch")}</span>
           )}
         </div>
       ) : null}
@@ -1224,7 +1233,7 @@ export function PullRequestsPage() {
   );
   const hostEntries = hosts.length > 0 ? hosts : expectedHosts;
   const hostMenuOptions: ReadonlyArray<PullRequestFilterOption<string>> = [
-    { value: "", label: "All", Icon: Plug2Icon },
+    { value: "", label: t("pullRequests.page.allHosts"), Icon: Plug2Icon },
     ...hostEntries.map((entry) => {
       const summary = hosts.find((host) => host.host === entry.host);
       return {
@@ -1233,12 +1242,12 @@ export function PullRequestsPage() {
         Icon: getSourceControlPresentationForKind(entry.kind).Icon,
         ...(summary === undefined || summary.configured
           ? {}
-          : { unavailable: summary.detail ?? "This host could not be read." }),
+          : { unavailable: summary.detail ?? t("pullRequests.page.hostUnreadable") }),
       };
     }),
   ];
   const serverMenuOptions: ReadonlyArray<PullRequestFilterOption<string>> = [
-    { value: "", label: "All servers", Icon: LayersIcon },
+    { value: "", label: t("pullRequests.page.allServers"), Icon: LayersIcon },
     ...capableEnvironments.map((environment) => ({
       value: environment.environmentId,
       label: environment.label,
@@ -1247,12 +1256,12 @@ export function PullRequestsPage() {
   ];
   const sortMenu = (
     <PullRequestCompactFilterMenu
-      label="Sort pull requests"
+      label={t("pullRequests.page.sort")}
       triggerIcon={<ArrowDownUpIcon aria-hidden className="size-4" />}
-      triggerLabel="Sort"
+      triggerLabel={t("pullRequests.page.sortTrigger")}
       outlined
       value={sort}
-      options={SORT_OPTIONS}
+      options={localizePullRequestFilterOptions(SORT_OPTIONS, t)}
       onChange={(next) => updateListScope({ sort: next })}
     />
   );
@@ -1260,10 +1269,10 @@ export function PullRequestsPage() {
     <PullRequestFiltersMenuInSidebarOrder
       onOpenChange={setFiltersOpen}
       state={search.state}
-      stateOptions={STATE_TABS}
+      stateOptions={localizePullRequestFilterOptions(STATE_TABS, t)}
       onState={(state) => updateListScope({ state })}
       involvement={search.involvement}
-      involvementOptions={INVOLVEMENT_TABS}
+      involvementOptions={localizePullRequestFilterOptions(INVOLVEMENT_TABS, t)}
       onInvolvement={(involvement) => updateListScope({ involvement })}
       filters={
         typedParsed.filters.draft
@@ -1395,20 +1404,20 @@ export function PullRequestsPage() {
     const { shortLabel, singular } = (
       sourceControlClients.findByChangeRequestUrl(url) ?? sourceControlClients.get(undefined)
     ).changeRequest;
-    void writeTextToClipboard(url, `${singular} link`).then(
+    void writeTextToClipboard(url, t("pullRequests.page.linkTarget", { singular })).then(
       (didCopy) => {
         if (didCopy)
           toastManager.add({
             type: "success",
-            title: `${shortLabel} link copied`,
+            title: t("pullRequests.page.linkCopied", { shortLabel }),
             description: url,
           });
       },
       (error) => {
         toastManager.add({
           type: "error",
-          title: `Failed to copy ${shortLabel} link`,
-          description: error instanceof Error ? error.message : "An error occurred.",
+          title: t("pullRequests.page.linkCopyFailed", { shortLabel }),
+          description: error instanceof Error ? error.message : t("common.errorOccurred"),
         });
       },
     );
@@ -1503,6 +1512,7 @@ export function PullRequestsPage() {
             pullRequestsAvailable={false}
             deviceAvailable={false}
             pullRequestStatusSeeds={listedPullRequestTabStatuses}
+            changeRequestProviderKind={selectedProject?.repositoryIdentity?.provider}
           >
             <PullRequestDetailPanel
               getShortcutContext={getShortcutContext}

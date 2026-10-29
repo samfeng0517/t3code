@@ -5,7 +5,7 @@ export const sidebarZhTW: Readonly<Record<keyof typeof sidebarEn, string>> = {
   "sidebar.chrome.goToThreads": "前往對話串",
   "sidebar.chrome.back": "返回",
   "sidebar.chrome.settings": "設定",
-  "sidebar.chrome.pullRequests": "Pull Request",
+  "sidebar.chrome.pullRequests": "{title}",
   "sidebar.chrome.git": "Git",
   "sidebar.chrome.usage": "用量",
   "sidebar.chrome.showSettled": "顯示已結案的對話串",

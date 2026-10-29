@@ -15,7 +15,13 @@ export function SourceControlIconArtwork({
         ? value
         : `url(#${idPrefix}-${value.gradient})`;
   return (
-    <svg aria-hidden {...props} viewBox={icon.viewBox} fill="none">
+    <svg
+      // Decorative unless labelled, like lucide icons; a label must stay readable.
+      aria-hidden={props["aria-label"] || props["aria-labelledby"] || props.role ? undefined : true}
+      {...props}
+      viewBox={icon.viewBox}
+      fill="none"
+    >
       {icon.gradients ? (
         <defs>
           {icon.gradients.map((gradient) => (
