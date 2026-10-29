@@ -379,7 +379,7 @@ patchedDependencies:
   alchemy@2.0.0-beta.84: 824006659fa28ca31e490ce1fc3611f77436005ce9fa0f638be46564133cf042
   app-builder-lib@26.16.1: a28c2dfcfc2b90d6c6247e199e6537391db9ecd941854c650910d607442512d3
   dbus-next@0.10.2: cfff57561b0ee59b5addb3b2e6c6f20906e967507a530ab67e8db8108e520ba4
-  electron-chrome-extensions@4.9.0: d877eaa010e22258d507675fd283d740805c04286a438fc777948dd871393330
+  electron-chrome-extensions@4.9.0: 4fae82a7e5ea6e4d9885d20018a8552cdda260ff89c133805b272c762970ee57
   expo-audio@58.0.9: 530af071088a809fe1a97ce2b2269c78335fbb5dcd3893d6937ff5c304c85a0a
   expo-modules-core@58.0.22: f0b0fd100550ed76e5c25b4d13eb7c9ff62825f8f197c53edf7bf447c50c9fb7
   expo-network@58.0.3: cd09b6d1744dde4efa081b5619ebcff38877d98f7502a51cab121629dece8237
@@ -463,7 +463,7 @@ importers:
         version: 44.9.3(supports-color@8.1.1)
       electron-chrome-extensions:
         specifier: 4.9.0
-        version: 4.9.0(patch_hash=d877eaa010e22258d507675fd283d740805c04286a438fc777948dd871393330)(supports-color@8.1.1)
+        version: 4.9.0(patch_hash=4fae82a7e5ea6e4d9885d20018a8552cdda260ff89c133805b272c762970ee57)(supports-color@8.1.1)
       electron-store:
         specifier: ^8.2.0
         version: 8.2.0
@@ -18017,7 +18017,7 @@ snapshots:
       - electron-builder-squirrel-windows
       - supports-color
 
-  electron-chrome-extensions@4.9.0(patch_hash=d877eaa010e22258d507675fd283d740805c04286a438fc777948dd871393330)(supports-color@8.1.1):
+  electron-chrome-extensions@4.9.0(patch_hash=4fae82a7e5ea6e4d9885d20018a8552cdda260ff89c133805b272c762970ee57)(supports-color@8.1.1):
     dependencies:
       debug: 4.4.3(supports-color@8.1.1)
     transitivePeerDependencies:

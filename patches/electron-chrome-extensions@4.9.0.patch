@@ -1,5 +1,5 @@
 diff --git a/dist/cjs/index.js b/dist/cjs/index.js
-index b4242b0b847d33d8544832bfb2d8723a884a3072..00074cb79622c89d39383f44e8312af6bf563b13 100644
+index b4242b0b847d33d8544832bfb2d8723a884a3072..a04d3f505ad2ed693dd31ae0d39eb0546a959fe6 100644
 --- a/dist/cjs/index.js
 +++ b/dist/cjs/index.js
 @@ -61,6 +61,20 @@ var getExtensionUrl = (extension, uri) => {
@@ -38,7 +38,60 @@ index b4242b0b847d33d8544832bfb2d8723a884a3072..00074cb79622c89d39383f44e8312af6
      return this.getWindowDetails(win);
    }
    async update(event, windowId, updateProperties = {}) {
-@@ -2258,6 +2276,31 @@ var getSessionFromEvent = (event) => {
+@@ -1844,14 +1862,31 @@ var NativeMessagingHost = class {
+     this.receiveExtensionMessage = (_event, message) => {
+       this.send(message);
+     };
++    // T3 Code: stdout chunks are not message boundaries; a frame can arrive
++    // split or several at once. Buffer and frame them, and drop a host that
++    // sends invalid JSON instead of throwing out of the main process.
++    this.pending = Buffer.alloc(0);
+     this.receive = (data) => {
+-      const length = data.readUInt32LE(0);
+-      const message = JSON.parse(data.subarray(4, 4 + length).toString());
+-      d7("receive: %s", message);
+-      if (this.keepAlive && this.sender) {
+-        this.sender.send(`crx-native-msg-${this.connectionId}`, message);
+-      } else {
+-        this.resolveResponse?.(message);
++      this.pending = Buffer.concat([this.pending, data]);
++      while (this.pending.length >= 4) {
++        const length = this.pending.readUInt32LE(0);
++        if (this.pending.length < 4 + length) return;
++        const body = this.pending.subarray(4, 4 + length);
++        this.pending = this.pending.subarray(4 + length);
++        let message;
++        try {
++          message = JSON.parse(body.toString());
++        } catch (error) {
++          d7("receive: invalid message", error);
++          this.destroy();
++          return;
++        }
++        d7("receive: %s", message);
++        if (this.keepAlive && this.sender) {
++          this.sender.send(`crx-native-msg-${this.connectionId}`, message);
++        } else {
++          this.resolveResponse?.(message);
++        }
+       }
+     };
+     this.keepAlive = keepAlive;
+@@ -1929,10 +1964,11 @@ var NativeMessagingHost = class {
+       d7("send: pending");
+       return;
+     }
+-    const message = JSON.stringify(json);
++    // T3 Code: the length prefix counts UTF-8 bytes, not UTF-16 code units.
++    const message = Buffer.from(JSON.stringify(json));
+     const buffer = Buffer.alloc(4 + message.length);
+     buffer.writeUInt32LE(message.length, 0);
+-    buffer.write(message, 4);
++    message.copy(buffer, 4);
+     this.process.stdin.write(buffer);
+   }
+   sendAndReceive(message) {
+@@ -2258,6 +2294,31 @@ var getSessionFromEvent = (event) => {
      return event.sender.session;
    }
  };
@@ -70,7 +123,7 @@ index b4242b0b847d33d8544832bfb2d8723a884a3072..00074cb79622c89d39383f44e8312af6
  var d8 = (0, import_debug8.default)("electron-chrome-extensions:router");
  var DEFAULT_SESSION = "_self";
  var gRoutingDelegate;
-@@ -2277,6 +2320,7 @@ var RoutingDelegate = class _RoutingDelegate {
+@@ -2277,6 +2338,7 @@ var RoutingDelegate = class _RoutingDelegate {
        return observer?.onExtensionMessage(event, void 0, handlerName, ...args);
      };
      this.onAddListener = (event, extensionId, eventName) => {
@@ -78,7 +131,7 @@ index b4242b0b847d33d8544832bfb2d8723a884a3072..00074cb79622c89d39383f44e8312af6
        const observer = this.sessionMap.get(getSessionFromEvent(event));
        const listener = event.type === "frame" ? {
          type: event.type,
-@@ -2289,6 +2333,7 @@ var RoutingDelegate = class _RoutingDelegate {
+@@ -2289,6 +2351,7 @@ var RoutingDelegate = class _RoutingDelegate {
        return observer?.addListener(listener, extensionId, eventName);
      };
      this.onRemoveListener = (event, extensionId, eventName) => {
@@ -86,7 +139,7 @@ index b4242b0b847d33d8544832bfb2d8723a884a3072..00074cb79622c89d39383f44e8312af6
        const observer = this.sessionMap.get(getSessionFromEvent(event));
        const listener = event.type === "frame" ? {
          type: event.type,
-@@ -2452,6 +2497,11 @@ var ExtensionRouter = class {
+@@ -2452,6 +2515,11 @@ var ExtensionRouter = class {
      return handler;
    }
    async onExtensionMessage(event, extensionId, handlerName, ...args) {
@@ -99,7 +152,7 @@ index b4242b0b847d33d8544832bfb2d8723a884a3072..00074cb79622c89d39383f44e8312af6
      const eventSession = getSessionFromEvent(event);
      const eventSessionExtensions = eventSession.extensions || eventSession;
 diff --git a/dist/esm/index.mjs b/dist/esm/index.mjs
-index dc598ce8f74c1e813c4014ecf8fc6ca5809f4ba5..f3ae19e655008a6830b7fd9fb2243b9458aaa6ec 100644
+index dc598ce8f74c1e813c4014ecf8fc6ca5809f4ba5..08a8620117f20cfcacb9297b1fd76478522c1509 100644
 --- a/dist/esm/index.mjs
 +++ b/dist/esm/index.mjs
 @@ -24,6 +24,20 @@ var getExtensionUrl = (extension, uri) => {
@@ -138,7 +191,60 @@ index dc598ce8f74c1e813c4014ecf8fc6ca5809f4ba5..f3ae19e655008a6830b7fd9fb2243b94
      return this.getWindowDetails(win);
    }
    async update(event, windowId, updateProperties = {}) {
-@@ -2221,6 +2239,31 @@ var getSessionFromEvent = (event) => {
+@@ -1807,14 +1825,31 @@ var NativeMessagingHost = class {
+     this.receiveExtensionMessage = (_event, message) => {
+       this.send(message);
+     };
++    // T3 Code: stdout chunks are not message boundaries; a frame can arrive
++    // split or several at once. Buffer and frame them, and drop a host that
++    // sends invalid JSON instead of throwing out of the main process.
++    this.pending = Buffer.alloc(0);
+     this.receive = (data) => {
+-      const length = data.readUInt32LE(0);
+-      const message = JSON.parse(data.subarray(4, 4 + length).toString());
+-      d7("receive: %s", message);
+-      if (this.keepAlive && this.sender) {
+-        this.sender.send(`crx-native-msg-${this.connectionId}`, message);
+-      } else {
+-        this.resolveResponse?.(message);
++      this.pending = Buffer.concat([this.pending, data]);
++      while (this.pending.length >= 4) {
++        const length = this.pending.readUInt32LE(0);
++        if (this.pending.length < 4 + length) return;
++        const body = this.pending.subarray(4, 4 + length);
++        this.pending = this.pending.subarray(4 + length);
++        let message;
++        try {
++          message = JSON.parse(body.toString());
++        } catch (error) {
++          d7("receive: invalid message", error);
++          this.destroy();
++          return;
++        }
++        d7("receive: %s", message);
++        if (this.keepAlive && this.sender) {
++          this.sender.send(`crx-native-msg-${this.connectionId}`, message);
++        } else {
++          this.resolveResponse?.(message);
++        }
+       }
+     };
+     this.keepAlive = keepAlive;
+@@ -1892,10 +1927,11 @@ var NativeMessagingHost = class {
+       d7("send: pending");
+       return;
+     }
+-    const message = JSON.stringify(json);
++    // T3 Code: the length prefix counts UTF-8 bytes, not UTF-16 code units.
++    const message = Buffer.from(JSON.stringify(json));
+     const buffer = Buffer.alloc(4 + message.length);
+     buffer.writeUInt32LE(message.length, 0);
+-    buffer.write(message, 4);
++    message.copy(buffer, 4);
+     this.process.stdin.write(buffer);
+   }
+   sendAndReceive(message) {
+@@ -2221,6 +2257,31 @@ var getSessionFromEvent = (event) => {
      return event.sender.session;
    }
  };
@@ -170,7 +276,7 @@ index dc598ce8f74c1e813c4014ecf8fc6ca5809f4ba5..f3ae19e655008a6830b7fd9fb2243b94
  var d8 = debug8("electron-chrome-extensions:router");
  var DEFAULT_SESSION = "_self";
  var gRoutingDelegate;
-@@ -2240,6 +2283,7 @@ var RoutingDelegate = class _RoutingDelegate {
+@@ -2240,6 +2301,7 @@ var RoutingDelegate = class _RoutingDelegate {
        return observer?.onExtensionMessage(event, void 0, handlerName, ...args);
      };
      this.onAddListener = (event, extensionId, eventName) => {
@@ -178,7 +284,7 @@ index dc598ce8f74c1e813c4014ecf8fc6ca5809f4ba5..f3ae19e655008a6830b7fd9fb2243b94
        const observer = this.sessionMap.get(getSessionFromEvent(event));
        const listener = event.type === "frame" ? {
          type: event.type,
-@@ -2252,6 +2296,7 @@ var RoutingDelegate = class _RoutingDelegate {
+@@ -2252,6 +2314,7 @@ var RoutingDelegate = class _RoutingDelegate {
        return observer?.addListener(listener, extensionId, eventName);
      };
      this.onRemoveListener = (event, extensionId, eventName) => {
@@ -186,7 +292,7 @@ index dc598ce8f74c1e813c4014ecf8fc6ca5809f4ba5..f3ae19e655008a6830b7fd9fb2243b94
        const observer = this.sessionMap.get(getSessionFromEvent(event));
        const listener = event.type === "frame" ? {
          type: event.type,
-@@ -2415,6 +2460,11 @@ var ExtensionRouter = class {
+@@ -2415,6 +2478,11 @@ var ExtensionRouter = class {
      return handler;
    }
    async onExtensionMessage(event, extensionId, handlerName, ...args) {
