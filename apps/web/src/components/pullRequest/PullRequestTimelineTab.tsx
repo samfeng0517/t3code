@@ -54,6 +54,7 @@ import { PullRequestMoreReplies } from "./PullRequestMoreReplies";
 import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
 import { PullRequestReactionBar } from "./PullRequestReactions";
 import { PullRequestThreadActions } from "./PullRequestReviewAnnotation";
+import { usePullRequestThreadCommands } from "./usePullRequestThreadCommands";
 import {
   PullRequestActorAvatar,
   PullRequestDiffStat,
@@ -737,41 +738,12 @@ export function PullRequestTimelineTab({
   const events = buildPullRequestTimeline(detail, t);
   const term = sourceControlClients.get(detail.provider).changeRequest.singular;
   const newestCommitAt = newestPullRequestCommitAt(detail.commits);
-  const replyToThread = useAtomCommand(pullRequestEnvironment.replyToThread, {
-    reportFailure: false,
-  });
   const canReply = detail.capabilities.review.reply && detail.viewerPermissions.comment;
-  const reply = (threadId: string) => async (body: string) => {
-    const result = await replyToThread({
-      environmentId,
-      input: { ...reference, threadId, body },
-    });
-    if (result._tag === "Failure") {
-      toastManager.add({ type: "error", title: t("pullRequestDetail.timeline.replyFailed") });
-      return false;
-    }
-    onRefresh();
-    return true;
-  };
-  const setThreadResolution = useAtomCommand(pullRequestEnvironment.setThreadResolution, {
-    reportFailure: false,
-  });
-  const [resolving, setResolving] = useState(false);
-  const toggleResolved = async (thread: PullRequestTimelineThread) => {
-    if (resolving) return;
-    setResolving(true);
-    const result = await setThreadResolution({
-      environmentId,
-      input: { ...reference, threadId: thread.id, resolved: !thread.isResolved },
-    });
-    setResolving(false);
-    if (result._tag === "Failure") {
-      toastManager.add({
-        type: "error",
-        title: t("pullRequestDetail.code.conversationUpdateFailed"),
-      });
-    }
-  };
+  const { replyTo, toggleResolved, resolving } = usePullRequestThreadCommands(
+    environmentId,
+    reference,
+    onRefresh,
+  );
   const reactions: ReactionSurface = {
     canReact: detail.capabilities.reactions === true,
     environmentId,
@@ -823,7 +795,7 @@ export function PullRequestTimelineTab({
                   onOpen={openOnHost}
                   reactions={reactions}
                   canReply={canReply}
-                  onReply={reply(thread.id)}
+                  onReply={replyTo(thread.id)}
                   canResolve={
                     detail.capabilities.review.resolve &&
                     canResolvePullRequestThread(detail, thread)

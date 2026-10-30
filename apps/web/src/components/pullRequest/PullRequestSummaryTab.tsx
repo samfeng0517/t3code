@@ -91,6 +91,7 @@ import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
 import { PullRequestReactionBar } from "./PullRequestReactions";
 import { PullRequestConversationGhost } from "./PullRequestGhosts";
 import { PullRequestThreadActions } from "./PullRequestReviewAnnotation";
+import { usePullRequestThreadCommands } from "./usePullRequestThreadCommands";
 import { sectionCollapseAnchorScrollTop } from "./pullRequestSummaryScroll.logic";
 
 function reviewerKey(login: string): string {
@@ -453,7 +454,6 @@ export function PullRequestSummaryTab({
   perform,
   canUnapprove,
   active,
-  refreshToken,
 }: {
   scrollerRef: (node: HTMLDivElement | null) => void;
   environmentId: EnvironmentId;
@@ -474,7 +474,6 @@ export function PullRequestSummaryTab({
   perform: PerformPullRequestAction;
   canUnapprove: boolean;
   active: boolean;
-  refreshToken: number;
 }) {
   const t = useT();
   const fixFindingLabel = fixFindingLabelProp ?? t("pullRequests.summary.fixInThread");
@@ -487,17 +486,17 @@ export function PullRequestSummaryTab({
     DEFAULT_COMMENT_FILTER,
     CommentFilterSchema,
   );
-  // Threads resolved here stay in place until a refresh or tab switch, so the toggle can be undone.
-  const resolvedScope = `${detail.url}:${refreshToken}`;
+  // Threads resolved here stay in place until the tab is left or reloaded, so the toggle can be
+  // undone; host refreshes (which may bump updatedAt on resolve) must not collapse them.
   const [justResolved, setJustResolved] = useState<{
-    readonly scope: string;
+    readonly url: string;
     readonly ids: ReadonlySet<string>;
-  }>({ scope: resolvedScope, ids: NO_THREAD_IDS });
-  if (justResolved.scope !== resolvedScope || (!active && justResolved.ids.size > 0)) {
-    setJustResolved({ scope: resolvedScope, ids: NO_THREAD_IDS });
+  }>({ url: detail.url, ids: NO_THREAD_IDS });
+  if (justResolved.url !== detail.url || (!active && justResolved.ids.size > 0)) {
+    setJustResolved({ url: detail.url, ids: NO_THREAD_IDS });
   }
   const keptThreadIds =
-    active && justResolved.scope === resolvedScope ? justResolved.ids : NO_THREAD_IDS;
+    active && justResolved.url === detail.url ? justResolved.ids : NO_THREAD_IDS;
   const items = pullRequestConversationItems(detail.comments, detail.reviewThreads);
   const filteredItems = filterPullRequestConversationItems(items, commentFilter, keptThreadIds);
   const commentCount = items.reduce(
@@ -656,46 +655,19 @@ export function PullRequestSummaryTab({
     },
   };
 
-  const replyToThread = useAtomCommand(pullRequestEnvironment.replyToThread, {
-    reportFailure: false,
-  });
-  const setThreadResolution = useAtomCommand(pullRequestEnvironment.setThreadResolution, {
-    reportFailure: false,
-  });
-  const [resolving, setResolving] = useState(false);
+  const { replyTo, toggleResolved, resolving } = usePullRequestThreadCommands(
+    environmentId,
+    reference,
+    onRefresh,
+  );
   const canReply = detail.capabilities.review.reply && detail.viewerPermissions.comment;
-  const replyTo = (threadId: string) => async (body: string) => {
-    const result = await replyToThread({ environmentId, input: { ...reference, threadId, body } });
-    if (result._tag === "Failure") {
-      toastManager.add({ type: "error", title: t("pullRequestDetail.timeline.replyFailed") });
-      return false;
-    }
-    onRefresh();
-    return true;
-  };
-  const toggleResolved = async (thread: PullRequestReviewThread) => {
-    if (resolving) return;
-    const resolved = !thread.isResolved;
-    const scope = resolvedScope;
-    setResolving(true);
-    const result = await setThreadResolution({
-      environmentId,
-      input: { ...reference, threadId: thread.id, resolved },
-    });
-    setResolving(false);
-    if (result._tag === "Failure") {
-      toastManager.add({
-        type: "error",
-        title: t("pullRequestDetail.code.conversationUpdateFailed"),
-      });
-      return;
-    }
-    if (resolved) {
-      setJustResolved((current) => ({
-        scope,
-        ids: new Set(current.scope === scope ? current.ids : NO_THREAD_IDS).add(thread.id),
-      }));
-    }
+  const toggleThreadResolved = async (thread: PullRequestReviewThread) => {
+    const url = detail.url;
+    if (!(await toggleResolved(thread)) || thread.isResolved) return;
+    setJustResolved((current) => ({
+      url,
+      ids: new Set(current.url === url ? current.ids : NO_THREAD_IDS).add(thread.id),
+    }));
   };
   const threadActionsFor = (thread: PullRequestReviewThread) => (
     <PullRequestThreadActions
@@ -704,7 +676,7 @@ export function PullRequestSummaryTab({
       canResolve={detail.capabilities.review.resolve && canResolvePullRequestThread(detail, thread)}
       resolved={thread.isResolved}
       resolving={resolving}
-      onToggleResolved={() => void toggleResolved(thread)}
+      onToggleResolved={() => void toggleThreadResolved(thread)}
     />
   );
 

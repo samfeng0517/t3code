@@ -80,7 +80,6 @@ const tab = (value = detail) => (
     perform={async () => false}
     canUnapprove={false}
     active
-    refreshToken={0}
   />
 );
 
