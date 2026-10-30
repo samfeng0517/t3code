@@ -105,3 +105,14 @@ export function pullRequestApprovers(input: {
     fromHost: false,
   };
 }
+
+/** Truncated comments make derived approvals unreliable, so only host-reported approvers count then. */
+export function pullRequestApprovalCount(
+  detail:
+    | (Parameters<typeof pullRequestApprovers>[0] & { readonly commentsTruncated: boolean })
+    | null,
+): number {
+  if (detail === null) return 0;
+  const { approvers, fromHost } = pullRequestApprovers(detail);
+  return fromHost || !detail.commentsTruncated ? approvers.length : 0;
+}

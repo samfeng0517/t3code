@@ -146,7 +146,7 @@ import {
   shouldRefreshPullRequestActivity,
   stripPullRequestHandoffReferences,
 } from "./pullRequestDetail.logic";
-import { pullRequestApprovers } from "@t3tools/client-runtime/pull-request-reviews";
+import { pullRequestApprovalCount } from "@t3tools/client-runtime/pull-request-reviews";
 import { resolvePickableEnvironments } from "./pullRequestProjectAssignment.logic";
 import { PullRequestChecksPopover } from "./PullRequestChecksPopover";
 import {
@@ -1197,11 +1197,7 @@ export function PullRequestDetailPanel({
     : detail
       ? summarizePullRequestChecks(detail.checks, t)
       : null;
-  const approvals = detail ? pullRequestApprovers(detail) : null;
-  const approvalCount =
-    approvals && (approvals.fromHost || !detail?.commentsTruncated)
-      ? approvals.approvers.length
-      : 0;
+  const approvalCount = pullRequestApprovalCount(detail ?? null);
 
   const checkoutControl =
     context === "page" ? (

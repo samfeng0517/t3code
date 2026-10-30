@@ -5,6 +5,7 @@ import {
   isPullRequestVerdictStale,
   latestPullRequestReviewOutcomes,
   newestPullRequestCommitAt,
+  pullRequestApprovalCount,
   pullRequestApprovers,
 } from "./pullRequestReviews.ts";
 
@@ -143,5 +144,16 @@ describe("pullRequestApprovers", () => {
         commits: [{ oid: "a", messageHeadline: "", committedDate: "2026-07-05T00:00:00Z" }],
       }),
     ).toEqual({ approvers: [{ key: "octocat", actor: octocat }], fromHost: false });
+  });
+
+  it("pullRequestApprovalCount should count host approvers when comments are truncated and ignore truncated review history", () => {
+    const base = { comments: [], commits: [], commentsTruncated: true };
+    expect(pullRequestApprovalCount({ ...base, approvedBy: [octocat] })).toBe(1);
+    expect(
+      pullRequestApprovalCount({
+        ...base,
+        comments: [review("r1", "octocat", "APPROVED", "2026-07-06T00:00:00Z")],
+      }),
+    ).toBe(0);
   });
 });
