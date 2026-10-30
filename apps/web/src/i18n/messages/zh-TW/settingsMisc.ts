@@ -577,7 +577,6 @@ export const settingsMiscZhTW: Readonly<Record<keyof typeof settingsMiscEn, stri
   "settingsMisc.session.currentConnection": "這些權限適用於此用戶端目前的連線。",
   "settingsMisc.session.allowed": "已允許",
   "settingsMisc.session.notGranted": "未授予",
-  "settingsMisc.session.notChecked": "尚未檢查權限。請連線到此環境以檢視此工作階段的權限。",
   "settingsMisc.appearance.devArtwork": "Dev 插圖",
   "settingsMisc.appearance.nightlyArtwork": "Nightly 插圖",
   "settingsMisc.environmentRow.thisMachine": "這台機器",

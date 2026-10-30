@@ -1,5 +1,8 @@
 import { SourceControlProviderKind } from "@t3tools/contracts";
+import * as Cache from "effect/Cache";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import type {
   PullRequestCapabilities,
   PullRequestCheck,
@@ -118,6 +121,15 @@ function gitLabPipelineChecks(
   );
   return [...jobs, ...unexplained];
 }
+/**
+ * One page view asks for the detail and then its checks within a second, and the poll that
+ * follows asks again. A minute keeps those to one `glab` call without hiding a pipeline for long;
+ * a refresh or a finished turn drops it sooner through `forgetChangeRequestReads`.
+ */
+const MERGE_REQUEST_DETAIL_TTL = Duration.minutes(1);
+/** A project's merge methods change in its settings, which nobody does between page views. */
+const PROJECT_MERGE_CAPABILITIES_TTL = Duration.minutes(15);
+const READ_CACHE_CAPACITY = 256;
 
 function gitLabProviderFailure(
   error: GitLabPullRequestCli.GitLabPullRequestCliError,
@@ -131,6 +143,48 @@ function gitLabProviderFailure(
 
 export const make = Effect.gen(function* () {
   const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+
+  // Keyed on the checkout as well: `glab` picks the host and the account to answer as from the
+  // checkout's remote and config, so two checkouts may read the same project as different people.
+  const mergeRequestDetails = yield* Cache.makeWith(
+    (key: string) => {
+      const [cwd, host, repository, number] = JSON.parse(key) as [
+        string,
+        string | null,
+        string,
+        number,
+      ];
+      return cli.getMergeRequestDetail({ cwd, host: host ?? undefined, repository, number });
+    },
+    {
+      capacity: READ_CACHE_CAPACITY,
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? MERGE_REQUEST_DETAIL_TTL : Duration.zero),
+    },
+  );
+  const projectMergeCapabilities = yield* Cache.makeWith(
+    (key: string) => {
+      const [cwd, host, repository] = JSON.parse(key) as [string, string | null, string];
+      return cli.getProjectMergeCapabilities({ cwd, host: host ?? undefined, repository });
+    },
+    {
+      capacity: READ_CACHE_CAPACITY,
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? PROJECT_MERGE_CAPABILITIES_TTL : Duration.zero),
+    },
+  );
+
+  const detailKey = (input: GitLabPullRequestCli.GitLabTarget) =>
+    JSON.stringify([input.cwd, input.host ?? null, input.repository, input.number]);
+  const mergeRequestDetail = (input: GitLabPullRequestCli.GitLabTarget) =>
+    Cache.get(mergeRequestDetails, detailKey(input));
+
+  // Dropped on both sides, as the service does with its own reads: a read that starts while the
+  // write is in flight must not outlive it.
+  const writing =
+    <I extends GitLabPullRequestCli.GitLabTarget, A, E>(write: (input: I) => Effect.Effect<A, E>) =>
+    (input: I): Effect.Effect<A, E> => {
+      const invalidate = Cache.invalidate(mergeRequestDetails, detailKey(input));
+      return invalidate.pipe(Effect.andThen(write(input)), Effect.ensuring(invalidate));
+    };
 
   const fail = (operation: string) => (error: GitLabPullRequestCli.GitLabPullRequestCliError) =>
     new PullRequestProviderError({
@@ -243,7 +297,7 @@ export const make = Effect.gen(function* () {
         ),
 
     getChangeRequestChecks: (input) =>
-      cli.getMergeRequestDetail(input).pipe(
+      mergeRequestDetail(input).pipe(
         Effect.flatMap((mergeRequest) =>
           checksOf(input, mergeRequest).pipe(
             Effect.map((checks) => ({ state: mergeRequest.state, checks })),
@@ -262,12 +316,11 @@ export const make = Effect.gen(function* () {
     getChangeRequest: (input) =>
       Effect.all(
         [
-          cli.getMergeRequestDetail(input),
-          cli.getProjectMergeCapabilities({
-            cwd: input.cwd,
-            host: input.host,
-            repository: input.repository,
-          }),
+          mergeRequestDetail(input),
+          Cache.get(
+            projectMergeCapabilities,
+            JSON.stringify([input.cwd, input.host ?? null, input.repository]),
+          ),
           approvalsOf(input),
         ],
         { concurrency: 3 },
@@ -357,6 +410,8 @@ export const make = Effect.gen(function* () {
         })),
       ),
 
+    // Straight from the host, never the shared read: this is what a write is refused or let
+    // through on, and access granted or withdrawn within the minute must count.
     getViewerPermissions: (input) =>
       Effect.all([cli.getMergeRequestDetail(input), approvalsOf(input)], { concurrency: 2 }).pipe(
         Effect.flatMap(([mergeRequest, approvals]) =>
@@ -371,6 +426,29 @@ export const make = Effect.gen(function* () {
           ),
         ),
         Effect.mapError(fail("getViewerPermissions")),
+      ),
+
+    forgetChangeRequestReads: (scope) =>
+      Cache.keys(mergeRequestDetails).pipe(
+        Effect.flatMap((keys) =>
+          Effect.forEach(
+            Array.from(keys).filter((key) => {
+              if (scope === undefined) return true;
+              const [, , repository, number] = JSON.parse(key) as [
+                string,
+                string | null,
+                string,
+                number,
+              ];
+              return (
+                repository.toLowerCase() === scope.repository.toLowerCase() &&
+                (scope.number === undefined || number === scope.number)
+              );
+            }),
+            (key) => Cache.invalidate(mergeRequestDetails, key),
+            { discard: true },
+          ),
+        ),
       ),
 
     getDiff: (input) => cli.getMergeRequestDiff(input).pipe(Effect.mapError(fail("getDiff"))),
@@ -415,7 +493,7 @@ export const make = Effect.gen(function* () {
         })
         .pipe(Effect.mapError(fail("searchRepositoryAuthors"))),
 
-    setReviewerRequest: (input) =>
+    setReviewerRequest: writing((input) =>
       cli
         .setReviewerRequest({
           cwd: input.cwd,
@@ -426,8 +504,9 @@ export const make = Effect.gen(function* () {
           requested: input.requested,
         })
         .pipe(Effect.mapError(fail("setReviewerRequest"))),
+    ),
 
-    runAction: (input) =>
+    runAction: writing((input) =>
       cli
         .runMergeRequestAction({
           cwd: input.cwd,
@@ -438,8 +517,9 @@ export const make = Effect.gen(function* () {
           ...(input.mergeMethod === undefined ? {} : { mergeMethod: input.mergeMethod }),
         })
         .pipe(Effect.mapError(fail("runAction"))),
+    ),
 
-    updateChangeRequest: (input) =>
+    updateChangeRequest: writing((input) =>
       cli
         .updateMergeRequest({
           cwd: input.cwd,
@@ -450,11 +530,12 @@ export const make = Effect.gen(function* () {
           ...(input.body === undefined ? {} : { description: input.body }),
         })
         .pipe(Effect.mapError(fail("updateChangeRequest"))),
+    ),
 
     listLabelCandidates: (input) =>
       cli.listLabelCandidates(input).pipe(Effect.mapError(fail("listLabelCandidates"))),
 
-    setLabels: (input) =>
+    setLabels: writing((input) =>
       cli
         .setLabels({
           cwd: input.cwd,
@@ -465,10 +546,13 @@ export const make = Effect.gen(function* () {
           applied: input.applied,
         })
         .pipe(Effect.mapError(fail("setLabels"))),
+    ),
 
-    comment: (input) => cli.commentOnMergeRequest(input).pipe(Effect.mapError(fail("comment"))),
+    comment: writing((input) =>
+      cli.commentOnMergeRequest(input).pipe(Effect.mapError(fail("comment"))),
+    ),
 
-    updateComment: (input) =>
+    updateComment: writing((input) =>
       cli
         .updateNote({
           cwd: input.cwd,
@@ -479,10 +563,13 @@ export const make = Effect.gen(function* () {
           body: input.body,
         })
         .pipe(Effect.mapError(fail("updateComment"))),
+    ),
 
-    submitReview: (input) => cli.submitReview(input).pipe(Effect.mapError(fail("submitReview"))),
+    submitReview: writing((input) =>
+      cli.submitReview(input).pipe(Effect.mapError(fail("submitReview"))),
+    ),
 
-    replyToThread: (input) =>
+    replyToThread: writing((input) =>
       cli
         .replyToDiscussion({
           cwd: input.cwd,
@@ -493,8 +580,9 @@ export const make = Effect.gen(function* () {
           body: input.body,
         })
         .pipe(Effect.mapError(fail("replyToThread"))),
+    ),
 
-    setReaction: (input) =>
+    setReaction: writing((input) =>
       cli
         .setReaction({
           cwd: input.cwd,
@@ -506,8 +594,9 @@ export const make = Effect.gen(function* () {
           reacted: input.reacted,
         })
         .pipe(Effect.mapError(fail("setReaction"))),
+    ),
 
-    setThreadResolution: (input) =>
+    setThreadResolution: writing((input) =>
       cli
         .setDiscussionResolution({
           cwd: input.cwd,
@@ -518,6 +607,7 @@ export const make = Effect.gen(function* () {
           resolved: input.resolved,
         })
         .pipe(Effect.mapError(fail("setThreadResolution"))),
+    ),
   };
 
   return provider;

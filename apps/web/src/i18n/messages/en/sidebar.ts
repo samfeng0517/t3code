@@ -1,6 +1,6 @@
 export const sidebarEn = {
   "sidebar.chrome.toggleSidebar": "Toggle main sidebar",
-  "sidebar.chrome.goToThreads": "Go to threads",
+  "sidebar.chrome.home": "T3 Code home",
   "sidebar.chrome.back": "Back",
   "sidebar.chrome.settings": "Settings",
   "sidebar.chrome.pullRequests": "{Plural}",

@@ -621,8 +621,6 @@ export const settingsMiscEn = {
     "These permissions apply to this client’s current connection.",
   "settingsMisc.session.allowed": "Allowed",
   "settingsMisc.session.notGranted": "Not granted",
-  "settingsMisc.session.notChecked":
-    "Permissions not checked. Connect to this environment to view this session’s permissions.",
   "settingsMisc.appearance.devArtwork": "Dev artwork",
   "settingsMisc.appearance.nightlyArtwork": "Nightly artwork",
   "settingsMisc.environmentRow.thisMachine": "This machine",
