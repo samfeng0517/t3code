@@ -129,6 +129,19 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
       contentKey={THREAD_DETAILS_ITEMS.filter((item) => visible[item.id])
         .map((item) => item.id)
         .join(",")}
+      footer={
+        props.contextWindow ? (
+          <div className="border-t border-border/65 px-2 py-2">
+            <ThreadDetailsContextRow
+              usage={props.contextWindow}
+              modelDisplayName={props.contextModelDisplayName}
+              onCompact={props.onCompactContext}
+              compactDisabled={props.compactDisabled}
+              compactDisabledReason={props.compactDisabledReason}
+            />
+          </div>
+        ) : null
+      }
       onContextMenu={(event) => {
         // Popups the card opens bubble here through React; they, fields, links, and selected text
         // keep their own menus.
@@ -162,15 +175,6 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
         };
         return (
           <>
-            {props.contextWindow ? (
-              <ThreadDetailsContextRow
-                usage={props.contextWindow}
-                modelDisplayName={props.contextModelDisplayName}
-                onCompact={props.onCompactContext}
-                compactDisabled={props.compactDisabled}
-                compactDisabledReason={props.compactDisabledReason}
-              />
-            ) : null}
             <div className="group/details-items">
               {show.environment || show.openIn || show.scripts ? (
                 <ThreadDetailsSection

@@ -26,6 +26,7 @@ export function ThreadDetailsCard({
   handle,
   contentKey,
   onContextMenu,
+  footer,
   children,
 }: {
   threadRef: ScopedThreadRef;
@@ -34,6 +35,8 @@ export function ThreadDetailsCard({
   /** Changes when the set of rendered items changes, so cached heights are measured again. */
   contentKey: string;
   onContextMenu?: MouseEventHandler<HTMLDivElement>;
+  /** Pinned below the scrolling content. */
+  footer?: ReactNode;
   children: (density: "full" | "compact" | "essential") => ReactNode;
 }) {
   const t = useT();
@@ -70,6 +73,7 @@ export function ThreadDetailsCard({
       useRightPanelStore.getState().setThreadPanelOpen(threadRef, "popover", false);
   }, [mode, popoverOpen, threadRef]);
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(null);
+  const [footerElement, setFooterElement] = useState<HTMLDivElement | null>(null);
   const { environmentId, threadId } = threadRef;
   // Re-measures when the density or measurement key changes, so each density's
   // height is measured once it renders.
@@ -79,7 +83,10 @@ export function ThreadDetailsCard({
     if (!element || density === "essential") return;
     const measure = () => {
       const frame = element.closest<HTMLElement>("[data-thread-details-card]");
-      const next = element.offsetHeight + (frame ? frame.offsetHeight - frame.clientHeight : 0);
+      const next =
+        element.offsetHeight +
+        (footerElement?.offsetHeight ?? 0) +
+        (frame ? frame.offsetHeight - frame.clientHeight : 0);
       // PR lists and lineage scroll as they expand. Counting them toward density would hide
       // the section and workspace controls when the user asks to see more rows.
       const lists = element.querySelectorAll<HTMLElement>(
@@ -104,9 +111,10 @@ export function ThreadDetailsCard({
       }
     };
     measure();
-    return observeResize(element, measure);
+    return observeResize(footerElement ? [element, footerElement] : element, measure);
   }, [
     contentElement,
+    footerElement,
     density,
     measurementKey,
     cardWidth,
@@ -117,7 +125,7 @@ export function ThreadDetailsCard({
   const card = (
     <div
       className={cn(
-        "dropdown-glass isolate contain-paint grid max-h-full grid-rows-[minmax(0,1fr)] overflow-hidden rounded-2xl",
+        "dropdown-glass isolate contain-paint grid max-h-full grid-rows-[minmax(0,1fr)_auto] overflow-hidden rounded-2xl",
         mode === "popover" &&
           "max-h-[min(calc(100dvh-6.5rem),calc(var(--available-height,100dvh)-1rem))]",
       )}
@@ -128,6 +136,7 @@ export function ThreadDetailsCard({
       <ScrollArea scrollFade className="min-h-0">
         <div ref={setContentElement}>{children(density)}</div>
       </ScrollArea>
+      {footer ? <div ref={setFooterElement}>{footer}</div> : null}
     </div>
   );
   return (
