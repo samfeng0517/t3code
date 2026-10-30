@@ -535,8 +535,15 @@ export function PullRequestSummaryTab({
       </Button>
     ) : null;
   // Verdicts outside the visible comment window still count.
-  const reviewHistoryOutcomes = latestPullRequestReviewOutcomes(detail.comments, detail.commits);
   const approvals = pullRequestApprovers(detail);
+  // Truncated history without a host approver list cannot confirm approvals.
+  const hideReviewApprovals = !approvals.fromHost && detail.commentsTruncated;
+  const reviewHistoryOutcomes = latestPullRequestReviewOutcomes(
+    detail.comments,
+    detail.commits,
+  ).map((entry) =>
+    hideReviewApprovals && entry.outcome === "approved" ? { ...entry, outcome: null } : entry,
+  );
   const hostApprovers = approvals.fromHost
     ? approvals.approvers.flatMap(({ key, actor }) => (actor ? [{ key, actor }] : []))
     : [];
