@@ -53,6 +53,7 @@ import {
   buildPullRequestTimeline,
   writePullRequestDetailSnapshot,
   readableFailure,
+  pullRequestLabelDraftChanges,
 } from "./pullRequestDetail.logic";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 
@@ -1450,5 +1451,61 @@ describe("readableFailure", () => {
     expect(readableFailure(new Error("Branch is protected."), "Try again.")).toBe(
       "Branch is protected.",
     );
+  });
+});
+
+describe("pullRequestLabelDraftChanges", () => {
+  const candidate = (name: string, color: string | null) => ({
+    name,
+    color,
+    description: null,
+    isApplied: false,
+  });
+  const candidates = [
+    candidate("bug", "d73a4a"),
+    candidate("docs", "0075ca"),
+    candidate("feature", "a2eeef"),
+    candidate("triage", null),
+  ];
+  const applied = [
+    { name: "triage", color: null },
+    { name: "bug", color: "d73a4a" },
+  ];
+
+  it("pullRequestLabelDraftChanges should report no changes when the draft equals the applied labels", () => {
+    expect(pullRequestLabelDraftChanges(applied, new Set(["bug", "triage"]), candidates)).toEqual({
+      toAdd: [],
+      toRemove: [],
+      labels: applied,
+    });
+  });
+
+  it("pullRequestLabelDraftChanges should split additions and removals when the draft differs from the applied labels", () => {
+    const changes = pullRequestLabelDraftChanges(
+      [
+        { name: "triage", color: null },
+        { name: "docs", color: "0075ca" },
+      ],
+      new Set(["feature", "docs", "bug"]),
+      candidates,
+    );
+    expect(changes.toAdd).toEqual(["bug", "feature"]);
+    expect(changes.toRemove).toEqual(["triage"]);
+    expect(changes.labels.map((label) => label.name)).toEqual(["docs", "bug", "feature"]);
+  });
+
+  it("pullRequestLabelDraftChanges should use the candidate color and fall back to null when an added label has no candidate", () => {
+    const changes = pullRequestLabelDraftChanges(
+      [],
+      new Set(["unlisted", "feature", "docs"]),
+      candidates,
+    );
+    expect(changes.toAdd).toEqual(["docs", "feature", "unlisted"]);
+    expect(changes.toRemove).toEqual([]);
+    expect(changes.labels).toEqual([
+      { name: "docs", color: "0075ca" },
+      { name: "feature", color: "a2eeef" },
+      { name: "unlisted", color: null },
+    ]);
   });
 });

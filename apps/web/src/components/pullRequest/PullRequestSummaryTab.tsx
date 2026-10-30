@@ -53,7 +53,6 @@ import {
   PullRequestActorLabel,
   PullRequestCheckStatusIcon,
   pullRequestCheckStatusLabel,
-  PullRequestLabelChip,
   PullRequestReviewOutcomeBadge,
   pullRequestReviewOutcomeLabel,
   PullRequestReviewOutcomeAvatarBadge,
@@ -968,27 +967,14 @@ export function PullRequestSummaryTab({
           </MetaRow>
           {detail.labels.length > 0 || detail.capabilities.labels === true ? (
             <MetaRow icon={<TagIcon className="size-3.5" />} label={t("pullRequests.ghost.labels")}>
-              <span className="flex min-w-0 flex-wrap items-center gap-1">
-                {detail.labels.length === 0 ? (
-                  <span className="text-muted-foreground">{t("pullRequests.ghost.none")}</span>
-                ) : (
-                  detail.labels.map((label) => (
-                    <PullRequestLabelChip
-                      key={label.name}
-                      label={label}
-                      size="default"
-                      className="max-w-48"
-                    />
-                  ))
-                )}
-                {detail.capabilities.labels === true ? (
-                  <PullRequestLabelPicker
-                    environmentId={environmentId}
-                    reference={reference}
-                    allowed={detail.viewerPermissions.labels !== false}
-                  />
-                ) : null}
-              </span>
+              <PullRequestLabelPicker
+                environmentId={environmentId}
+                reference={reference}
+                labels={detail.labels}
+                canEdit={detail.capabilities.labels === true}
+                allowed={detail.viewerPermissions.labels !== false}
+                onRefresh={onRefresh}
+              />
             </MetaRow>
           ) : null}
         </div>

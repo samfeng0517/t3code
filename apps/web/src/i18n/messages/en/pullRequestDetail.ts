@@ -326,6 +326,7 @@ export const pullRequestDetailEn = {
   "pullRequestDetail.labels.truncated":
     "This repository has more labels than are listed here. Apply the rest on the host.",
   "pullRequestDetail.labels.applied": "Applied",
+  "pullRequestDetail.labels.listSeparator": ", ",
   "pullRequestDetail.composer.reviewPendingOne": "Review {singular}, {count} comment pending",
   "pullRequestDetail.composer.reviewPendingOther": "Review {singular}, {count} comments pending",
   "pullRequestDetail.composer.review": "Review {singular}",

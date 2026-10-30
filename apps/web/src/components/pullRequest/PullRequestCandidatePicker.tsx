@@ -1,5 +1,5 @@
 // Menu typeahead consumes search keystrokes; use a combobox.
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 
 import { Button } from "../ui/button";
 import {
@@ -34,6 +34,8 @@ export function PullRequestCandidatePicker<T>({
   candidateKey,
   disabled,
   onSelect,
+  anchor,
+  triggerDisabled = false,
   children,
 }: {
   icon: ReactNode;
@@ -56,6 +58,8 @@ export function PullRequestCandidatePicker<T>({
   candidateKey: (candidate: T) => string;
   disabled: boolean;
   onSelect: (candidate: T) => void;
+  anchor?: RefObject<HTMLElement | null>;
+  triggerDisabled?: boolean;
   children: (candidate: T) => ReactNode;
 }) {
   if (!allowed) {
@@ -97,13 +101,14 @@ export function PullRequestCandidatePicker<T>({
       }}
     >
       <ComboboxTrigger
+        disabled={triggerDisabled}
         render={
           <Button size="icon-xs" variant="ghost" aria-label={label}>
             {icon}
           </Button>
         }
       />
-      <ComboboxPopup align="start" side="bottom" className="w-72">
+      <ComboboxPopup align="start" side="bottom" className="w-72" {...(anchor ? { anchor } : {})}>
         <ComboboxSearchInput
           aria-label={searchLabel}
           placeholder={searchLabel}

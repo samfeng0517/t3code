@@ -14,6 +14,8 @@ import {
   type PullRequestCheck,
   type PullRequestChecksState as ContractPullRequestChecksState,
   type PullRequestComment,
+  type PullRequestLabel,
+  type PullRequestLabelCandidate,
   type PullRequestContextMetadata,
   type PullRequestDetailView,
   type PullRequestMergeability,
@@ -1175,6 +1177,35 @@ const TOOL_NOISE = [
 ];
 
 const FAILURE_DETAIL_MAX_LENGTH = 320;
+
+export function pullRequestLabelDraftChanges(
+  applied: ReadonlyArray<PullRequestLabel>,
+  draft: ReadonlySet<string>,
+  candidates: ReadonlyArray<PullRequestLabelCandidate>,
+): {
+  readonly toAdd: ReadonlyArray<string>;
+  readonly toRemove: ReadonlyArray<string>;
+  readonly labels: ReadonlyArray<PullRequestLabel>;
+} {
+  const appliedNames = new Set(applied.map((label) => label.name));
+  const toRemove = applied.filter((label) => !draft.has(label.name)).map((label) => label.name);
+  const added = new Set([...draft].filter((name) => !appliedNames.has(name)));
+  const listed = candidates.filter((candidate) => added.has(candidate.name));
+  const listedNames = new Set(listed.map((candidate) => candidate.name));
+  const toAdd = [
+    ...listed.map((candidate) => candidate.name),
+    ...[...added].filter((name) => !listedNames.has(name)),
+  ];
+  const colors = new Map(candidates.map((candidate) => [candidate.name, candidate.color]));
+  return {
+    toAdd,
+    toRemove,
+    labels: [
+      ...applied.filter((label) => draft.has(label.name)),
+      ...toAdd.map((name) => ({ name, color: colors.get(name) ?? null })),
+    ],
+  };
+}
 
 export function readableFailure(failure: unknown, hint: string): string {
   const raw =

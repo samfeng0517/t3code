@@ -312,6 +312,7 @@ export const pullRequestDetailZhTW: Readonly<Record<keyof typeof pullRequestDeta
   "pullRequestDetail.labels.error": "無法讀取標籤。",
   "pullRequestDetail.labels.truncated": "此儲存庫的標籤比這裡列出的更多。其餘的請到主機上套用。",
   "pullRequestDetail.labels.applied": "已套用",
+  "pullRequestDetail.labels.listSeparator": "、",
   "pullRequestDetail.composer.reviewPendingOne": "審查 {singular}，有 {count} 則待送出的留言",
   "pullRequestDetail.composer.reviewPendingOther": "審查 {singular}，有 {count} 則待送出的留言",
   "pullRequestDetail.composer.review": "審查 {singular}",
