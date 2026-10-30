@@ -334,8 +334,56 @@ export function ReviewThreadCard({
   );
 }
 
-/** The collapsed "Reply" button and its composer, shared by code annotations and the timeline. */
-export function PullRequestThreadReply({
+/** A thread's bottom row on the summary and timeline: reply on the left, Resolve on the right. */
+export function PullRequestThreadActions({
+  canReply,
+  onReply,
+  onSent,
+  canResolve,
+  resolved,
+  resolving,
+  onToggleResolved,
+}: {
+  canReply: boolean;
+  onReply: (body: string) => Promise<boolean>;
+  onSent?: () => void;
+  canResolve: boolean;
+  resolved: boolean;
+  resolving: boolean;
+  onToggleResolved: () => void;
+}) {
+  const t = useT();
+  if (!canReply && !canResolve) return null;
+  return (
+    <div className="flex items-start gap-2">
+      {canReply ? (
+        <div className="min-w-0 flex-1">
+          <PullRequestThreadReply
+            pending={false}
+            onReply={onReply}
+            {...(onSent ? { onSent } : {})}
+          />
+        </div>
+      ) : null}
+      {canResolve ? (
+        <Button
+          size="xs"
+          variant="ghost"
+          className="mt-2 ml-auto shrink-0"
+          disabled={resolving}
+          onClick={onToggleResolved}
+        >
+          {resolved
+            ? t("pullRequestDetail.annotation.unresolve")
+            : t("pullRequestDetail.annotation.resolve")}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+/** The collapsed "Reply" button and its composer, shared by code annotations and thread actions. */
+function PullRequestThreadReply({
   pending,
   onReply,
   onSent,

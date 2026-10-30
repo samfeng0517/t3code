@@ -83,6 +83,7 @@ import {
 import {
   canEditPullRequestChangeRequest,
   canEditPullRequestComment,
+  canResolvePullRequestThread,
 } from "@t3tools/client-runtime/pull-request-editing";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { PullRequestCommentBody } from "./PullRequestCommentBody";
@@ -90,6 +91,7 @@ import { PullRequestMoreReplies } from "./PullRequestMoreReplies";
 import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
 import { PullRequestReactionBar } from "./PullRequestReactions";
 import { PullRequestConversationGhost } from "./PullRequestGhosts";
+import { PullRequestThreadActions } from "./PullRequestReviewAnnotation";
 import { sectionCollapseAnchorScrollTop } from "./pullRequestSummaryScroll.logic";
 
 function reviewerKey(login: string): string {
@@ -254,6 +256,7 @@ function CollapsedComment({
   replyCount = 0,
   replies = null,
   moreReplies = null,
+  footer = null,
 }: {
   comment: PullRequestComment;
   editing: CommentEditing;
@@ -265,6 +268,7 @@ function CollapsedComment({
   replyCount?: number;
   replies?: ReactNode;
   moreReplies?: ReactNode;
+  footer?: ReactNode;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -330,6 +334,7 @@ function CollapsedComment({
                 <CommentBody className="mt-2" comment={comment} editing={editing} />
               )}
               {replies ? <div className="mt-3">{replies}</div> : null}
+              {footer}
             </div>
           ) : null}
         </CollapsiblePanel>
@@ -427,6 +432,7 @@ const COMMENT_PAGE = 10;
 const COMMENT_FILTER_STORAGE_KEY = "t3code:pull-request-comment-filter:v1";
 const CommentFilterSchema = Schema.Struct({ bots: Schema.Boolean, resolved: Schema.Boolean });
 const DEFAULT_COMMENT_FILTER: typeof CommentFilterSchema.Type = { bots: false, resolved: false };
+const NO_THREAD_IDS: ReadonlySet<string> = new Set();
 
 export function PullRequestSummaryTab({
   scrollerRef,
@@ -447,6 +453,8 @@ export function PullRequestSummaryTab({
   pendingAction,
   perform,
   canUnapprove,
+  active,
+  refreshToken,
 }: {
   scrollerRef: (node: HTMLDivElement | null) => void;
   environmentId: EnvironmentId;
@@ -466,6 +474,8 @@ export function PullRequestSummaryTab({
   pendingAction: PullRequestAction | null;
   perform: PerformPullRequestAction;
   canUnapprove: boolean;
+  active: boolean;
+  refreshToken: number;
 }) {
   const t = useT();
   const fixFindingLabel = fixFindingLabelProp ?? t("pullRequests.summary.fixInThread");
@@ -478,8 +488,19 @@ export function PullRequestSummaryTab({
     DEFAULT_COMMENT_FILTER,
     CommentFilterSchema,
   );
+  // Threads resolved here stay in place until a refresh or tab switch, so the toggle can be undone.
+  const resolvedScope = `${detail.url}:${refreshToken}`;
+  const [justResolved, setJustResolved] = useState<{
+    readonly scope: string;
+    readonly ids: ReadonlySet<string>;
+  }>({ scope: resolvedScope, ids: NO_THREAD_IDS });
+  if (justResolved.scope !== resolvedScope || (!active && justResolved.ids.size > 0)) {
+    setJustResolved({ scope: resolvedScope, ids: NO_THREAD_IDS });
+  }
+  const keptThreadIds =
+    active && justResolved.scope === resolvedScope ? justResolved.ids : NO_THREAD_IDS;
   const items = pullRequestConversationItems(detail.comments, detail.reviewThreads);
-  const filteredItems = filterPullRequestConversationItems(items, commentFilter);
+  const filteredItems = filterPullRequestConversationItems(items, commentFilter, keptThreadIds);
   const commentCount = items.reduce(
     (count, item) => count + pullRequestConversationItemComments(item).length,
     0,
@@ -636,6 +657,58 @@ export function PullRequestSummaryTab({
     },
   };
 
+  const replyToThread = useAtomCommand(pullRequestEnvironment.replyToThread, {
+    reportFailure: false,
+  });
+  const setThreadResolution = useAtomCommand(pullRequestEnvironment.setThreadResolution, {
+    reportFailure: false,
+  });
+  const [resolving, setResolving] = useState(false);
+  const canReply = detail.capabilities.review.reply && detail.viewerPermissions.comment;
+  const replyTo = (threadId: string) => async (body: string) => {
+    const result = await replyToThread({ environmentId, input: { ...reference, threadId, body } });
+    if (result._tag === "Failure") {
+      toastManager.add({ type: "error", title: t("pullRequestDetail.timeline.replyFailed") });
+      return false;
+    }
+    onRefresh();
+    return true;
+  };
+  const toggleResolved = async (thread: PullRequestReviewThread) => {
+    if (resolving) return;
+    const resolved = !thread.isResolved;
+    const scope = resolvedScope;
+    setResolving(true);
+    const result = await setThreadResolution({
+      environmentId,
+      input: { ...reference, threadId: thread.id, resolved },
+    });
+    setResolving(false);
+    if (result._tag === "Failure") {
+      toastManager.add({
+        type: "error",
+        title: t("pullRequestDetail.code.conversationUpdateFailed"),
+      });
+      return;
+    }
+    if (resolved) {
+      setJustResolved((current) => ({
+        scope,
+        ids: new Set(current.scope === scope ? current.ids : NO_THREAD_IDS).add(thread.id),
+      }));
+    }
+  };
+  const threadActionsFor = (thread: PullRequestReviewThread) => (
+    <PullRequestThreadActions
+      canReply={canReply}
+      onReply={replyTo(thread.id)}
+      canResolve={detail.capabilities.review.resolve && canResolvePullRequestThread(detail, thread)}
+      resolved={thread.isResolved}
+      resolving={resolving}
+      onToggleResolved={() => void toggleResolved(thread)}
+    />
+  );
+
   const reactionBarFor = (comment: PullRequestComment) => (
     <PullRequestReactionBar
       className="ml-auto justify-end"
@@ -723,7 +796,8 @@ export function PullRequestSummaryTab({
       ) : null;
     const moreReplies =
       item.kind === "thread" && item.hasMoreReplies ? <PullRequestMoreReplies {...item} /> : null;
-    if (isPullRequestCommentFinished(comment, thread)) {
+    const keptResolved = thread?.isResolved === true && keptThreadIds.has(thread.id);
+    if (!keptResolved && isPullRequestCommentFinished(comment, thread)) {
       return (
         <CollapsedComment
           key={`${detail.url}:${item.kind}:${item.id}`}
@@ -740,16 +814,21 @@ export function PullRequestSummaryTab({
           replyCount={item.kind === "thread" ? item.replies.length + item.moreReplies : 0}
           replies={replies}
           moreReplies={moreReplies}
+          footer={thread ? threadActionsFor(thread) : null}
           reactionBar={reactionBarFor(comment)}
         />
       );
     }
     if (item.kind === "comment") return renderCommentCard(comment, undefined);
     return (
-      <div key={`${detail.url}:thread:${item.id}`} className="space-y-2">
-        {renderCommentCard(comment, thread)}
+      <div
+        key={`${detail.url}:thread:${item.id}`}
+        className={cn("space-y-2", keptResolved && "opacity-60")}
+      >
+        {renderCommentCard(comment, item.thread)}
         {replies}
         {moreReplies}
+        {threadActionsFor(item.thread)}
       </div>
     );
   };

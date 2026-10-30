@@ -426,7 +426,10 @@ export interface PullRequestReplyAvailability {
 
 export interface PullRequestTimelineThread
   extends
-    Pick<PullRequestReviewThread, "id" | "path" | "line" | "isResolved" | "isOutdated">,
+    Pick<
+      PullRequestReviewThread,
+      "id" | "path" | "line" | "isResolved" | "isOutdated" | "canResolve"
+    >,
     PullRequestReplyAvailability {
   readonly replies: ReadonlyArray<PullRequestTimelineEvent>;
 }
@@ -577,18 +580,24 @@ function isPullRequestVerdict(reviewState: string | null): boolean {
 export function filterPullRequestConversationItems(
   items: ReadonlyArray<PullRequestConversationItem>,
   filter: { readonly bots: boolean; readonly resolved: boolean },
+  keep?: ReadonlySet<string>,
 ): ReadonlyArray<PullRequestConversationItem> {
-  return items.filter((item) =>
-    // Matching any member keeps the finding beside a human reply to a bot.
-    pullRequestConversationItemComments(item).some(
-      (comment) =>
-        // A bot's approval or change request is a verdict, not chatter.
-        (filter.bots ||
-          comment.author?.isBot !== true ||
-          isPullRequestVerdict(comment.reviewState)) &&
-        (filter.resolved ||
-          !isPullRequestCommentFinished(comment, item.kind === "thread" ? item.thread : undefined)),
-    ),
+  return items.filter(
+    (item) =>
+      (item.kind === "thread" && keep?.has(item.id) === true) ||
+      // Matching any member keeps the finding beside a human reply to a bot.
+      pullRequestConversationItemComments(item).some(
+        (comment) =>
+          // A bot's approval or change request is a verdict, not chatter.
+          (filter.bots ||
+            comment.author?.isBot !== true ||
+            isPullRequestVerdict(comment.reviewState)) &&
+          (filter.resolved ||
+            !isPullRequestCommentFinished(
+              comment,
+              item.kind === "thread" ? item.thread : undefined,
+            )),
+      ),
   );
 }
 
@@ -656,6 +665,7 @@ export function buildPullRequestTimeline(
           line: item.thread.line,
           isResolved: item.thread.isResolved,
           isOutdated: item.thread.isOutdated,
+          ...(item.thread.canResolve === undefined ? {} : { canResolve: item.thread.canResolve }),
           replies: item.replies.map(commentTimelineEvent),
           moreReplies: item.moreReplies,
           hasMoreReplies: item.hasMoreReplies,

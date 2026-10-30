@@ -79,6 +79,8 @@ const tab = (value = detail) => (
     pendingAction={null}
     perform={async () => false}
     canUnapprove={false}
+    active
+    refreshToken={0}
   />
 );
 

@@ -1778,6 +1778,8 @@ export function PullRequestDetailPanel({
                   pendingAction={pendingAction}
                   perform={perform}
                   canUnapprove={can("unapprove")}
+                  active={tab === "summary"}
+                  refreshToken={refreshToken}
                 />
               </div>
             ) : null}

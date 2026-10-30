@@ -45,12 +45,15 @@ import {
   pullRequestReviewOutcome,
   type PullRequestReviewOutcome,
 } from "@t3tools/client-runtime/pull-request-reviews";
-import { canEditPullRequestComment } from "@t3tools/client-runtime/pull-request-editing";
+import {
+  canEditPullRequestComment,
+  canResolvePullRequestThread,
+} from "@t3tools/client-runtime/pull-request-editing";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { PullRequestMoreReplies } from "./PullRequestMoreReplies";
 import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
 import { PullRequestReactionBar } from "./PullRequestReactions";
-import { PullRequestThreadReply } from "./PullRequestReviewAnnotation";
+import { PullRequestThreadActions } from "./PullRequestReviewAnnotation";
 import {
   PullRequestActorAvatar,
   PullRequestDiffStat,
@@ -407,7 +410,11 @@ function ReviewThreadEvent({
   cwd,
   onOpen,
   reactions,
+  canReply,
   onReply,
+  canResolve,
+  resolving,
+  onToggleResolved,
 }: {
   event: PullRequestTimelineEvent;
   thread: PullRequestTimelineThread;
@@ -415,7 +422,11 @@ function ReviewThreadEvent({
   cwd: string;
   onOpen: (url: string) => void;
   reactions: ReactionSurface;
-  onReply: ((body: string) => Promise<boolean>) | null;
+  canReply: boolean;
+  onReply: (body: string) => Promise<boolean>;
+  canResolve: boolean;
+  resolving: boolean;
+  onToggleResolved: () => void;
 }) {
   const t = useT();
   const dismissed = pullRequestReviewOutcome(event.reviewState) === "dismissed";
@@ -519,9 +530,16 @@ function ReviewThreadEvent({
           <PullRequestMoreReplies {...thread} />
         </div>
       ) : null}
-      {expanded && onReply !== null ? (
+      {expanded && (canReply || canResolve) ? (
         <div className="px-2">
-          <PullRequestThreadReply pending={false} onReply={onReply} />
+          <PullRequestThreadActions
+            canReply={canReply}
+            onReply={onReply}
+            canResolve={canResolve}
+            resolved={thread.isResolved}
+            resolving={resolving}
+            onToggleResolved={onToggleResolved}
+          />
         </div>
       ) : null}
     </div>
@@ -735,6 +753,25 @@ export function PullRequestTimelineTab({
     onRefresh();
     return true;
   };
+  const setThreadResolution = useAtomCommand(pullRequestEnvironment.setThreadResolution, {
+    reportFailure: false,
+  });
+  const [resolving, setResolving] = useState(false);
+  const toggleResolved = async (thread: PullRequestTimelineThread) => {
+    if (resolving) return;
+    setResolving(true);
+    const result = await setThreadResolution({
+      environmentId,
+      input: { ...reference, threadId: thread.id, resolved: !thread.isResolved },
+    });
+    setResolving(false);
+    if (result._tag === "Failure") {
+      toastManager.add({
+        type: "error",
+        title: t("pullRequestDetail.code.conversationUpdateFailed"),
+      });
+    }
+  };
   const reactions: ReactionSurface = {
     canReact: detail.capabilities.reactions === true,
     environmentId,
@@ -774,17 +811,25 @@ export function PullRequestTimelineTab({
               );
             }
             const event = row.event;
-            if (event.thread !== undefined) {
+            const thread = event.thread;
+            if (thread !== undefined) {
               return (
                 <ReviewThreadEvent
-                  key={`${reactions.reference.projectId}#${reactions.reference.number}:thread:${event.id}:${event.thread.isResolved}:${pullRequestReviewOutcome(event.reviewState) === "dismissed"}`}
+                  key={`${reactions.reference.projectId}#${reactions.reference.number}:thread:${event.id}:${thread.isResolved}:${pullRequestReviewOutcome(event.reviewState) === "dismissed"}`}
                   event={event}
-                  thread={event.thread}
+                  thread={thread}
                   editable={editable}
                   cwd={detail.workspaceRoot}
                   onOpen={openOnHost}
                   reactions={reactions}
-                  onReply={canReply ? reply(event.thread.id) : null}
+                  canReply={canReply}
+                  onReply={reply(thread.id)}
+                  canResolve={
+                    detail.capabilities.review.resolve &&
+                    canResolvePullRequestThread(detail, thread)
+                  }
+                  resolving={resolving}
+                  onToggleResolved={() => void toggleResolved(thread)}
                 />
               );
             }

@@ -471,6 +471,28 @@ describe("review thread conversations", () => {
     );
   });
 
+  it("filterPullRequestConversationItems should keep a resolved thread when its id is in the keep set and resolved items are hidden", () => {
+    const resolved = pullRequestConversationItems(comments, [{ ...thread, isResolved: true }]);
+    expect(
+      filterPullRequestConversationItems(
+        resolved,
+        { bots: true, resolved: false },
+        new Set([thread.id]),
+      ).map((item) => item.id),
+    ).toEqual([thread.id, "c1"]);
+  });
+
+  it("filterPullRequestConversationItems should hide a resolved thread when its id is not in the keep set", () => {
+    const resolved = pullRequestConversationItems(comments, [{ ...thread, isResolved: true }]);
+    expect(
+      filterPullRequestConversationItems(
+        resolved,
+        { bots: true, resolved: false },
+        new Set(["other-thread"]),
+      ).map((item) => item.id),
+    ).toEqual(["c1"]);
+  });
+
   it("keeps bot review verdicts when bot comments are hidden", () => {
     const review = (id: string, reviewState: string) => ({
       ...comment(id, 9),
