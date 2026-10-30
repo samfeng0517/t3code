@@ -1376,10 +1376,16 @@ it.effect("updates cached labels after successful edits without rereading the ho
         },
       };
       const detail = atoms.detail(target);
+      const freshDetail = atoms.detail({
+        ...target,
+        input: { ...target.input, allowStale: false },
+      });
       const candidates = atoms.labelCandidates(target);
       registry.mount(detail);
+      registry.mount(freshDetail);
       const unmountCandidates = registry.mount(candidates);
       yield* AtomRegistry.getResult(registry, detail, { suspendOnWaiting: true });
+      yield* AtomRegistry.getResult(registry, freshDetail, { suspendOnWaiting: true });
       yield* AtomRegistry.getResult(registry, candidates, { suspendOnWaiting: true });
 
       const added = yield* Effect.promise(() =>
@@ -1400,6 +1406,10 @@ it.effect("updates cached labels after successful edits without rereading the ho
         title: "keep this title",
         labels: [existing, addedLabel],
       });
+      expect((yield* AtomRegistry.getResult(registry, freshDetail)).labels).toEqual([
+        existing,
+        addedLabel,
+      ]);
       unmountCandidates();
       registry.mount(atoms.labelCandidates(target));
       expect((yield* AtomRegistry.getResult(registry, candidates)).candidates[1]).toEqual({
@@ -1423,7 +1433,8 @@ it.effect("updates cached labels after successful edits without rereading the ho
           { name: "new", isApplied: true },
         ]);
       }
-      expect(detailReads).toBe(1);
+      expect((yield* AtomRegistry.getResult(registry, freshDetail)).labels).toEqual([addedLabel]);
+      expect(detailReads).toBe(2);
       expect(candidateReads).toBe(1);
 
       failDetail = true;
@@ -1440,7 +1451,7 @@ it.effect("updates cached labels after successful edits without rereading the ho
       expect(
         (yield* AtomRegistry.getResult(registry, detail, { suspendOnWaiting: true })).labels,
       ).toEqual([existing]);
-      expect(detailReads).toBe(3);
+      expect(detailReads).toBe(4);
     }),
   ),
 );

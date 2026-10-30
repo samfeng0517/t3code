@@ -217,6 +217,20 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       ...(onAnswer.detail === undefined ? {} : { onAnswer: onAnswer.detail }),
     }),
   );
+  // The panel reads fresh details while other surfaces accept stale ones, so a write patches
+  // whichever variants are cached without starting a read for the others.
+  const cachedDetails = (
+    registry: AtomRegistry.AtomRegistry,
+    target: Parameters<typeof detail>[0],
+  ) => {
+    const nodes = registry.getNodes();
+    return [
+      ...new Set([
+        detail(target),
+        detail({ ...target, input: { ...target.input, allowStale: false } }),
+      ]),
+    ].filter((atom) => nodes.has(atom));
+  };
   const preview = writableQueryFamily(
     createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:pull-requests:preview",
@@ -556,15 +570,17 @@ export function createPullRequestEnvironmentAtoms<R, E>(
               : actors.filter(
                   (actor) => !selectedLogins.has(actor.login.toLowerCase()) || keep(actor),
                 );
-          updateCached(
-            registry,
-            detail(target),
-            (value) => ({
-              ...value,
-              reviewers: updateReviewers(value.reviewers),
-            }),
-            missingIdentities,
-          );
+          for (const atom of cachedDetails(registry, target)) {
+            updateCached(
+              registry,
+              atom,
+              (value) => ({
+                ...value,
+                reviewers: updateReviewers(value.reviewers),
+              }),
+              missingIdentities,
+            );
+          }
           updateCached(
             registry,
             activity(target),
@@ -614,22 +630,24 @@ export function createPullRequestEnvironmentAtoms<R, E>(
               names.has(candidate.name) ? { ...candidate, isApplied: applied } : candidate,
             ),
           }));
-          updateCached(registry, detail(target), (value) => ({
-            ...value,
-            labels: applied
-              ? [
-                  ...value.labels,
-                  ...labels
-                    .filter((name) => !value.labels.some((label) => label.name === name))
-                    .map((name) => ({
-                      name,
-                      color:
-                        candidates?.candidates.find((candidate) => candidate.name === name)
-                          ?.color ?? null,
-                    })),
-                ]
-              : value.labels.filter((label) => !names.has(label.name)),
-          }));
+          for (const atom of cachedDetails(registry, target)) {
+            updateCached(registry, atom, (value) => ({
+              ...value,
+              labels: applied
+                ? [
+                    ...value.labels,
+                    ...labels
+                      .filter((name) => !value.labels.some((label) => label.name === name))
+                      .map((name) => ({
+                        name,
+                        color:
+                          candidates?.candidates.find((candidate) => candidate.name === name)
+                            ?.color ?? null,
+                      })),
+                  ]
+                : value.labels.filter((label) => !names.has(label.name)),
+            }));
+          }
         }),
     }),
     setThreadResolution: createEnvironmentRpcCommand(runtime, {
