@@ -518,11 +518,12 @@ export function PullRequestSummaryTab({
   // Verdicts outside the visible comment window still count.
   const reviewHistoryOutcomes = latestPullRequestReviewOutcomes(detail.comments, detail.commits);
   const approvals = pullRequestApprovers(detail);
-  const hostApprovers = approvals.fromHost ? approvals.approvers : [];
-  const hostApproverLogins = new Set(
-    hostApprovers.flatMap((approver) =>
-      approver.actor ? [reviewerKey(approver.actor.login)] : [],
-    ),
+  const hostApprovers = approvals.fromHost
+    ? approvals.approvers.flatMap(({ key, actor }) => (actor ? [{ key, actor }] : []))
+    : [];
+  const hostApproverLogins = new Set(hostApprovers.map(({ actor }) => reviewerKey(actor.login)));
+  const reviewHistoryLogins = new Set(
+    reviewHistoryOutcomes.flatMap((entry) => (entry.actor ? [reviewerKey(entry.actor.login)] : [])),
   );
   // Host approvals (GitLab) need not appear in review history.
   const reviewOutcomes = [
@@ -532,18 +533,10 @@ export function PullRequestSummaryTab({
         : entry,
     ),
     ...hostApprovers
-      .filter(
-        (approver) =>
-          !reviewHistoryOutcomes.some(
-            (entry) =>
-              entry.actor !== null &&
-              approver.actor !== null &&
-              reviewerKey(entry.actor.login) === reviewerKey(approver.actor.login),
-          ),
-      )
-      .map((approver) => ({
-        key: approver.key,
-        actor: approver.actor,
+      .filter(({ actor }) => !reviewHistoryLogins.has(reviewerKey(actor.login)))
+      .map(({ key, actor }) => ({
+        key,
+        actor,
         outcome: "approved" as const,
         stale: false,
       })),
