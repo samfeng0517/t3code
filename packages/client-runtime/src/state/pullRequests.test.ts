@@ -1445,6 +1445,59 @@ it.effect("updates cached labels after successful edits without rereading the ho
   ),
 );
 
+it.effect(
+  "setThreadResolution should patch the cached thread when the host accepts the change",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let activityReads = 0;
+        const client = {
+          [WS_METHODS.pullRequestsSubscribeRefreshes]: () => Stream.never,
+          [WS_METHODS.pullRequestsActivity]: () =>
+            Effect.sync(() => {
+              activityReads++;
+              return {
+                comments: [],
+                commits: [],
+                reviewThreads: [
+                  { id: "thread-1", isResolved: false },
+                  { id: "thread-2", isResolved: false },
+                ],
+              };
+            }),
+          [WS_METHODS.pullRequestsSetThreadResolution]: () => Effect.void,
+        } as unknown as WsRpcProtocolClient;
+        const { atoms, registry } = yield* makeTestRuntime(client);
+        const target = {
+          environmentId: TARGET.environmentId,
+          input: {
+            projectId: ProjectId.make("project-1"),
+            repository: "acme/web",
+            number: 1,
+            host: "github.example.com",
+          },
+        };
+        const activity = atoms.activity(target);
+        registry.mount(activity);
+        yield* AtomRegistry.getResult(registry, activity, { suspendOnWaiting: true });
+
+        const result = yield* Effect.promise(() =>
+          atoms.setThreadResolution.run(registry, {
+            ...target,
+            input: { ...target.input, threadId: "thread-1", resolved: true },
+          }),
+        );
+        expect(AsyncResult.isSuccess(result)).toBe(true);
+        expect(
+          (yield* AtomRegistry.getResult(registry, activity)).reviewThreads.map(
+            (thread) => thread.isResolved,
+          ),
+        ).toEqual([true, false]);
+        expect(activityReads).toBe(1);
+      }),
+    ),
+);
+
 vi.mock("./session.ts", () => ({
   createEnvironmentSessionAtoms: () => ({ sessionStateAtom: grantedSessions }),
 }));

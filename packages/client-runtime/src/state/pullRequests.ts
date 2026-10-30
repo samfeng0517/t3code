@@ -638,6 +638,16 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       execute: (input) => routedRequest(WS_METHODS.pullRequestsSetThreadResolution, input),
       scheduler: commandScheduler,
       concurrency: serialPerEnvironment,
+      onSuccess: (target, registry) =>
+        Effect.sync(() => {
+          const { threadId, resolved } = target.input;
+          updateCached(registry, activity(target), (value) => ({
+            ...value,
+            reviewThreads: value.reviewThreads.map((thread) =>
+              thread.id === threadId ? { ...thread, isResolved: resolved } : thread,
+            ),
+          }));
+        }),
     }),
     setReaction: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:set-reaction",
