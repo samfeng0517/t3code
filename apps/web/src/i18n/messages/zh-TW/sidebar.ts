@@ -2,7 +2,7 @@ import type { sidebarEn } from "../en/sidebar";
 
 export const sidebarZhTW: Readonly<Record<keyof typeof sidebarEn, string>> = {
   "sidebar.chrome.toggleSidebar": "切換主側邊欄",
-  "sidebar.chrome.goToThreads": "前往對話串",
+  "sidebar.chrome.home": "T3 Code 首頁",
   "sidebar.chrome.back": "返回",
   "sidebar.chrome.settings": "設定",
   "sidebar.chrome.pullRequests": "{title}",
