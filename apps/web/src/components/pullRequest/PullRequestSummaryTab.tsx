@@ -5,6 +5,7 @@ import {
 import { useAtomCommand } from "~/state/use-atom-command";
 import type {
   EnvironmentId,
+  PullRequestAction,
   PullRequestComment,
   PullRequestDetailView,
   PullRequestRef,
@@ -13,6 +14,7 @@ import type {
 } from "@t3tools/contracts";
 import {
   ArrowDownUpIcon,
+  BadgeCheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   CircleCheckIcon,
@@ -33,6 +35,8 @@ import { useOpenLink } from "~/browser/useOpenLink";
 import { RelativeTime } from "~/components/RelativeTime";
 
 import { Button } from "../ui/button";
+import { PullRequestApprovalButtons } from "./PullRequestApprovalButtons";
+import type { PerformPullRequestAction } from "./PullRequestDetailActions";
 import { PullRequestEditButton } from "./PullRequestEditButton";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import {
@@ -73,6 +77,7 @@ import {
 } from "./pullRequestDetail.logic";
 import {
   latestPullRequestReviewOutcomes,
+  pullRequestApprovers,
   pullRequestReviewOutcome,
 } from "@t3tools/client-runtime/pull-request-reviews";
 import {
@@ -438,6 +443,10 @@ export function PullRequestSummaryTab({
   onFixFinding,
   onRefresh,
   onRefreshChecks = onRefresh,
+  pullRequestKey,
+  pendingAction,
+  perform,
+  canUnapprove,
 }: {
   scrollerRef: (node: HTMLDivElement | null) => void;
   environmentId: EnvironmentId;
@@ -453,6 +462,10 @@ export function PullRequestSummaryTab({
   onFixFinding?: (finding: PullRequestFinding) => void;
   onRefresh: () => void;
   onRefreshChecks?: () => void;
+  pullRequestKey: string;
+  pendingAction: PullRequestAction | null;
+  perform: PerformPullRequestAction;
+  canUnapprove: boolean;
 }) {
   const t = useT();
   const fixFindingLabel = fixFindingLabelProp ?? t("pullRequests.summary.fixInThread");
@@ -503,7 +516,42 @@ export function PullRequestSummaryTab({
       </Button>
     ) : null;
   // Verdicts outside the visible comment window still count.
-  const reviewOutcomes = latestPullRequestReviewOutcomes(detail.comments, detail.commits);
+  const reviewHistoryOutcomes = latestPullRequestReviewOutcomes(detail.comments, detail.commits);
+  const approvals = pullRequestApprovers(detail);
+  const hostApprovers = approvals.fromHost ? approvals.approvers : [];
+  const hostApproverLogins = new Set(
+    hostApprovers.flatMap((approver) =>
+      approver.actor ? [reviewerKey(approver.actor.login)] : [],
+    ),
+  );
+  // Host approvals (GitLab) need not appear in review history.
+  const reviewOutcomes = [
+    ...reviewHistoryOutcomes.map((entry) =>
+      entry.actor && hostApproverLogins.has(reviewerKey(entry.actor.login))
+        ? { ...entry, outcome: "approved" as const, stale: false }
+        : entry,
+    ),
+    ...hostApprovers
+      .filter(
+        (approver) =>
+          !reviewHistoryOutcomes.some(
+            (entry) =>
+              entry.actor !== null &&
+              approver.actor !== null &&
+              reviewerKey(entry.actor.login) === reviewerKey(approver.actor.login),
+          ),
+      )
+      .map((approver) => ({
+        key: approver.key,
+        actor: approver.actor,
+        outcome: "approved" as const,
+        stale: false,
+      })),
+  ];
+  const canApprove =
+    detail.state === "open" &&
+    detail.capabilities.review.verdicts.includes("approve") &&
+    detail.viewerPermissions.verdicts.includes("approve");
   // Host login casing varies; normalize to preserve verdicts and deduplicate reviewers.
   const outcomeByLogin = new Map(
     reviewOutcomes.flatMap((entry) =>
@@ -792,6 +840,58 @@ export function PullRequestSummaryTab({
                   allowed={detail.viewerPermissions.requestReviewers}
                 />
               ) : null}
+            </span>
+          </MetaRow>
+          <MetaRow
+            icon={<BadgeCheckIcon className="size-3.5" />}
+            label={t("pullRequests.ghost.approvals")}
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                {approvals.approvers.length === 0 ? (
+                  <span className="text-muted-foreground">{t("pullRequests.ghost.none")}</span>
+                ) : (
+                  <span className="flex items-center -space-x-1">
+                    {approvals.approvers.map((approver) => {
+                      const login = approver.actor?.login ?? "ghost";
+                      const named =
+                        approver.actor?.name && approver.actor.name !== login
+                          ? `${approver.actor.name} (@${login})`
+                          : login;
+                      return (
+                        <Tooltip key={approver.key}>
+                          <TooltipTrigger
+                            render={<span className="relative rounded-full hover:z-10" />}
+                          >
+                            <PullRequestActorLabel
+                              actor={approver.actor}
+                              tooltip={false}
+                              variant="avatar"
+                            />
+                          </TooltipTrigger>
+                          <TooltipPopup side="bottom">{named}</TooltipPopup>
+                        </Tooltip>
+                      );
+                    })}
+                  </span>
+                )}
+                {typeof detail.approvalsLeft === "number" && detail.approvalsLeft > 0 ? (
+                  <span className="text-muted-foreground">
+                    {t("pullRequests.summary.approvalsLeft", { count: detail.approvalsLeft })}
+                  </span>
+                ) : null}
+              </span>
+              <PullRequestApprovalButtons
+                pullRequestKey={pullRequestKey}
+                environmentId={environmentId}
+                reference={reference}
+                term={terminology.singular}
+                canApprove={canApprove}
+                canUnapprove={detail.state === "open" && canUnapprove}
+                pendingAction={pendingAction}
+                perform={perform}
+                onApproved={onRefresh}
+              />
             </span>
           </MetaRow>
           {detail.labels.length > 0 || detail.capabilities.labels === true ? (

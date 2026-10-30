@@ -75,6 +75,10 @@ const tab = (value = detail) => (
     activityPending={false}
     activityError={null}
     onRefresh={() => {}}
+    pullRequestKey="pull-request"
+    pendingAction={null}
+    perform={async () => false}
+    canUnapprove={false}
   />
 );
 

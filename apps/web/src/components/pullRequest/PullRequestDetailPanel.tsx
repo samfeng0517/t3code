@@ -1778,6 +1778,10 @@ export function PullRequestDetailPanel({
                   {...(canFixFindings ? { onFixFinding: startFixFinding } : {})}
                   onRefresh={refreshDetail}
                   onRefreshChecks={refreshFromHost}
+                  pullRequestKey={pullRequestKey}
+                  pendingAction={pendingAction}
+                  perform={perform}
+                  canUnapprove={can("unapprove")}
                 />
               </div>
             ) : null}
