@@ -15,6 +15,8 @@ import {
   ArrowDownUpIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  CircleCheckIcon,
+  CircleIcon,
   HammerIcon,
   ListFilterIcon,
   TagIcon,
@@ -217,6 +219,23 @@ function CommentBody({
   );
 }
 
+function ThreadStatusIcon({ resolved }: { resolved: boolean }) {
+  const t = useT();
+  const Icon = resolved ? CircleCheckIcon : CircleIcon;
+  return (
+    <Icon
+      role="img"
+      aria-label={t(
+        resolved ? "pullRequestDetail.annotation.resolved" : "pullRequestDetail.annotation.open",
+      )}
+      className={cn(
+        "size-3.5 shrink-0 self-center",
+        resolved ? "text-success-foreground" : "text-muted-foreground",
+      )}
+    />
+  );
+}
+
 function CollapsedComment({
   comment,
   editing,
@@ -245,9 +264,15 @@ function CollapsedComment({
   const statusTriggerRef = useRef<HTMLButtonElement>(null);
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <article className="group rounded-lg border border-border/60 [contain-intrinsic-block-size:44px] [content-visibility:auto]">
+      <article
+        className={cn(
+          "group rounded-lg border border-border/60 [contain-intrinsic-block-size:44px] [content-visibility:auto]",
+          thread?.isResolved && "opacity-60",
+        )}
+      >
         <div className="p-3">
           <div className="flex flex-wrap items-baseline gap-2">
+            {thread ? <ThreadStatusIcon resolved={thread.isResolved} /> : null}
             <CommentIdentity comment={comment} detail={detail} />
             {replyCount > 0 ? (
               <span className="shrink-0 py-1 text-xs text-muted-foreground">
@@ -274,7 +299,10 @@ function CollapsedComment({
           <CommentLocation comment={comment} thread={thread} />
           {!open && body ? (
             <CollapsibleTrigger
-              className="mt-2 block w-full truncate text-left text-xs text-muted-foreground hover:text-foreground"
+              className={cn(
+                "mt-2 block w-full truncate text-left text-xs hover:text-foreground",
+                thread?.isResolved ? "text-muted-foreground" : "text-foreground/80",
+              )}
               onClick={() => statusTriggerRef.current?.focus({ preventScroll: true })}
             >
               {body
@@ -601,6 +629,7 @@ export function PullRequestSummaryTab({
       >
         <div className="flex flex-wrap items-baseline gap-2 rounded-t-lg bg-muted/25 px-3 py-2.5">
           <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2 text-xs text-muted-foreground">
+            {thread && !reply ? <ThreadStatusIcon resolved={thread.isResolved} /> : null}
             <CommentIdentity comment={comment} detail={detail} />
             {outcome ? (
               <PullRequestReviewOutcomeBadge outcome={outcome} />

@@ -14,6 +14,7 @@ import type {
 import {
   ChevronDownIcon,
   CircleCheckIcon,
+  CircleIcon,
   ExternalLinkIcon,
   FileCode2Icon,
   GitCommitHorizontalIcon,
@@ -420,12 +421,17 @@ function ReviewThreadEvent({
   const replyCount = thread.replies.length + thread.moreReplies;
 
   return (
-    <div className="group relative mb-5 pl-12 [contain-intrinsic-block-size:48px] [content-visibility:auto]">
+    <div
+      className={cn(
+        "group relative mb-5 pl-12 [contain-intrinsic-block-size:48px] [content-visibility:auto]",
+        thread.isResolved && "opacity-60",
+      )}
+    >
       <ActorTimelineMarker
         actors={event.actor ? [event.actor] : []}
         className="top-4"
         fallback={<MessageSquareIcon className="size-3.5" />}
-        muted={!expanded}
+        muted={thread.isResolved}
       />
       <button
         type="button"
@@ -442,7 +448,13 @@ function ReviewThreadEvent({
             <CircleCheckIcon aria-hidden className="size-3" />
             {t("pullRequestDetail.timeline.resolved")}
           </span>
-        ) : null}
+        ) : (
+          <CircleIcon
+            role="img"
+            aria-label={t("pullRequestDetail.annotation.open")}
+            className="size-3 shrink-0"
+          />
+        )}
         {dismissed ? (
           <span className="shrink-0 font-medium">
             {t("pullRequestDetail.timeline.reviewDismissed")}
