@@ -593,6 +593,8 @@ export const PullRequestDetail = Schema.Struct({
   autoMergeEnabled: Schema.optional(Schema.Boolean),
   autoMergeMethod: Schema.optional(PullRequestMergeMethod),
   workflowApprovalsRequired: Schema.optional(NonNegativeInt),
+  approvedBy: Schema.optional(Schema.Array(PullRequestActor)),
+  approvalsLeft: Schema.optional(Schema.NullOr(NonNegativeInt)),
   maintainerCanModify: Schema.optional(Schema.Boolean),
 });
 export type PullRequestDetail = typeof PullRequestDetail.Type;

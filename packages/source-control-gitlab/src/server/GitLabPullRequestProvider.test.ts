@@ -389,6 +389,8 @@ describe("getChangeRequest approvals and pipeline", () => {
       expect(changeRequest.reviewDecision).toBe("approved");
       expect(changeRequest.viewerPermissions.actions).toContain("unapprove");
       expect(changeRequest.viewerPermissions.verdicts).toEqual(["comment"]);
+      expect(changeRequest.approvedBy).toEqual([approver]);
+      expect(changeRequest.approvalsLeft).toBe(0);
     }),
   );
 
@@ -409,6 +411,8 @@ describe("getChangeRequest approvals and pipeline", () => {
       expect(changeRequest.reviewDecision).toBeNull();
       expect(changeRequest.viewerPermissions.actions).not.toContain("unapprove");
       expect(changeRequest.viewerPermissions.verdicts).toEqual(["comment", "approve"]);
+      expect("approvedBy" in changeRequest).toBe(false);
+      expect("approvalsLeft" in changeRequest).toBe(false);
     }),
   );
 

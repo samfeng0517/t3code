@@ -320,6 +320,13 @@ export const make = Effect.gen(function* () {
             ...(mergeRequest.divergedCommits === undefined
               ? {}
               : { behindBy: mergeRequest.divergedCommits }),
+            ...(approvals === null
+              ? {}
+              : {
+                  approvedBy: approvals.approvedBy,
+                  approvalsLeft:
+                    approvals.approvalsLeft === null ? null : Math.max(0, approvals.approvalsLeft),
+                }),
           }),
         ),
       ),

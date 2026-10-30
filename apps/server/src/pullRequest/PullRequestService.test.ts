@@ -148,6 +148,32 @@ it.effect("reads maintainer edits and changes them through the update command", 
   }),
 );
 
+it.effect("detail should carry approvedBy and approvalsLeft when the provider reports them", () =>
+  Effect.gen(function* () {
+    const actor = { login: "octocat", name: null, avatarUrl: null };
+    const service = yield* makeService({
+      projects: [project({ id: "p1", title: "web", workspaceRoot: "/w", repository: "acme/web" })],
+      providers: [
+        fakePullRequestProvider(SourceControlProviderKind.make("github"), {
+          getChangeRequest: () =>
+            Effect.succeed({
+              ...hostedChangeRequest("Body"),
+              approvedBy: [actor],
+              approvalsLeft: 1,
+            }),
+        }),
+      ],
+    });
+    const detail = yield* service.detail({
+      projectId: "p1" as ProjectId,
+      repository: "acme/web",
+      number: 1,
+    });
+    assert.deepStrictEqual(detail.approvedBy, [actor]);
+    assert.strictEqual(detail.approvalsLeft, 1);
+  }),
+);
+
 it.effect("refuses maintainer edits on a host without the capability", () =>
   Effect.gen(function* () {
     let writes = 0;

@@ -1760,6 +1760,12 @@ export const make = Effect.gen(function* () {
             ...(changeRequest.workflowApprovalsRequired === undefined
               ? {}
               : { workflowApprovalsRequired: changeRequest.workflowApprovalsRequired }),
+            ...(changeRequest.approvedBy === undefined
+              ? {}
+              : { approvedBy: changeRequest.approvedBy }),
+            ...(changeRequest.approvalsLeft === undefined
+              ? {}
+              : { approvalsLeft: changeRequest.approvalsLeft }),
           })),
         ),
       ),
