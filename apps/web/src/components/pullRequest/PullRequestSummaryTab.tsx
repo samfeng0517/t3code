@@ -62,17 +62,19 @@ import { PullRequestActivityUnavailableState } from "./PullRequestActivityUnavai
 import {
   filterPullRequestConversationItems,
   isPullRequestCommentFinished,
-  latestPullRequestReviewOutcomes,
   orderPullRequestComments,
   pagePullRequestConversationItems,
   pullRequestConversationItemComments,
   pullRequestConversationItems,
   pullRequestFindingKey,
-  pullRequestReviewOutcome,
   visibleBody,
   type PullRequestConversationItem,
   type PullRequestFinding,
 } from "./pullRequestDetail.logic";
+import {
+  latestPullRequestReviewOutcomes,
+  pullRequestReviewOutcome,
+} from "@t3tools/client-runtime/pull-request-reviews";
 import {
   canEditPullRequestChangeRequest,
   canEditPullRequestComment,

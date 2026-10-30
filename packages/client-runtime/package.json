@@ -495,6 +495,10 @@
       "types": "./src/pullRequestChecks.ts",
       "default": "./src/pullRequestChecks.ts"
     },
+    "./pull-request-reviews": {
+      "types": "./src/pullRequestReviews.ts",
+      "default": "./src/pullRequestReviews.ts"
+    },
     "./pull-request-editing": {
       "types": "./src/pullRequestEditing.ts",
       "default": "./src/pullRequestEditing.ts"

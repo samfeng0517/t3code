@@ -36,13 +36,15 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   buildPullRequestTimeline,
   groupPullRequestTimelineConversations,
+  type PullRequestTimelineEvent,
+  type PullRequestTimelineThread,
+} from "./pullRequestDetail.logic";
+import {
   isPullRequestVerdictStale,
   newestPullRequestCommitAt,
   pullRequestReviewOutcome,
   type PullRequestReviewOutcome,
-  type PullRequestTimelineEvent,
-  type PullRequestTimelineThread,
-} from "./pullRequestDetail.logic";
+} from "@t3tools/client-runtime/pull-request-reviews";
 import { canEditPullRequestComment } from "@t3tools/client-runtime/pull-request-editing";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { PullRequestMoreReplies } from "./PullRequestMoreReplies";

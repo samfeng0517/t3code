@@ -35,13 +35,10 @@ import {
   handoffPrompt,
   handoffReviewComments,
   stripPullRequestHandoffReferences,
-  isPullRequestVerdictStale,
   isStackedPullRequestBase,
   loadingPullRequestCheckoutCommand,
   pullRequestPanelContext,
   threadPullRequestPanelTarget,
-  latestPullRequestReviewOutcomes,
-  newestPullRequestCommitAt,
   mergePullRequestThreadComments,
   orderPullRequestComments,
   pullRequestCheckoutCommand,
@@ -226,96 +223,6 @@ describe("stacked pull request classification", () => {
     expect(
       isStackedPullRequestBase("1.0", [{ name: "release/1.0", isDefault: true, isRemote: false }]),
     ).toBe(true);
-  });
-});
-
-describe("review verdicts", () => {
-  it("keeps each reviewer's last word, whatever order the host returned them in", () => {
-    const review = (
-      id: string,
-      login: string,
-      reviewState: string,
-      createdAt: string,
-    ): PullRequestComment => ({
-      id,
-      kind: "review",
-      author: { login, name: null, avatarUrl: null },
-      body: "",
-      createdAt,
-      url: null,
-      path: null,
-      reviewState,
-    });
-
-    expect(
-      latestPullRequestReviewOutcomes([
-        review("r3", "bilal", "APPROVED", "2026-07-03T00:00:00Z"),
-        review("r1", "bilal", "CHANGES_REQUESTED", "2026-07-01T00:00:00Z"),
-        review("r2", "octocat", "CHANGES_REQUESTED", "2026-07-02T00:00:00Z"),
-        review("r4", "octocat", "COMMENTED", "2026-07-04T00:00:00Z"),
-      ]).map((entry) => [entry.actor?.login, entry.outcome]),
-    ).toEqual([
-      ["bilal", "approved"],
-      ["octocat", "changes-requested"],
-    ]);
-  });
-
-  it("calls a verdict stale once commits land after it, and current before that", () => {
-    const commits = [
-      { oid: "c0ffee", messageHeadline: "later work", committedDate: "2026-07-05T00:00:00Z" },
-    ];
-    const review = (createdAt: string): PullRequestComment => ({
-      ...TIMELINE_SOURCE.comments[0]!,
-      kind: "review",
-      reviewState: "APPROVED",
-      createdAt,
-    });
-
-    expect(
-      latestPullRequestReviewOutcomes([review("2026-07-01T00:00:00Z")], commits)[0]?.stale,
-    ).toBe(true);
-    expect(
-      latestPullRequestReviewOutcomes([review("2026-07-06T00:00:00Z")], commits)[0]?.stale,
-    ).toBe(false);
-    expect(latestPullRequestReviewOutcomes([review("2026-07-01T00:00:00Z")], [])[0]?.stale).toBe(
-      false,
-    );
-  });
-
-  it("orders instants rather than their text, so a UTC offset cannot invert them", () => {
-    expect(
-      newestPullRequestCommitAt([
-        { oid: "a", messageHeadline: "", committedDate: "2026-07-05T00:30:00Z" },
-        { oid: "b", messageHeadline: "", committedDate: "2026-07-05T01:00:00+02:00" },
-      ]),
-    ).toBe("2026-07-05T00:30:00Z");
-    expect(isPullRequestVerdictStale("2026-07-05T00:30:00Z", "2026-07-05T01:00:00+02:00")).toBe(
-      false,
-    );
-    expect(isPullRequestVerdictStale("2026-07-01T00:00:00Z", "not a date")).toBe(false);
-    expect(
-      newestPullRequestCommitAt([{ oid: "a", messageHeadline: "", committedDate: "not a date" }]),
-    ).toBeNull();
-  });
-
-  it("shows nothing for a reviewer whose verdict was dismissed", () => {
-    expect(
-      latestPullRequestReviewOutcomes([
-        {
-          ...TIMELINE_SOURCE.comments[0]!,
-          kind: "review",
-          reviewState: "APPROVED",
-          createdAt: "2026-07-01T00:00:00Z",
-        },
-        {
-          ...TIMELINE_SOURCE.comments[0]!,
-          id: "c2",
-          kind: "review",
-          reviewState: "DISMISSED",
-          createdAt: "2026-07-02T00:00:00Z",
-        },
-      ]),
-    ).toEqual([]);
   });
 });
 

@@ -74,6 +74,15 @@ describe("mobile overview review status", () => {
       ).title,
     ).toBe("Changes requested");
   });
+
+  it("pullRequestReviewSummary should report the host approver when approvedBy is present and activity has no reviews", () => {
+    const result = pullRequestReviewSummary(
+      { reviewers: [], approvedBy: [{ login: "octocat", name: null, avatarUrl: null }] },
+      activity([]),
+    );
+    expect(result.title).toBe("Approved by octocat");
+    expect(result.count).toBe("1 approved");
+  });
 });
 
 describe("mobile overview check status", () => {

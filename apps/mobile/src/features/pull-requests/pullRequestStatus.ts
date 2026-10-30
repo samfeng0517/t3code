@@ -6,6 +6,7 @@ import type {
   PullRequestListEntry,
   PullRequestMergeability,
 } from "@t3tools/contracts";
+import { pullRequestApprovers } from "@t3tools/client-runtime/pull-request-reviews";
 import type { AppSymbolName } from "../../components/ui/AppSymbol";
 import { PullRequestGlyph } from "./pullRequestGlyphs";
 
@@ -136,7 +137,7 @@ export function pullRequestChecksSummary(pr: Pick<PullRequestDetail, "checks">) 
 }
 
 export function pullRequestReviewSummary(
-  pr: Pick<PullRequestDetail, "reviewers">,
+  pr: Pick<PullRequestDetail, "reviewers" | "approvedBy">,
   activity: Pick<PullRequestActivity, "comments" | "commits"> | null,
 ) {
   const latest = new Map<string, PullRequestActivity["comments"][number]>();
@@ -161,13 +162,11 @@ export function pullRequestReviewSummary(
     ...[...comments.entries()].filter(([key]) => !latest.has(key)).map(([, review]) => review),
   ];
   const requested = reviews.filter((review) => review.reviewState === "CHANGES_REQUESTED");
-  const newestCommit = Math.max(
-    0,
-    ...(activity?.commits.map((commit) => Date.parse(commit.committedDate)) ?? []),
-  );
-  const approved = reviews.filter(
-    (review) => review.reviewState === "APPROVED" && Date.parse(review.createdAt) >= newestCommit,
-  );
+  const approved = pullRequestApprovers({
+    approvedBy: pr.approvedBy,
+    comments: activity?.comments ?? [],
+    commits: activity?.commits ?? [],
+  }).approvers;
   if (requested.length)
     return {
       title: "Changes requested",
@@ -179,8 +178,8 @@ export function pullRequestReviewSummary(
   if (approved.length)
     return {
       title:
-        approved.length === 1 && approved[0]?.author
-          ? `Approved by ${approved[0].author.login}`
+        approved.length === 1 && approved[0]?.actor
+          ? `Approved by ${approved[0].actor.login}`
           : "Reviews approved",
       count: `${approved.length} approved`,
       icon: "checkmark.circle",

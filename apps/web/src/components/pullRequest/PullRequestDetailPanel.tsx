@@ -124,7 +124,6 @@ import {
   buildResolveConflictsPrompt,
   handoffPrompt,
   handoffReviewComments,
-  latestPullRequestReviewOutcomes,
   loadingPullRequestCheckoutCommand,
   isPullRequestNotFound,
   isStackedPullRequestBase,
@@ -147,6 +146,7 @@ import {
   shouldRefreshPullRequestActivity,
   stripPullRequestHandoffReferences,
 } from "./pullRequestDetail.logic";
+import { pullRequestApprovers } from "@t3tools/client-runtime/pull-request-reviews";
 import { resolvePickableEnvironments } from "./pullRequestProjectAssignment.logic";
 import { PullRequestChecksPopover } from "./PullRequestChecksPopover";
 import {
@@ -1197,11 +1197,10 @@ export function PullRequestDetailPanel({
     : detail
       ? summarizePullRequestChecks(detail.checks, t)
       : null;
+  const approvals = detail ? pullRequestApprovers(detail) : null;
   const approvalCount =
-    detail && !detail.commentsTruncated
-      ? latestPullRequestReviewOutcomes(detail.comments, detail.commits).filter(
-          (entry) => entry.outcome === "approved" && !entry.stale,
-        ).length
+    approvals && (approvals.fromHost || !detail?.commentsTruncated)
+      ? approvals.approvers.length
       : 0;
 
   const checkoutControl =
