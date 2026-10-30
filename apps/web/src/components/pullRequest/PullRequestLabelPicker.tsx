@@ -8,7 +8,7 @@ import type {
   PullRequestRef,
 } from "@t3tools/contracts";
 import { CheckIcon, TagIcon } from "lucide-react";
-import { useContext, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useEnvironmentQuery } from "~/state/query";
@@ -69,6 +69,11 @@ export function PullRequestLabelPicker({
     reference.repository,
     reference.number,
   ]);
+  const currentKeyRef = useRef(key);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a submit that settles after a PR switch must not refresh the new PR
+  useEffect(() => {
+    currentKeyRef.current = key;
+  }, [key]);
   // Switching pull requests while the menu is open drops the draft unsent.
   if (draft !== null && draft.key !== key) {
     setDraft(null);
@@ -116,9 +121,9 @@ export function PullRequestLabelPicker({
     };
     await send(changes.toAdd, true);
     await send(changes.toRemove, false);
-    setSubmitting(null);
+    setSubmitting((current) => (current?.key === closed.key ? null : current));
     if (!failed) return;
-    onRefresh();
+    if (currentKeyRef.current === closed.key) onRefresh();
     registry.refresh(
       pullRequestEnvironment.labelCandidates({
         environmentId: targetEnvironmentId,

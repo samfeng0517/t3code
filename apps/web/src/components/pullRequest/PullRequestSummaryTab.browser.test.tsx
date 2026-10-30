@@ -1,12 +1,39 @@
 import { SourceControlProviderKind } from "@t3tools/contracts";
 import { EnvironmentId, ProjectId, type PullRequestDetailView } from "@t3tools/contracts";
 import { expect, it, vi } from "vite-plus/test";
-import { userEvent } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 
-vi.mock(import("~/state/use-atom-command"), async (original) => ({
-  ...(await original()),
-  useAtomCommand: (() => vi.fn()) as never,
-}));
+const mocks = vi.hoisted(() => ({ setLabels: vi.fn() }));
+
+vi.mock(import("~/state/use-atom-command"), async (original) => {
+  const { pullRequestEnvironment } = await import("~/state/pullRequests");
+  return {
+    ...(await original()),
+    useAtomCommand: ((command: unknown) =>
+      command === pullRequestEnvironment.setLabels ? mocks.setLabels : vi.fn()) as never,
+  };
+});
+
+vi.mock(import("~/state/pullRequests"), async (original) => {
+  const actual = await original();
+  const { AsyncResult, Atom } = await import("effect/reactivity");
+  const candidates = Atom.make(
+    AsyncResult.success({
+      candidates: [
+        { name: "bug", color: null, description: null, isApplied: true },
+        { name: "docs", color: null, description: null, isApplied: false },
+      ],
+      truncated: false,
+    }),
+  );
+  return {
+    ...actual,
+    pullRequestEnvironment: {
+      ...actual.pullRequestEnvironment,
+      labelCandidates: (() => candidates) as never,
+    },
+  };
+});
 
 import { act, render as renderUi } from "../../../test/render";
 import { PullRequestSummaryTab } from "./PullRequestSummaryTab";
@@ -112,4 +139,58 @@ it("keeps an unsaved description when collapsed and reopened", async () => {
   expect(screen.expanded("Description")).toBe("false");
   await screen.click("Description");
   expect(screen.container.querySelector("textarea")!.value).toBe("Unsaved description");
+});
+
+function setupLabels() {
+  mocks.setLabels.mockReset();
+  mocks.setLabels.mockResolvedValue({ _tag: "Success", value: undefined });
+  return {
+    ...detail,
+    labels: [{ name: "bug", color: null }],
+    capabilities: { ...detail.capabilities, labels: true },
+    viewerPermissions: { ...detail.viewerPermissions, labels: true },
+  };
+}
+
+it("label menu should send nothing when it closes without changes", async () => {
+  const value = setupLabels();
+  await using screen = await render(value);
+  await screen.getByLabelText("Change labels").click();
+  await expect.element(page.getByRole("option", { name: /docs/ })).toBeVisible();
+  await userEvent.keyboard("{Escape}");
+  await expect.element(page.getByRole("option", { name: /docs/ })).not.toBeInTheDocument();
+  expect(mocks.setLabels).not.toHaveBeenCalled();
+});
+
+it("label menu should send one add and one remove batch on close when labels were toggled while open", async () => {
+  const value = setupLabels();
+  await using screen = await render(value);
+  await screen.getByLabelText("Change labels").click();
+  await page.getByRole("option", { name: /docs/ }).click();
+  await page.getByRole("option", { name: /bug/ }).click();
+  await expect
+    .element(page.getByRole("option", { name: /docs/ }).getByLabelText("Applied"))
+    .toBeVisible();
+  expect(mocks.setLabels).not.toHaveBeenCalled();
+  await userEvent.keyboard("{Escape}");
+  await vi.waitFor(() => expect(mocks.setLabels).toHaveBeenCalledTimes(2));
+  const reference = {
+    projectId: value.projectId,
+    repository: value.repository,
+    number: value.number,
+  };
+  expect(mocks.setLabels.mock.calls).toEqual([
+    [
+      {
+        environmentId: "environment",
+        input: expect.objectContaining({ ...reference, labels: ["docs"], applied: true }),
+      },
+    ],
+    [
+      {
+        environmentId: "environment",
+        input: expect.objectContaining({ ...reference, labels: ["bug"], applied: false }),
+      },
+    ],
+  ]);
 });
