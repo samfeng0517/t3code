@@ -82,6 +82,17 @@ describe("mobile overview review status", () => {
     );
     expect(result.title).toBe("Approved by octocat");
     expect(result.count).toBe("1 approved");
+    expect(result.reviews).toMatchObject([
+      { author: { login: "octocat" }, reviewState: "APPROVED" },
+    ]);
+  });
+
+  it("pullRequestReviewSummary should list a host approver as approved when their latest review only comments", () => {
+    const result = pullRequestReviewSummary(
+      { reviewers: [], approvedBy: [author] },
+      activity([review("COMMENTED", "2026-10-10T10:00:00Z")]),
+    );
+    expect(result.reviews).toMatchObject([{ author, reviewState: "APPROVED" }]);
   });
 });
 

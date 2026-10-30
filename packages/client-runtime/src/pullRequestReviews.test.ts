@@ -156,4 +156,14 @@ describe("pullRequestApprovers", () => {
       }),
     ).toBe(0);
   });
+
+  it("pullRequestApprovers should drop derived approvers when comments are truncated", () => {
+    expect(
+      pullRequestApprovers({
+        comments: [review("r1", "bilal", "APPROVED", "2026-07-06T00:00:00Z")],
+        commits: [],
+        commentsTruncated: true,
+      }),
+    ).toEqual({ approvers: [], fromHost: false });
+  });
 });

@@ -2,6 +2,7 @@ import type {
   PullRequestActivity,
   PullRequestCheck,
   PullRequestChecksState,
+  PullRequestComment,
   PullRequestDetail,
   PullRequestListEntry,
   PullRequestMergeability,
@@ -157,16 +158,39 @@ export function pullRequestReviewSummary(
     if (!previous || Date.parse(review.createdAt) >= Date.parse(previous.createdAt))
       latest.set(key, { ...review, reviewState: state });
   }
-  const reviews = [
+  const history = [
     ...[...latest.values()].filter((review) => review.reviewState !== "DISMISSED"),
     ...[...comments.entries()].filter(([key]) => !latest.has(key)).map(([, review]) => review),
   ];
-  const requested = reviews.filter((review) => review.reviewState === "CHANGES_REQUESTED");
-  const approved = pullRequestApprovers({
+  const approval = pullRequestApprovers({
     approvedBy: pr.approvedBy,
     comments: activity?.comments ?? [],
     commits: activity?.commits ?? [],
-  }).approvers;
+  });
+  const approved = approval.approvers;
+  const hostApprovers = new Map(
+    approval.fromHost
+      ? approved.flatMap(({ actor }) =>
+          actor ? [[actor.login.toLowerCase(), actor] as const] : [],
+        )
+      : [],
+  );
+  // Host approvals (GitLab) need not appear in review history.
+  const reviews: ReadonlyArray<Pick<PullRequestComment, "id" | "author" | "reviewState">> = [
+    ...history.map((review) =>
+      review.author && hostApprovers.has(review.author.login.toLowerCase())
+        ? { ...review, reviewState: "APPROVED" }
+        : review,
+    ),
+    ...[...hostApprovers]
+      .filter(([login]) => !history.some((review) => review.author?.login.toLowerCase() === login))
+      .map(([login, actor]) => ({
+        id: `approval:${login}`,
+        author: actor,
+        reviewState: "APPROVED",
+      })),
+  ];
+  const requested = reviews.filter((review) => review.reviewState === "CHANGES_REQUESTED");
   if (requested.length)
     return {
       title: "Changes requested",

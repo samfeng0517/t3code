@@ -81,11 +81,15 @@ export interface PullRequestApprover {
   readonly actor: PullRequestActor | null;
 }
 
-/** Host-reported approvers win; review history is the fallback for hosts that report none. */
+/**
+ * Host-reported approvers win; review history is the fallback for hosts that report none.
+ * Truncated history can hide a later dismissal, so it yields no derived approvers.
+ */
 export function pullRequestApprovers(input: {
   readonly approvedBy?: ReadonlyArray<PullRequestActor> | undefined;
   readonly comments: ReadonlyArray<PullRequestComment>;
   readonly commits: ReadonlyArray<PullRequestCommit>;
+  readonly commentsTruncated?: boolean | undefined;
 }): { readonly approvers: ReadonlyArray<PullRequestApprover>; readonly fromHost: boolean } {
   if (input.approvedBy !== undefined) {
     const seen = new Set<string>();
@@ -98,6 +102,7 @@ export function pullRequestApprovers(input: {
     }
     return { approvers, fromHost: true };
   }
+  if (input.commentsTruncated === true) return { approvers: [], fromHost: false };
   return {
     approvers: latestPullRequestReviewOutcomes(input.comments, input.commits)
       .filter((entry) => entry.outcome === "approved" && !entry.stale)
@@ -106,13 +111,8 @@ export function pullRequestApprovers(input: {
   };
 }
 
-/** Truncated comments make derived approvals unreliable, so only host-reported approvers count then. */
 export function pullRequestApprovalCount(
-  detail:
-    | (Parameters<typeof pullRequestApprovers>[0] & { readonly commentsTruncated: boolean })
-    | null,
+  detail: Parameters<typeof pullRequestApprovers>[0] | null,
 ): number {
-  if (detail === null) return 0;
-  const { approvers, fromHost } = pullRequestApprovers(detail);
-  return fromHost || !detail.commentsTruncated ? approvers.length : 0;
+  return detail === null ? 0 : pullRequestApprovers(detail).approvers.length;
 }
