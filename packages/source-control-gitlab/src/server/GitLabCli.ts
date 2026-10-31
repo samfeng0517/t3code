@@ -271,7 +271,7 @@ export class GitLabCli extends Context.Service<
       readonly cwd: string;
       /**
        * The server the command is for, where the caller knows it. A token saved in Settings for
-       * that server is handed to glab; without it glab picks its server and login itself.
+       * that server is handed to glab; without one glab is still pointed at that server.
        */
       readonly host?: string | undefined;
       readonly args: ReadonlyArray<string>;
@@ -514,7 +514,10 @@ export const make = Effect.gen(function* () {
           // GITLAB_TOKEN outranks every stored login whichever server glab ends up asking, so it
           // is only ever set beside the server it was saved for.
           ...(credential === null
-            ? {}
+            ? // glab may otherwise prefer a different checkout remote.
+              input.host === undefined
+              ? {}
+              : { env: { GITLAB_HOST: input.host } }
             : {
                 env: {
                   GITLAB_TOKEN: credential.token,

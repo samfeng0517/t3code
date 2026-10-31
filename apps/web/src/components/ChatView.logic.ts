@@ -533,6 +533,7 @@ export function resolveComposerProviderSelection(input: {
       : requestedInstanceId;
   return {
     selectedProviderEntry,
+    requestedInstanceId,
     requestedDriverKind,
     lockedContinuationGroupKey,
     unavailableProviderInstanceId,
@@ -788,7 +789,11 @@ export function buildExpiredTerminalContextToastCopy(
           ? "chatView.expiredTerminal.emptyTitleOne"
           : "chatView.expiredTerminal.emptyTitleMany",
       ),
-      description: globalT("chatView.expiredTerminal.emptyDescription"),
+      description: globalT(
+        count === 1
+          ? "chatView.expiredTerminal.emptyDescriptionOne"
+          : "chatView.expiredTerminal.emptyDescriptionMany",
+      ),
     };
   }
   return {
@@ -797,7 +802,11 @@ export function buildExpiredTerminalContextToastCopy(
         ? "chatView.expiredTerminal.omittedTitleOne"
         : "chatView.expiredTerminal.omittedTitleMany",
     ),
-    description: globalT("chatView.expiredTerminal.omittedDescription"),
+    description: globalT(
+      count === 1
+        ? "chatView.expiredTerminal.omittedDescriptionOne"
+        : "chatView.expiredTerminal.omittedDescriptionMany",
+    ),
   };
 }
 

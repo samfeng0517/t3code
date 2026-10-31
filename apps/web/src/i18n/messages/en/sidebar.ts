@@ -260,7 +260,6 @@ export const sidebarEn = {
   "sidebar.updateSkip.manualUpdate": "needs a manual update",
   "sidebar.updateSkip.newerDesktopApp": "needs a newer desktop app",
   "sidebar.updateSkip.channel": "on the {channel} channel",
-  "sidebar.updateSkip.notOnNpm": "t3@{version} is not on npm yet",
 
   "sidebar.updateSummary.update": "Update {items}",
   "sidebar.updateSummary.updated": "Updated {items}",

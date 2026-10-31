@@ -5,6 +5,7 @@ import {
   type ProviderInstanceId,
   type ServerProviderModel,
 } from "@t3tools/contracts";
+import { REASONING_SELECT_DESCRIPTOR_IDS } from "@t3tools/client-runtime/model-traits";
 import { type CustomModelDefinition, normalizeCustomModelSlug } from "@t3tools/shared/model";
 
 import { useT, type Translate } from "~/i18n";
@@ -28,7 +29,22 @@ const CUSTOM_MODEL_PLACEHOLDER_BY_KIND: Partial<Record<ProviderDriverKind, strin
 
 const FILTER_THRESHOLD = 8;
 
-function describeModelCapabilities(model: ServerProviderModel, t: Translate): string[] {
+const PROVIDER_ALIAS_SLUGS = new Set(["default", "auto"]);
+
+function hasReasoningControl(model: ServerProviderModel): boolean {
+  return (model.capabilities?.optionDescriptors ?? []).some((descriptor) =>
+    REASONING_SELECT_DESCRIPTOR_IDS.has(descriptor.id),
+  );
+}
+
+// Reasoning is the norm, so only its absence is labeled, and only when other models have it.
+// Custom and null capabilities are fallbacks or user-written, not discovered, so they prove nothing.
+// Alias slugs ("default", Cursor's "auto") defer to the provider's own model choice, so reasoning is unknown.
+function describeModelCapabilities(
+  model: ServerProviderModel,
+  flagMissingReasoning: boolean,
+  t: Translate,
+): string[] {
   const descriptors = model.capabilities?.optionDescriptors ?? [];
   const labels: string[] = [];
   const hasFastMode = descriptors.some(
@@ -39,19 +55,14 @@ function describeModelCapabilities(model: ServerProviderModel, t: Translate): st
         descriptor.options.some((option) => option.id === "fast" || option.label === "Fast")),
   );
   if (hasFastMode) labels.push(t("providerSetup.models.cap.fastMode"));
-  if (descriptors.some((descriptor) => descriptor.id === "thinking"))
-    labels.push(t("providerSetup.models.cap.thinking"));
   if (
-    descriptors.some(
-      (descriptor) =>
-        descriptor.type === "select" &&
-        (descriptor.id === "reasoningEffort" ||
-          descriptor.id === "effort" ||
-          descriptor.id === "reasoning" ||
-          descriptor.id === "variant"),
-    )
+    flagMissingReasoning &&
+    !model.isCustom &&
+    model.capabilities &&
+    !PROVIDER_ALIAS_SLUGS.has(model.slug) &&
+    !hasReasoningControl(model)
   ) {
-    labels.push(t("providerSetup.models.cap.reasoning"));
+    labels.push("No reasoning");
   }
   return labels;
 }
@@ -147,6 +158,7 @@ export function ProviderModelsSection({
   const hiddenCount = displayModels.filter(
     (model) => !model.isCustom && hiddenModelSet.has(model.slug),
   ).length;
+  const flagMissingReasoning = models.some(hasReasoningControl);
   const showFilter = models.length > FILTER_THRESHOLD;
   const normalizedFilter = filter.trim().toLowerCase();
   const isFiltering = showFilter && normalizedFilter.length > 0;
@@ -281,6 +293,7 @@ export function ProviderModelsSection({
         canMoveUp={!isFiltering && previousModel !== undefined && groupOf(previousModel) === group}
         canMoveDown={!isFiltering && nextModel !== undefined && groupOf(nextModel) === group}
         isFiltering={isFiltering}
+        flagMissingReasoning={flagMissingReasoning}
         canWritePreferences={canWritePreferences}
         canManageCustomModels={canManageCustomModels}
         {...rowHandlers}
@@ -460,6 +473,7 @@ function ProviderModelRow({
   canMoveUp,
   canMoveDown,
   isFiltering,
+  flagMissingReasoning,
   canWritePreferences,
   canManageCustomModels,
   onToggleFavorite,
@@ -474,6 +488,7 @@ function ProviderModelRow({
   readonly canMoveUp: boolean;
   readonly canMoveDown: boolean;
   readonly isFiltering: boolean;
+  readonly flagMissingReasoning: boolean;
   readonly canWritePreferences: boolean;
   readonly canManageCustomModels: boolean;
   readonly onToggleFavorite: (slug: string) => void;
@@ -483,7 +498,7 @@ function ProviderModelRow({
   readonly onRemove: (slug: string) => void;
 }) {
   const t = useT();
-  const capLabels = describeModelCapabilities(model, t);
+  const capLabels = describeModelCapabilities(model, flagMissingReasoning, t);
   const nameClassName = cn("text-xs", isHidden ? "text-muted-foreground" : "text-foreground/90");
   const pickerTooltip = model.isCustom
     ? t("providerSetup.models.picker.custom")

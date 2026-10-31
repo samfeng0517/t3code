@@ -70,28 +70,22 @@ export interface SkippedMachine {
   readonly reason: string;
 }
 
-/** Boot services before this build installed the server from npm, not from release archives. */
-const RELEASE_ARCHIVE_SELF_UPDATE_SINCE = "0.0.41-nightly.20260914.1700";
-
 /** Skip current and app-hosted servers; the latter update with the app and would relaunch mid-run.
  * Desktop-managed servers use their own feed. A fork build updates no server, since each one would
- * install an upstream release. `waitForNpm` lists targets that need `t3@<targetVersion>` on npm
- * first; `releaseArchivesPublished` means the version came from the desktop feed. */
+ * install an upstream release. Each server's updater checks that it can install the release before
+ * it restarts, so no registry precheck runs here. */
 export function collectServerUpdateTargets(
   machines: ReadonlyArray<UpdateEverythingMachine>,
   targetVersion: string,
-  releaseArchivesPublished: boolean,
   t: Translate = translateEnglish,
   appSelfUpdateEnabled: boolean = APP_SELF_UPDATE_ENABLED,
 ): {
   readonly targets: ServerUpdateTarget[];
   readonly skipped: SkippedMachine[];
-  readonly waitForNpm: ServerUpdateTarget[];
 } {
   const targets: ServerUpdateTarget[] = [];
   const skipped: SkippedMachine[] = [];
-  const waitForNpm: ServerUpdateTarget[] = [];
-  if (!appSelfUpdateEnabled) return { targets, skipped, waitForNpm };
+  if (!appSelfUpdateEnabled) return { targets, skipped };
   for (const machine of machines) {
     const config = machine.serverConfig;
     if (machine.hostedByThisApp) continue;
@@ -135,16 +129,8 @@ export function collectServerUpdateTargets(
       targetVersion,
     };
     targets.push(target);
-    if (
-      selfUpdate !== "desktop-managed" &&
-      (!releaseArchivesPublished ||
-        selfUpdate === "respawn" ||
-        compareSemverVersions(serverVersion, RELEASE_ARCHIVE_SELF_UPDATE_SINCE) < 0)
-    ) {
-      waitForNpm.push(target);
-    }
   }
-  return { targets, skipped, waitForNpm };
+  return { targets, skipped };
 }
 
 function unavailableReason(

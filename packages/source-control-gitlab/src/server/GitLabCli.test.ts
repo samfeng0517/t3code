@@ -273,8 +273,9 @@ savedSettingsLayer("GitLabCli.layer with a server and token saved in Settings", 
       });
       for (const call of [gitlabCom, unnamed]) {
         expect(call?.args).toEqual(["api", "user"]);
-        expect(call?.env).toBeUndefined();
       }
+      expect(gitlabCom?.env).toEqual({ GITLAB_HOST: "gitlab.com" });
+      expect(unnamed?.env).toBeUndefined();
     }),
   );
 

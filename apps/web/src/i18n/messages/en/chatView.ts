@@ -52,8 +52,6 @@ export const chatViewEn = {
   "chatView.modelPicker.unavailableInThread":
     "{name} is unavailable in this thread. Start a new thread to switch providers.",
   "chatView.modelPicker.searchModels": "Search models...",
-  "chatView.modelPicker.legacyModels": "Legacy models",
-  "chatView.modelPicker.modelCount": "{count} models",
   "chatView.modelPicker.noFavorites": "No favorites yet",
   "chatView.modelPicker.noModels": "No models found",
   "chatView.panelControls.toggleThreadDetailsPanel": "Toggle thread details panel",
@@ -123,11 +121,16 @@ export const chatViewEn = {
   "chatView.attachments.couldNotRestore": "Could not restore attachment: {name}",
   "chatView.expiredTerminal.emptyTitleOne": "Expired terminal context won't be sent",
   "chatView.expiredTerminal.emptyTitleMany": "Expired terminal contexts won't be sent",
-  "chatView.expiredTerminal.emptyDescription": "Remove it or re-add it to include terminal output.",
+  "chatView.expiredTerminal.emptyDescriptionOne":
+    "Remove it or re-add it to include terminal output.",
+  "chatView.expiredTerminal.emptyDescriptionMany":
+    "Remove them or re-add them to include terminal output.",
   "chatView.expiredTerminal.omittedTitleOne": "Expired terminal context omitted from message",
   "chatView.expiredTerminal.omittedTitleMany": "Expired terminal contexts omitted from message",
-  "chatView.expiredTerminal.omittedDescription":
+  "chatView.expiredTerminal.omittedDescriptionOne":
     "Re-add it if you want that terminal output included.",
+  "chatView.expiredTerminal.omittedDescriptionMany":
+    "Re-add them if you want that terminal output included.",
   "chatView.providerSwitch.title": "Start a new chat to switch providers",
   "chatView.providerSwitch.description":
     "This thread does not support switching providers after it has started.",

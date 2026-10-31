@@ -3,7 +3,7 @@ import {
   type AuthMcpApprovalDetails,
   AuthMcpApprovalError,
   AuthMcpClientAccess,
-  type AuthMcpAuthorizationRequest,
+  AuthMcpAuthorizationRequest,
 } from "@t3tools/contracts";
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import { isLoopbackHost } from "@t3tools/shared/preview";
@@ -88,8 +88,10 @@ function runApproval<A>(
   }));
 }
 
+const decodeAuthorizationRequest = Schema.decodeSync(AuthMcpAuthorizationRequest);
+
 function readAuthorizationRequest(): AuthMcpAuthorizationRequest {
-  return Object.fromEntries(new URL(window.location.href).searchParams);
+  return decodeAuthorizationRequest(Object.fromEntries(new URL(window.location.href).searchParams));
 }
 
 /** Sessions can grant only scopes they hold. */
