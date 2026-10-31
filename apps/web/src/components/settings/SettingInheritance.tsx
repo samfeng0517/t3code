@@ -38,6 +38,13 @@ const WRITING_STYLE_LABELS: Record<string, MessageKey> = {
   custom: "settingsMisc.inheritance.writingStyle.custom",
 };
 
+const BACKGROUND_ACTIVITY_PROFILE_LABELS: Record<string, MessageKey> = {
+  balanced: "settings.general.backgroundActivity.profile.balanced",
+  performance: "settings.general.backgroundActivity.profile.performance",
+  "battery-saver": "settings.general.backgroundActivity.profile.battery-saver",
+  custom: "settings.general.backgroundActivity.profile.advanced",
+};
+
 function formatValue(key: keyof ServerSettings, value: unknown, t: Translate = globalT): string {
   if (value === null || value === undefined) {
     return key === "pullRequestMergeMethod"
@@ -92,9 +99,19 @@ function formatValue(key: keyof ServerSettings, value: unknown, t: Translate = g
     );
   }
   if (typeof value === "object") {
+    if (key === "backgroundActivity" && "profile" in value && typeof value.profile === "string") {
+      const labelKey = BACKGROUND_ACTIVITY_PROFILE_LABELS[value.profile];
+      return labelKey ? t(labelKey) : value.profile;
+    }
     if ("model" in value && typeof value.model === "string") return value.model;
     if ("mode" in value && typeof value.mode === "string") {
-      const labelKey = WRITING_STYLE_LABELS[value.mode];
+      if (key === "worktreeCleanup") {
+        return value.mode === "off"
+          ? t("settingsMisc.inheritance.value.off")
+          : t("settingsMisc.inheritance.value.custom");
+      }
+      const labelKey =
+        key === "sourceControlWritingStyle" ? WRITING_STYLE_LABELS[value.mode] : undefined;
       return labelKey ? t(labelKey) : value.mode;
     }
   }

@@ -257,7 +257,6 @@ export const sidebarZhTW: Readonly<Record<keyof typeof sidebarEn, string>> = {
   "sidebar.updateSkip.manualUpdate": "需要手動更新",
   "sidebar.updateSkip.newerDesktopApp": "需要較新版本的桌面應用程式",
   "sidebar.updateSkip.channel": "位於 {channel} 頻道",
-  "sidebar.updateSkip.notOnNpm": "t3@{version} 尚未發布到 npm",
 
   "sidebar.updateSummary.update": "更新：{items}",
   "sidebar.updateSummary.updated": "已更新：{items}",

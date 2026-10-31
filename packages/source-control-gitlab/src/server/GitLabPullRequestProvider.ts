@@ -238,7 +238,17 @@ export const make = Effect.gen(function* () {
       ],
       { concurrency: 2 },
     );
-    return gitLabPipelineChecks(mergeRequest.checks, [...jobs.checks, ...bridges.checks]);
+    // The detail already carries each trigger job's downstream pipeline status under its name.
+    const downstream = new Map(
+      mergeRequest.checks
+        .filter((check) => check.description === "Downstream pipeline")
+        .map((check) => [check.name, check]),
+    );
+    const bridgeChecks = bridges.checks.map((bridge) => downstream.get(bridge.name) ?? bridge);
+    return gitLabPipelineChecks(
+      mergeRequest.checks.filter((check) => !bridgeChecks.includes(check)),
+      [...jobs.checks, ...bridgeChecks],
+    );
   });
 
   /**
@@ -267,15 +277,33 @@ export const make = Effect.gen(function* () {
     return branch.canPush ?? mergeRequest.viewerCanMerge;
   });
 
+  // REST omits line counts; the CLI recovers optional stats failures per batch.
+  const mergeRequestWithStats = (
+    input: GitLabPullRequestCli.GitLabTarget,
+    detail = cli.getMergeRequestDetail(input),
+  ) =>
+    Effect.all(
+      [
+        detail,
+        cli.listMergeRequestStats({ cwd: input.cwd, host: input.host, changeRequests: [input] }),
+      ],
+      {
+        concurrency: 2,
+      },
+    ).pipe(
+      Effect.map(([mergeRequest, [stat]]) =>
+        stat === undefined
+          ? mergeRequest
+          : { ...mergeRequest, additions: stat.additions, deletions: stat.deletions },
+      ),
+    );
+
   const provider: PullRequestProviderApi = {
     kind: SourceControlProviderKind.make("gitlab"),
     capabilities: CAPABILITIES,
     unavailableRequirement: UNAVAILABLE_REQUIREMENT,
 
-    getViewer: (input) =>
-      cli
-        .getViewerUsername({ cwd: input.cwd, host: input.host })
-        .pipe(Effect.mapError(fail("getViewer"))),
+    getViewer: (input) => cli.getViewerUsername(input).pipe(Effect.mapError(fail("getViewer"))),
 
     listChangeRequests: (input) =>
       cli
@@ -296,6 +324,12 @@ export const make = Effect.gen(function* () {
           Effect.map((batch) => ({ ...batch, continues: true })),
         ),
 
+    getFileStats: (input) =>
+      cli.getMergeRequestFileStats(input).pipe(Effect.mapError(fail("getFileStats"))),
+
+    listChangeRequestStats: (input) =>
+      cli.listMergeRequestStats(input).pipe(Effect.mapError(fail("listChangeRequestStats"))),
+
     getChangeRequestChecks: (input) =>
       mergeRequestDetail(input).pipe(
         Effect.flatMap((mergeRequest) =>
@@ -311,12 +345,12 @@ export const make = Effect.gen(function* () {
       cli.getMergeRequestDetail(input).pipe(Effect.mapError(fail("getChangeRequestPreview"))),
 
     getChangeRequestSummary: (input) =>
-      cli.getMergeRequestDetail(input).pipe(Effect.mapError(fail("getChangeRequestSummary"))),
+      mergeRequestWithStats(input).pipe(Effect.mapError(fail("getChangeRequestSummary"))),
 
     getChangeRequest: (input) =>
       Effect.all(
         [
-          mergeRequestDetail(input),
+          mergeRequestWithStats(input, mergeRequestDetail(input)),
           Cache.get(
             projectMergeCapabilities,
             JSON.stringify([input.cwd, input.host ?? null, input.repository]),
@@ -413,7 +447,10 @@ export const make = Effect.gen(function* () {
     // Straight from the host, never the shared read: this is what a write is refused or let
     // through on, and access granted or withdrawn within the minute must count.
     getViewerPermissions: (input) =>
-      Effect.all([cli.getMergeRequestDetail(input), approvalsOf(input)], { concurrency: 2 }).pipe(
+      Effect.all(
+        [cli.getMergeRequestDetail({ ...input, downstreamChecks: false }), approvalsOf(input)],
+        { concurrency: 2 },
+      ).pipe(
         Effect.flatMap(([mergeRequest, approvals]) =>
           canDeleteBranchOf(input, mergeRequest).pipe(
             Effect.map((canDeleteBranch) =>

@@ -106,18 +106,20 @@ export function PullRequestGuideTab({
       );
     }
     return (
-      <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-4 py-10 text-center">
+      <div className="scrollbar-gutter-both flex h-full flex-col items-center justify-center-safe gap-2 overflow-y-auto px-4 py-10 text-center">
         <p className="text-sm font-medium text-foreground">
           {running
             ? t("pullRequestDetail.guideTab.writingTitle")
-            : t("pullRequestDetail.guideTab.emptyTitle")}
+            : failure === null
+              ? t("pullRequestDetail.guideTab.emptyTitle")
+              : "Could not write a review guide"}
         </p>
         <p className="max-w-md text-xs text-muted-foreground">
-          {failure ??
-            query.error ??
-            (running
-              ? t("pullRequestDetail.guideTab.writingDescription")
-              : t("pullRequestDetail.guideTab.emptyDescription"))}
+          {running
+            ? t("pullRequestDetail.guideTab.writingDescription")
+            : failure === null
+              ? (query.error ?? t("pullRequestDetail.guideTab.emptyDescription"))
+              : FAILURE_HINT}
         </p>
         {writeButton(
           failure === null
@@ -125,6 +127,7 @@ export function PullRequestGuideTab({
             : t("pullRequestDetail.guideTab.tryAgain"),
           "sm",
         )}
+        {failure === null || running ? null : <FailureDetails detail={failure} />}
       </div>
     );
   }
@@ -134,9 +137,16 @@ export function PullRequestGuideTab({
       <Alert variant={running ? "info" : "warning"}>
         {running ? <Spinner /> : <TriangleAlertIcon />}
         <AlertDescription>
-          {running
-            ? t("pullRequestDetail.guideTab.rewriting")
-            : (failure ?? t("pullRequestDetail.guideTab.stale"))}
+          {running ? (
+            t("pullRequestDetail.guideTab.rewriting")
+          ) : failure === null ? (
+            t("pullRequestDetail.guideTab.stale")
+          ) : (
+            <>
+              {`Could not rewrite this guide. ${FAILURE_HINT}`}
+              <FailureDetails detail={failure} />
+            </>
+          )}
         </AlertDescription>
         {!running && canWrite ? (
           <AlertAction>{writeButton(t("pullRequestDetail.guideTab.rewrite"), "xs")}</AlertAction>
@@ -165,5 +175,20 @@ export function PullRequestGuideTab({
         onOpenFile={onOpenFile}
       />
     </GuideProseContext>
+  );
+}
+
+const FAILURE_HINT = "Check the review guide model in Settings → Source control.";
+
+function FailureDetails({ detail }: { detail: string }) {
+  return (
+    <details className="w-full max-w-lg text-xs text-muted-foreground">
+      <summary className="cursor-pointer rounded-sm -outline-offset-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+        Technical details
+      </summary>
+      <pre className="scrollbar-gutter-both mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/40 p-3 text-left font-mono text-xs">
+        {detail}
+      </pre>
+    </details>
   );
 }

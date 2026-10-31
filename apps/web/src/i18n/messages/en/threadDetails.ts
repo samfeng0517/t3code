@@ -64,7 +64,6 @@ export const threadDetailsEn = {
   "threadDetails.relationships.titleRunning": "Lineage · {count} running",
   "threadDetails.relationships.moreActions": "More thread actions",
   "threadDetails.relationships.disconnectSession": "Disconnect agent session",
-  "threadDetails.relationships.threadUnavailable": "This related thread is unavailable",
   "threadDetails.relationships.openInChat": "Open {relationship} in this chat",
   "threadDetails.relationships.mergeBackTo": "Merge back to {title}",
   "threadDetails.relationships.mergeBackToSource": "Merge back to source conversation",

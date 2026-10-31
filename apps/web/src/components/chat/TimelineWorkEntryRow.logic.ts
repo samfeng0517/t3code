@@ -1,3 +1,4 @@
+import type { PluggableList } from "unified";
 import type { Root, RootContent } from "mdast";
 import {
   resolveWorkEntryToolPresentation,
@@ -239,4 +240,16 @@ export function remarkThoughtPreview(fallback: string) {
       ? children
       : [{ type: "text", value: fallback }];
   };
+}
+
+const thoughtPreviewPluginsByLabel = new Map<string, PluggableList>();
+
+/** Stable per localized label, so ChatMarkdown keeps reusing its parse. */
+export function thoughtPreviewPlugins(label: string): PluggableList {
+  let plugins = thoughtPreviewPluginsByLabel.get(label);
+  if (!plugins) {
+    plugins = [[remarkThoughtPreview, label]];
+    thoughtPreviewPluginsByLabel.set(label, plugins);
+  }
+  return plugins;
 }

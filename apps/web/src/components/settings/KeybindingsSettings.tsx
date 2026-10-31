@@ -752,6 +752,7 @@ function useKeybindingRowEditor({
   const conflictLabels = keybindingConflictLabels(
     allRows,
     { rowId: row.id, key: keyDraft, when: whenDraftExpression },
+    navigator.platform,
     (command) => localizedCommandLabel(t, command),
   );
 
@@ -892,8 +893,13 @@ function WhenClauseControl({
   onValidityChange: (valid: boolean) => void;
 }) {
   const t = useT();
+  // Closing unmounts the builder, which drops an unparsed draft and keeps the last valid value.
+  const handleOpenChange = (open: boolean) => {
+    if (!open) onValidityChange(true);
+  };
+
   return (
-    <Popover>
+    <Popover onOpenChange={handleOpenChange}>
       <PopoverTrigger
         render={
           <Button
@@ -1084,6 +1090,7 @@ function useNewKeybindingDraft({
   const conflictLabels = keybindingConflictLabels(
     allRows,
     { rowId: "new", key: keyDraft, when: whenDraftExpression },
+    navigator.platform,
     (command) => localizedCommandLabel(t, command),
   );
   const commandLabelText = commandDraft
