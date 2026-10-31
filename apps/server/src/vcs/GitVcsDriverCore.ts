@@ -4168,6 +4168,20 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     return lock;
   };
 
+  // Git found this checkout moments ago; walking up for its `.git` avoids another discovery.
+  const findCheckoutRoot = Effect.fn("GitVcsDriver.findCheckoutRoot")(function* (cwd: string) {
+    let dir = path.resolve(cwd);
+    while (true) {
+      const found = yield* fileSystem
+        .exists(path.join(dir, ".git"))
+        .pipe(Effect.orElseSucceed(() => false));
+      if (found) return dir;
+      const parent = path.dirname(dir);
+      if (parent === dir) return null;
+      dir = parent;
+    }
+  });
+
   const populateWorktree = makeWorktreePopulator({
     fileSystem,
     path,
@@ -4399,14 +4413,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       );
     }
 
-    const repoRoot = yield* runGitStdout("GitVcsDriver.createWorktree.repoRoot", input.cwd, [
-      "rev-parse",
-      "--show-toplevel",
-    ]).pipe(
-      Effect.map((stdout) => stdout.trim()),
-      Effect.orElseSucceed(() => ""),
-    );
-    if (repoRoot !== "") {
+    const repoRoot = yield* findCheckoutRoot(input.cwd);
+    if (repoRoot !== null) {
       const populated = yield* populateWorktree({ repoRoot, worktreePath });
       const warning = worktreePopulationWarning(populated);
       if (warning !== null) {
