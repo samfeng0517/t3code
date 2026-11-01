@@ -545,7 +545,7 @@ export const settingsMiscZhTW: Readonly<Record<keyof typeof settingsMiscEn, stri
   "settingsMisc.snapShot.recorder.changeAria": "變更快照快速鍵",
   "settingsMisc.tasks.webhook.invalidAge.title": "年限無效",
   "settingsMisc.tasks.webhook.invalidAge.description": "請輸入 1 到 {max} 的整數分鐘，或留空。",
-  "settingsMisc.tasks.webhook.replayKey": "重播金鑰",
+  "settingsMisc.tasks.webhook.replayKey": "重複請求金鑰",
   "settingsMisc.tasks.webhook.coalesceKey": "合併金鑰",
   "settingsMisc.tasks.webhook.invalidSettings": "Webhook 設定無效",
   "settingsMisc.tasks.webhook.keyPlaceholder": "{label}必須包含有效的請求預留位置。",

@@ -227,7 +227,10 @@ function configuredCommandArgs(value: ProviderSettingsFormProps["value"]) {
 function ProviderCommandArguments({
   value,
   onChange,
-}: Pick<ProviderSettingsFormProps, "value" | "onChange">) {
+  managedReason,
+}: Pick<ProviderSettingsFormProps, "value" | "onChange"> & {
+  readonly managedReason: string | undefined;
+}) {
   const t = useT();
   const args = configuredCommandArgs(value);
   const [storedDraft, setDraft] = useState(() => seedRowsDraft(args, toCommandArgumentRows));
@@ -247,6 +250,7 @@ function ProviderCommandArguments({
     <SettingsRow
       title={t("providerSetup.form.arguments")}
       description={t("providerSetup.form.argumentsDescription")}
+      managed={managedReason}
       control={
         <Button
           type="button"
@@ -261,35 +265,41 @@ function ProviderCommandArguments({
     >
       {rows.length > 0 ? (
         <div className="mt-3 min-w-0 space-y-2 pb-2">
-          {rows.map((argument, index) => (
-            <div key={argument.id} className="flex min-w-0 items-center gap-1.5">
-              <DraftInput
-                size="sm"
-                font="mono"
-                value={argument.value}
-                onCommit={(next) =>
-                  updateArguments(
-                    rows.map((current) =>
-                      current.id === argument.id ? { ...current, value: next } : current,
-                    ),
-                  )
-                }
-                aria-label={t("providerSetup.form.argumentN", { number: index + 1 })}
-                spellCheck={false}
-              />
-              <Button
-                type="button"
-                size="icon-micro"
-                variant="ghost-destructive"
-                onClick={() =>
-                  updateArguments(rows.filter((current) => current.id !== argument.id))
-                }
-                aria-label={t("providerSetup.form.removeArgumentN", { number: index + 1 })}
-              >
-                <XIcon />
-              </Button>
-            </div>
-          ))}
+          {rows.map((argument, index) =>
+            managedReason !== undefined ? (
+              <code key={argument.id} className="block min-w-0 truncate text-xs">
+                {argument.value}
+              </code>
+            ) : (
+              <div key={argument.id} className="flex min-w-0 items-center gap-1.5">
+                <DraftInput
+                  size="sm"
+                  font="mono"
+                  value={argument.value}
+                  onCommit={(next) =>
+                    updateArguments(
+                      rows.map((current) =>
+                        current.id === argument.id ? { ...current, value: next } : current,
+                      ),
+                    )
+                  }
+                  aria-label={t("providerSetup.form.argumentN", { number: index + 1 })}
+                  spellCheck={false}
+                />
+                <Button
+                  type="button"
+                  size="icon-micro"
+                  variant="ghost-destructive"
+                  onClick={() =>
+                    updateArguments(rows.filter((current) => current.id !== argument.id))
+                  }
+                  aria-label={t("providerSetup.form.removeArgumentN", { number: index + 1 })}
+                >
+                  <XIcon />
+                </Button>
+              </div>
+            ),
+          )}
         </div>
       ) : null}
     </SettingsRow>
@@ -346,6 +356,8 @@ interface ProviderSettingsFormProps {
   readonly idPrefix: string;
   readonly variant: "card" | "dialog" | "settings";
   readonly onChange: (nextConfig: Record<string, unknown> | undefined) => void;
+  /** Config keys an administrator's policy pins, shown inert with the reason. */
+  readonly managed?: { readonly keys: ReadonlySet<string>; readonly reason: string } | undefined;
   /** Where the secret providers offered for `SettingsSecretValue` fields are configured. */
   readonly environmentId?: EnvironmentId | undefined;
 }
@@ -460,6 +472,7 @@ interface ProviderSettingsFieldRowProps {
   readonly idPrefix: string;
   readonly variant: ProviderSettingsFormProps["variant"];
   readonly onChange: ProviderSettingsFormProps["onChange"];
+  readonly managedReason?: string | undefined;
   readonly environmentId: EnvironmentId | undefined;
 }
 
@@ -469,6 +482,7 @@ function ProviderSettingsFieldRow({
   idPrefix,
   variant,
   onChange,
+  managedReason,
   environmentId,
 }: ProviderSettingsFieldRowProps) {
   const t = useT();
@@ -585,6 +599,7 @@ function ProviderSettingsFieldRow({
           field.description ? <span id={descriptionId}>{field.description}</span> : undefined
         }
         control={control}
+        managed={managedReason}
       />
     );
   }
@@ -693,6 +708,7 @@ export function ProviderSettingsForm({
   idPrefix,
   variant,
   onChange,
+  managed,
   environmentId,
 }: ProviderSettingsFormProps) {
   const t = useT();
@@ -715,10 +731,17 @@ export function ProviderSettingsForm({
           idPrefix={idPrefix}
           variant={variant}
           onChange={onChange}
+          managedReason={managed?.keys.has(field.key) ? managed.reason : undefined}
           environmentId={environmentId}
         />
       ))}
-      {isLocalAcp ? <ProviderCommandArguments value={value} onChange={onChange} /> : null}
+      {isLocalAcp ? (
+        <ProviderCommandArguments
+          value={value}
+          onChange={onChange}
+          managedReason={managed?.keys.has("commandArgs") ? managed.reason : undefined}
+        />
+      ) : null}
     </>
   );
 }

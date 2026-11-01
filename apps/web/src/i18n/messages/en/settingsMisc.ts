@@ -584,7 +584,7 @@ export const settingsMiscEn = {
   "settingsMisc.tasks.webhook.invalidAge.title": "Invalid age limit",
   "settingsMisc.tasks.webhook.invalidAge.description":
     "Enter whole minutes from 1 to {max}, or leave it blank.",
-  "settingsMisc.tasks.webhook.replayKey": "Replay key",
+  "settingsMisc.tasks.webhook.replayKey": "Duplicate request key",
   "settingsMisc.tasks.webhook.coalesceKey": "Coalesce key",
   "settingsMisc.tasks.webhook.invalidSettings": "Invalid webhook settings",
   "settingsMisc.tasks.webhook.keyPlaceholder": "{label} must contain a valid request placeholder.",

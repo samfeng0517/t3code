@@ -42,7 +42,9 @@ function taskScheduleLine(task: ScheduledTask, t: Translate) {
   return (
     <>
       {scheduleLabel(task.schedule, t)}
-      {task.enabled && task.nextRunAt !== null ? (
+      {task.blockedByPolicy !== undefined ? (
+        ` · ${task.blockedByPolicy}`
+      ) : task.enabled && task.nextRunAt !== null ? (
         <>
           {t("threadDetails.automations.nextPrefix")}
           <ScheduledRelativeLabel value={task.nextRunAt} />

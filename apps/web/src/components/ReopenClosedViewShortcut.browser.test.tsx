@@ -286,4 +286,12 @@ describe("root reopen shortcut", () => {
     expect(state.navigate).toHaveBeenCalledWith({ to: "/git" });
     expect(useClosedViewStore.getState().entries).toEqual([]);
   });
+
+  it("forwards address-bar focus from a focused desktop page", async () => {
+    setup();
+    await using _shortcut = await renderShortcut();
+    expect(state.setShortcuts).toHaveBeenLastCalledWith(
+      expect.arrayContaining([expect.objectContaining({ command: "preview.focusUrl" })]),
+    );
+  });
 });

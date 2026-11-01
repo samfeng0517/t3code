@@ -116,7 +116,7 @@ export const settingsPagesEn = {
   "settingsPages.sourceControlWriting.templates.resetLabel": "change request templates",
   "settingsPages.sourceControlWriting.writerModel.title": "Source control writer model",
   "settingsPages.sourceControlWriting.writerModel.description":
-    "Model for source control text and branch or bookmark names. Off uses the environment's text generation model.",
+    "Model for source control text and branch or bookmark names. When disabled, use the text generation model configured for this environment.",
   "settingsPages.sourceControlWriting.writerModel.connectEnvironment":
     "Connect an environment to choose its source control writer model.",
   "settingsPages.sourceControlWriting.writerModel.noProviders":
@@ -127,7 +127,7 @@ export const settingsPagesEn = {
     "Use a separate source control writer model",
   "settingsPages.sourceControlWriting.reviewGuides.title": "Review guides (beta)",
   "settingsPages.sourceControlWriting.reviewGuides.description":
-    "Adds a Guide tab to pull requests: an agent writes a tour of the change, stop by stop, with the calls a maintainer should make.",
+    "Add a Guide tab to pull requests. An agent explains the changes and points out decisions that need review.",
   "settingsPages.sourceControlWriting.reviewGuides.ariaLabel": "Review guides",
   "settingsPages.sourceControlWriting.reviewGuideModel.title": "Review guide model",
   "settingsPages.sourceControlWriting.reviewGuideModel.description":
@@ -707,7 +707,7 @@ export const settingsPagesEn = {
   "settingsPages.scheduledTasks.summary.separator": ", ",
   "settingsPages.scheduledTasks.taskUnavailable.title": "Task unavailable",
   "settingsPages.scheduledTasks.taskUnavailable.description":
-    "This task no longer exists or is outside the selected project scope.",
+    "This task was deleted or belongs to a different project. Check your project filter.",
   "settingsPages.scheduledTasks.noTasks.title": "No scheduled tasks",
   "settingsPages.scheduledTasks.noTasks.description":
     "No tasks match this environment and project selection.",
@@ -782,7 +782,7 @@ export const settingsPagesEn = {
   "settingsPages.scheduledTasks.error.saveFailed": "Could not save scheduled task",
   "settingsPages.scheduledTasks.editor.editTitle": "Edit task",
   "settingsPages.scheduledTasks.editor.description":
-    "Run a prompt automatically on an interval, at a fixed time, or when a webhook is called.",
+    "Run a prompt automatically on an interval, at a fixed time, once at a set date, or when a webhook is called.",
   "settingsPages.scheduledTasks.editor.reconnect": "Reconnect this environment before saving.",
   "settingsPages.scheduledTasks.editor.runsOn": "Runs on",
   "settingsPages.scheduledTasks.editor.unavailableEnvironment": "Unavailable environment",
@@ -810,13 +810,13 @@ export const settingsPagesEn = {
   "settingsPages.scheduledTasks.editor.maxAge": "Skip requests older than",
   "settingsPages.scheduledTasks.editor.maxAgeHint": "minutes, optional",
   "settingsPages.scheduledTasks.editor.maxAgePlaceholder": "Run every request",
-  "settingsPages.scheduledTasks.editor.replayKey": "Replay key",
+  "settingsPages.scheduledTasks.editor.replayKey": "Duplicate request key",
   "settingsPages.scheduledTasks.editor.templateHint": "template, optional",
   "settingsPages.scheduledTasks.editor.coalesceKey": "Coalesce key",
   "settingsPages.scheduledTasks.editor.coalesceWindow": "Coalesce window",
   "settingsPages.scheduledTasks.editor.coalesceWindowHint": "seconds, 10–3600",
   "settingsPages.scheduledTasks.editor.keysHelp":
-    "Replay keys suppress repeat deliveries for 7 days. Coalescing runs the latest payload once when the window from the first delivery closes. Empty keys run normally.",
+    "Coalescing runs the latest payload once when the window from the first delivery closes. Empty keys run normally.",
   "settingsPages.scheduledTasks.editor.requireSignature": "Require signature",
   "settingsPages.scheduledTasks.editor.requireSignatureDescription":
     "Reject requests without a valid HMAC-SHA256 signature of the body.",

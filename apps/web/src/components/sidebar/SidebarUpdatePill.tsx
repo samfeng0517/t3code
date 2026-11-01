@@ -1,4 +1,8 @@
-import type { DesktopBridge, DesktopUpdateState } from "@t3tools/contracts";
+import {
+  type DesktopBridge,
+  type DesktopUpdateState,
+  managedUpdatesDenial,
+} from "@t3tools/contracts";
 import { TriangleAlertIcon } from "lucide-react";
 import { type ComponentProps, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -9,6 +13,7 @@ import { t as getMessage, useT } from "../../i18n";
 import { cn } from "../../lib/utils";
 import { ensureLocalApi } from "../../localApi";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
+import { usePrimaryManagedPolicy } from "../../state/managedPolicy";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import {
   canCheckForUpdate,
@@ -197,6 +202,8 @@ export function SidebarUpdatePill() {
 function SidebarUpdateControl() {
   const t = useT();
   const state = useDesktopUpdateState();
+  // The desktop updates this machine, whose policy the primary environment reports.
+  const updatesDenial = managedUpdatesDenial(usePrimaryManagedPolicy());
   const [isActionPending, setIsActionPending] = useState(false);
   const [isConfirmingEverything, setIsConfirmingEverything] = useState(false);
   const [checkAnimationKey, setCheckAnimationKey] = useState(0);
@@ -244,7 +251,7 @@ function SidebarUpdateControl() {
     showCheckIcon,
   });
   const idleTooltip =
-    !showUpdateDetails && !showCheckIcon ? getDesktopUpdateIdleTooltip(state) : null;
+    !showUpdateDetails && !showCheckIcon ? getDesktopUpdateIdleTooltip(state, updatesDenial) : null;
   const tooltip = runsEverything
     ? everything.summary
     : showUpdateDetails
@@ -332,7 +339,8 @@ function SidebarUpdateControl() {
           stackedThreadToast({
             type: "error",
             title: t("sidebar.update.checkFailed"),
-            description: result.state.message ?? t("sidebar.update.autoUpdatesUnavailable"),
+            description:
+              updatesDenial ?? result.state.message ?? t("sidebar.update.autoUpdatesUnavailable"),
           }),
         );
       })

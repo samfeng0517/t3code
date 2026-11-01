@@ -8,6 +8,7 @@ import type {
   PullRequestCheck,
   PullRequestCheckStatus,
   PullRequestReaction,
+  PullRequestReviewDecision,
   PullRequestViewerPermissions,
 } from "@t3tools/contracts";
 
@@ -277,6 +278,17 @@ export const make = Effect.gen(function* () {
     return branch.canPush ?? mergeRequest.viewerCanMerge;
   });
 
+  // The rows were already read, so even a rate limit only leaves their decision unknown.
+  const reviewDecisions = (input: Parameters<typeof cli.getReviewDecisions>[0]) =>
+    cli.getReviewDecisions(input).pipe(
+      Effect.catch((error) =>
+        Effect.logWarning("GitLab merge request approval read failed", {
+          repository: input.repository,
+          reason: error._tag,
+        }).pipe(Effect.as<ReadonlyMap<number, PullRequestReviewDecision | null>>(new Map())),
+      ),
+    );
+
   // REST omits line counts; the CLI recovers optional stats failures per batch.
   const mergeRequestWithStats = (
     input: GitLabPullRequestCli.GitLabTarget,
@@ -320,8 +332,21 @@ export const make = Effect.gen(function* () {
           filters: input.filters,
         })
         .pipe(
+          Effect.flatMap((batch) =>
+            reviewDecisions({
+              cwd: input.cwd,
+              host: input.host,
+              repository: input.repository,
+              numbers: batch.items.map((item) => item.number),
+            }).pipe(
+              Effect.map((decisions) => ({
+                ...batch,
+                items: batch.items.map((item) => withReviewDecision(item, decisions)),
+                continues: true,
+              })),
+            ),
+          ),
           Effect.mapError(fail("listChangeRequests")),
-          Effect.map((batch) => ({ ...batch, continues: true })),
         ),
 
     getFileStats: (input) =>
@@ -345,7 +370,21 @@ export const make = Effect.gen(function* () {
       cli.getMergeRequestDetail(input).pipe(Effect.mapError(fail("getChangeRequestPreview"))),
 
     getChangeRequestSummary: (input) =>
-      mergeRequestWithStats(input).pipe(Effect.mapError(fail("getChangeRequestSummary"))),
+      Effect.all(
+        [
+          mergeRequestWithStats(input),
+          reviewDecisions({
+            cwd: input.cwd,
+            host: input.host,
+            repository: input.repository,
+            numbers: [input.number],
+          }),
+        ],
+        { concurrency: 2 },
+      ).pipe(
+        Effect.map(([mergeRequest, decisions]) => withReviewDecision(mergeRequest, decisions)),
+        Effect.mapError(fail("getChangeRequestSummary")),
+      ),
 
     getChangeRequest: (input) =>
       Effect.all(
@@ -649,3 +688,20 @@ export const make = Effect.gen(function* () {
 
   return provider;
 });
+
+// Changes requested, and approval GitLab still owes, are read from the row itself and are not
+// in the approval read, so it only fills in what the row could not say.
+function withReviewDecision<
+  Item extends {
+    readonly number: number;
+    readonly reviewDecision?: PullRequestReviewDecision | null;
+  },
+>(
+  item: Item,
+  decisions: ReadonlyMap<number, PullRequestReviewDecision | null>,
+): Item & { readonly reviewDecision?: PullRequestReviewDecision | null } {
+  const reviewDecision = decisions.get(item.number);
+  if (reviewDecision === undefined || item.reviewDecision === "changes-requested") return item;
+  if (reviewDecision === null && item.reviewDecision != null) return item;
+  return { ...item, reviewDecision };
+}

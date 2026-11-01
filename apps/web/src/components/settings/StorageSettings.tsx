@@ -519,6 +519,9 @@ export function WorktreeCleanupSection() {
     )
       ? t("settingsPages.storage.mixedMachines")
       : undefined;
+  // A policy locks these through worktreeCleanup, which also reaches each project's own rules.
+  const lockablePath = (key: keyof WorktreeCleanupRules) =>
+    isProjectScope ? ["worktreeCleanup"] : ["worktreeCleanup", `storageCleanup.${key}`];
   const update = (patch: Partial<StorageCleanupSettings>) =>
     updateSettings({ storageCleanup: patch });
   const updateWorktree = (patch: Partial<WorktreeCleanupRules>) =>
@@ -608,6 +611,7 @@ export function WorktreeCleanupSection() {
             <SettingsRow
               title={t("settingsPages.storage.onDelete.title")}
               status={ruleStatus("worktreeOnDelete")}
+              managedPaths={lockablePath("worktreeOnDelete")}
               description={t("settingsPages.storage.onDelete.description")}
               serverScoped={!isProjectScope}
               control={
@@ -621,6 +625,7 @@ export function WorktreeCleanupSection() {
             <SettingsRow
               title={t("settingsPages.storage.merged.title")}
               status={ruleStatus("worktreeOnMerge")}
+              managedPaths={lockablePath("worktreeOnMerge")}
               description={t("settingsPages.storage.merged.description")}
               serverScoped={!isProjectScope}
               control={
@@ -647,6 +652,7 @@ export function WorktreeCleanupSection() {
             <SettingsRow
               title={t("settingsPages.storage.afterDays.title")}
               status={ruleStatus("worktreeAfterDays")}
+              managedPaths={lockablePath("worktreeAfterDays")}
               description={t("settingsPages.storage.afterDays.description")}
               serverScoped={!isProjectScope}
               control={
@@ -668,6 +674,7 @@ export function WorktreeCleanupSection() {
                     true,
                 ) && (
                   <SettingsRow
+                    managedPaths={lockablePath("worktreeSettledAfterDays")}
                     title={t("settingsPages.storage.settled.title")}
                     status={[
                       ruleStatus("worktreeSettledAfterDays"),
@@ -694,6 +701,7 @@ export function WorktreeCleanupSection() {
               <SettingsRow
                 title={t("settingsPages.storage.unchanged.title")}
                 status={ruleStatus("worktreeUnchanged")}
+                managedPaths={lockablePath("worktreeUnchanged")}
                 description={t("settingsPages.storage.unchanged.description")}
                 serverScoped={!isProjectScope}
                 control={
@@ -712,6 +720,7 @@ export function WorktreeCleanupSection() {
                   {...searchableSetting("storage-worktree-keep-when")}
                   title={t("settingsPages.storage.keepWhen.title")}
                   status={ruleStatus("worktreeKeepWhen")}
+                  managedPaths={lockablePath("worktreeKeepWhen")}
                   description={t(
                     `settingsPages.storage.keepWhen.description.${settings.worktreeKeepWhen}`,
                   )}
@@ -825,6 +834,7 @@ export function StorageCleanupSections() {
           <SettingsRow
             title={t("settingsPages.storage.browserArtifacts.title")}
             status={artifactsStatus}
+            managedPaths={["storageCleanup.browserArtifactsAfterDays"]}
             description={t("settingsPages.storage.browserArtifacts.description")}
             serverScoped
             control={
@@ -840,6 +850,7 @@ export function StorageCleanupSections() {
           <SettingsRow
             title={t("settingsPages.storage.logs.title")}
             status={logsStatus}
+            managedPaths={["storageCleanup.logsAfterDays"]}
             description={t("settingsPages.storage.logs.description")}
             serverScoped
             control={

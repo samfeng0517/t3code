@@ -196,10 +196,10 @@ export const settingsEn = {
   "settings.general.projectOrder.option.manual": "Manual",
   "settings.general.autoResumeLimitedThreads.title": "Resume after usage limits",
   "settings.general.autoResumeLimitedThreads.description":
-    "Resume usage-limit stops at the reported reset time. Each thread can cancel its scheduled continuation.",
+    "Automatically resume threads when their usage limits reset. You can cancel auto-resume in each thread.",
   "settings.general.snoozeLimitedThreads.title": "Snooze until limits reset",
   "settings.general.snoozeLimitedThreads.description":
-    "Snooze usage-limit stops until reset. Pair with resume to continue on wake.",
+    "Snooze threads until their usage limits reset. Enable auto-resume to continue the agent after the reset.",
   "settings.general.workingShelf.title": "Working section",
   "settings.general.workingShelf.description":
     "Fold working and monitoring threads into a Working section. They return to the top of the inbox when they need you. The boring sidebar in Labs has no Working section.",
@@ -277,7 +277,7 @@ export const settingsEn = {
   "settings.general.diffLayout.resetLabel": "diff layout",
   "settings.general.diffLayout.option.stacked": "Stacked",
   "settings.general.diffLayout.option.split": "Split",
-  "settings.general.proactivePanels.title": "Proactive panels",
+  "settings.general.proactivePanels.title": "Open pull requests and changes panels proactively",
   "settings.general.proactivePanels.description":
     "Open linked pull requests first. Otherwise, open Changes for edits to at least 3 files or 50 lines.",
   "settings.general.proactivePanels.resetLabel": "proactive panels",
