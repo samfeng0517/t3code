@@ -96,9 +96,29 @@ if [[ -d "$target" ]]; then
   mv "$target" "$backup"
 fi
 ditto "$new_app" "$target"
-# open -b may pick the build copy with the same bundle id; 1Password only trusts /Applications.
-open "$target"
 echo "$(date '+%F %T') installed $target; the previous copy is at $backup"
+
+# Helpers can outlive the quit; opening while they exit only re-activates the dying app.
+executable="$target/Contents/MacOS/$(basename "$target" .app)"
+for _ in $(seq 1 60); do
+  pgrep -qf "$executable" || break
+  sleep 0.5
+done
+# open -b may pick the build copy with the same bundle id; 1Password only trusts /Applications.
+for attempt in 1 2 3; do
+  open "$target" || echo "$(date '+%F %T') open attempt $attempt failed"
+  for _ in $(seq 1 20); do
+    running && break 2
+    sleep 0.5
+  done
+  echo "$(date '+%F %T') the app was not running after open attempt $attempt"
+done
+if running; then
+  echo "$(date '+%F %T') reopened $target"
+else
+  echo "$(date '+%F %T') could not reopen $target; open it from /Applications"
+  exit 1
+fi
 INSTALLER
 chmod +x "$installer"
 
