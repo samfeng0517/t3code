@@ -36,11 +36,16 @@ const { showMessageBox } = vi.hoisted(() => ({
     ) => number | Promise<number>
   >(() => 2),
 }));
+const dialogInterrupt = { next: false };
 const layerDialog = Layer.succeed(ElectronDialog.ElectronDialog, {
   pickFolder: () => Effect.die("unused"),
   pickFiles: () => Effect.die("unused"),
-  showMessageBox: (options, owner) =>
-    Effect.tryPromise({
+  showMessageBox: (options, owner) => {
+    if (dialogInterrupt.next) {
+      dialogInterrupt.next = false;
+      return Effect.interrupt;
+    }
+    return Effect.tryPromise({
       try: async () => ({ response: await showMessageBox(options, owner), checkboxChecked: false }),
       catch: (cause) =>
         new ElectronDialog.ElectronDialogShowMessageBoxError({
@@ -51,7 +56,8 @@ const layerDialog = Layer.succeed(ElectronDialog.ElectronDialog, {
           buttonCount: options.buttons?.length ?? 0,
           cause,
         }),
-    }),
+    });
+  },
   showErrorBox: () => Effect.void,
 });
 
@@ -170,6 +176,7 @@ describe("BrowserMediaAccess", () => {
     repeatedCallbacks.count = 0;
     showMessageBox.mockReset();
     showMessageBox.mockReturnValue(2);
+    dialogInterrupt.next = false;
     getMediaAccessStatus.mockReset();
     getMediaAccessStatus.mockReturnValue("granted");
   });
@@ -496,41 +503,48 @@ describe("BrowserMediaAccess", () => {
         assert.isFalse(access.checkMedia(chat, mainFrame, true));
       }).pipe(Effect.provide(layer)),
   );
-  it.effect("allowDisplayCapture should allow only http(s) main frames", () =>
-    Effect.gen(function* () {
-      const access = yield* BrowserMediaAccess.BrowserMediaAccess;
+  it.effect(
+    "allowDisplayCapture should allow display capture only when the request comes from an http(s) main frame",
+    () =>
+      Effect.gen(function* () {
+        const access = yield* BrowserMediaAccess.BrowserMediaAccess;
 
-      assert.isTrue(
-        access.allowDisplayCapture({ requestingUrl: `${MEET}/abc`, isMainFrame: true }),
-      );
-      assert.isTrue(
-        access.allowDisplayCapture({ requestingUrl: "http://localhost:3000/", isMainFrame: true }),
-      );
-      assert.isFalse(
-        access.allowDisplayCapture({ requestingUrl: `${MEET}/abc`, isMainFrame: false }),
-      );
-      assert.isFalse(access.allowDisplayCapture({ requestingUrl: `${MEET}/abc` }));
-      assert.isFalse(
-        access.allowDisplayCapture({ requestingUrl: "file:///tmp/a.html", isMainFrame: true }),
-      );
-      assert.isFalse(access.allowDisplayCapture({ isMainFrame: true }));
-    }).pipe(Effect.provide(layer)),
+        assert.isTrue(
+          access.allowDisplayCapture({ requestingUrl: `${MEET}/abc`, isMainFrame: true }),
+        );
+        assert.isTrue(
+          access.allowDisplayCapture({
+            requestingUrl: "http://localhost:3000/",
+            isMainFrame: true,
+          }),
+        );
+        assert.isFalse(
+          access.allowDisplayCapture({ requestingUrl: `${MEET}/abc`, isMainFrame: false }),
+        );
+        assert.isFalse(access.allowDisplayCapture({ requestingUrl: `${MEET}/abc` }));
+        assert.isFalse(
+          access.allowDisplayCapture({ requestingUrl: "file:///tmp/a.html", isMainFrame: true }),
+        );
+        assert.isFalse(access.allowDisplayCapture({ isMainFrame: true }));
+      }).pipe(Effect.provide(layer)),
   );
 
-  it.effect("installDisplayMediaHandler should request the system picker once per session", () =>
-    Effect.gen(function* () {
-      const access = yield* BrowserMediaAccess.BrowserMediaAccess;
-      const setDisplayMediaRequestHandler = vi.fn<Session["setDisplayMediaRequestHandler"]>();
-      const browserSession = { setDisplayMediaRequestHandler } as unknown as Session;
+  it.effect(
+    "installDisplayMediaHandler should install the system-picker handler only once when called repeatedly for the same session",
+    () =>
+      Effect.gen(function* () {
+        const access = yield* BrowserMediaAccess.BrowserMediaAccess;
+        const setDisplayMediaRequestHandler = vi.fn<Session["setDisplayMediaRequestHandler"]>();
+        const browserSession = { setDisplayMediaRequestHandler } as unknown as Session;
 
-      access.installDisplayMediaHandler(browserSession);
-      access.installDisplayMediaHandler(browserSession);
+        access.installDisplayMediaHandler(browserSession);
+        access.installDisplayMediaHandler(browserSession);
 
-      assert.strictEqual(setDisplayMediaRequestHandler.mock.calls.length, 1);
-      assert.deepStrictEqual(setDisplayMediaRequestHandler.mock.calls[0]?.[1], {
-        useSystemPicker: true,
-      });
-    }).pipe(Effect.provide(layer)),
+        assert.strictEqual(setDisplayMediaRequestHandler.mock.calls.length, 1);
+        assert.deepStrictEqual(setDisplayMediaRequestHandler.mock.calls[0]?.[1], {
+          useSystemPicker: true,
+        });
+      }).pipe(Effect.provide(layer)),
   );
 
   it.effect(
@@ -632,6 +646,28 @@ describe("BrowserMediaAccess", () => {
         showMessageBox.mockRejectedValueOnce(new Error("dialog failed"));
         assert.deepStrictEqual(yield* Effect.promise(() => share(displayRequest())), {});
         assert.strictEqual(showMessageBox.mock.calls.length, 3);
+        assert.strictEqual(repeatedCallbacks.count, 0);
+      }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect(
+    "display handler should reject once and free the picker slot when the dialog is interrupted or building it throws",
+    () =>
+      Effect.gen(function* () {
+        const share = installDisplayHandler(yield* BrowserMediaAccess.BrowserMediaAccess);
+        getSources.mockResolvedValue([screenSource("1", 1)]);
+
+        dialogInterrupt.next = true;
+        assert.deepStrictEqual(yield* Effect.promise(() => share(displayRequest())), {});
+        getAllDisplays.mockImplementationOnce(() => {
+          throw new Error("displays unavailable");
+        });
+        assert.deepStrictEqual(yield* Effect.promise(() => share(displayRequest())), {});
+        assert.strictEqual(showMessageBox.mock.calls.length, 0);
+
+        showMessageBox.mockReturnValue(0);
+        assert.isDefined((yield* Effect.promise(() => share(displayRequest())))?.video);
+        assert.strictEqual(showMessageBox.mock.calls.length, 1);
         assert.strictEqual(repeatedCallbacks.count, 0);
       }).pipe(Effect.provide(layer)),
   );
