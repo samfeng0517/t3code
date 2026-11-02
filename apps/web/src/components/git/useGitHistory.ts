@@ -187,8 +187,11 @@ export function useGitHistory(target: GitHistoryTarget): GitHistoryController {
     return current.refreshing;
   };
 
+  // History lands before the working tree: a selected uncommitted row that vanished in a
+  // commit falls back to HEAD, which must already be the new commit.
   const refresh = async () => {
-    await Promise.all([startRefresh(1), workingTree.reload()]);
+    await startRefresh(1);
+    await workingTree.reload();
   };
 
   const loadMore = (): Promise<void> => {
@@ -237,8 +240,10 @@ export function useGitHistory(target: GitHistoryTarget): GitHistoryController {
   const checkForChanges = async () => {
     // The first load is still reading the snapshot this check would compare against.
     if (session.current.state.status === "loading") return;
-    // The fingerprint does not cover the working tree, so it reloads regardless.
-    await Promise.all([checkHistoryForChanges(), workingTree.reload()]);
+    // The fingerprint does not cover the working tree, so it reloads regardless, after the
+    // history for the same reason as in `refresh`.
+    await checkHistoryForChanges();
+    await workingTree.reload();
   };
 
   const jumpTo = async (hash: string): Promise<"found" | "too-old" | "failed"> => {

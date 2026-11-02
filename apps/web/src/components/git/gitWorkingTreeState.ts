@@ -1,6 +1,7 @@
 import type {
   GitWorkingTreeDiffArea,
   GitWorkingTreeFile,
+  GitWorkingTreeFileDiffInput,
   GitWorkingTreeFileStatus,
 } from "@t3tools/contracts";
 
@@ -53,16 +54,15 @@ export function workingTreeSections(files: ReadonlyArray<GitWorkingTreeFile>): W
         diffArea: "staged",
       });
     }
-    if (file.worktreeStatus !== null || file.conflicted) {
-      const untracked = file.worktreeStatus === "untracked";
+    // The server reports every conflict with a worktree status, so conflicts land here too.
+    if (file.worktreeStatus !== null) {
       unstaged.push({
         section: "unstaged",
         path: file.path,
         previousPath: null,
-        // A conflict with no worktree status still differs from the index.
-        letter: file.worktreeStatus === null ? "M" : LETTERS[file.worktreeStatus],
+        letter: LETTERS[file.worktreeStatus],
         conflicted: file.conflicted,
-        diffArea: untracked ? "untracked" : "unstaged",
+        diffArea: file.worktreeStatus === "untracked" ? "untracked" : "unstaged",
       });
     }
   }
@@ -83,6 +83,19 @@ export function reconcileFileSelection(
   }
   const first = sections.staged[0] ?? sections.unstaged[0];
   return first === undefined ? null : { section: first.section, path: first.path };
+}
+
+/** A loaded diff is shown only for the row it was read for. */
+export function diffBelongsToRow(
+  input: GitWorkingTreeFileDiffInput,
+  row: WorkingTreeRow | null,
+): boolean {
+  return (
+    row !== null &&
+    input.path === row.path &&
+    input.previousPath === row.previousPath &&
+    input.area === row.diffArea
+  );
 }
 
 export function graphRowIds(

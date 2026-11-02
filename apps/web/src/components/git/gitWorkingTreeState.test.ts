@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   countPatchLines,
   defaultStashMessage,
+  diffBelongsToRow,
   graphRowIds,
   reconcileFileSelection,
   resolveGraphSelection,
@@ -104,6 +105,18 @@ describe("reconcileFileSelection", () => {
       path: "s.ts",
     });
     expect(reconcileFileSelection(null, workingTreeSections([]))).toBeNull();
+  });
+});
+
+describe("diffBelongsToRow", () => {
+  it("should reject a diff when it was loaded for the same path in the other section", () => {
+    const sections = workingTreeSections([
+      file({ path: "a.ts", indexStatus: "modified", worktreeStatus: "modified" }),
+    ]);
+    const input = { cwd: "/repo", path: "a.ts", previousPath: null, area: "staged" as const };
+    expect(diffBelongsToRow(input, sections.staged[0] ?? null)).toBe(true);
+    expect(diffBelongsToRow(input, sections.unstaged[0] ?? null)).toBe(false);
+    expect(diffBelongsToRow(input, null)).toBe(false);
   });
 });
 

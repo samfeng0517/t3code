@@ -14,6 +14,7 @@ import { gitEnvironment } from "~/state/git";
 import { useAtomCommand } from "~/state/use-atom-command";
 
 import {
+  diffBelongsToRow,
   reconcileFileSelection,
   type WorkingTreeFileSelection,
   type WorkingTreeRow,
@@ -32,7 +33,7 @@ export interface GitWorkingTreeController {
   readonly sections: WorkingTreeSections;
   readonly selection: WorkingTreeFileSelection | null;
   readonly selectedRow: WorkingTreeRow | null;
-  /** Stays on the previously loaded diff while a newer one loads. */
+  /** The selected row's diff; the previous one stays while the same row reloads. */
   readonly diff: GitWorkingTreeDiff | null;
   readonly diffLoading: boolean;
   readonly diffError: unknown;
@@ -107,6 +108,7 @@ export function useGitWorkingTree(target: {
       area: row.diffArea,
     };
     setDiffLoading(true);
+    setDiffError(null);
     const result = await fileDiffCommand({ environmentId, input });
     if (current.generation !== generation || current.diffRequest !== request) return;
     setDiffLoading(false);
@@ -179,14 +181,15 @@ export function useGitWorkingTree(target: {
   useEffect(() => stableDispose, [stableDispose]);
 
   const sections = status === null ? EMPTY_SECTIONS : workingTreeSections(status.files);
+  const selectedRow = findRow(sections, selection);
 
   return {
     status,
     statusError,
     sections,
     selection,
-    selectedRow: findRow(sections, selection),
-    diff,
+    selectedRow,
+    diff: diff !== null && diffBelongsToRow(diff.input, selectedRow) ? diff : null,
     diffLoading,
     diffError,
     select: stableSelect,
