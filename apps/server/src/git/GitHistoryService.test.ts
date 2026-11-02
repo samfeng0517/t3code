@@ -866,7 +866,43 @@ describe("GitHistoryService", () => {
             .pipe(Effect.flip);
 
           assert.equal(error._tag, "GitCommandError");
-          assert.notInclude(error.message, "secret");
+          assert.equal(
+            error._tag === "GitCommandError" ? error.detail : null,
+            "The untracked file is outside the repository.",
+          );
+        }),
+      ),
+  );
+
+  it.effect(
+    "workingTreeFileDiff should fail without reading the file when an untracked path goes through a symlinked directory",
+    () =>
+      inWorkspace((workspace) =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const repo = yield* makeRepo(workspace);
+          yield* commit(repo, "root");
+          const outside = path.join(workspace, "outside");
+          yield* fs.makeDirectory(outside);
+          yield* fs.writeFileString(path.join(outside, "secret.txt"), "secret\n");
+          yield* fs.symlink(outside, path.join(repo, "linkdir"));
+
+          const history = yield* GitHistoryService.GitHistoryService;
+          const error = yield* history
+            .workingTreeFileDiff({
+              cwd: repo,
+              path: "linkdir/secret.txt",
+              previousPath: null,
+              area: "untracked",
+            })
+            .pipe(Effect.flip);
+
+          assert.equal(error._tag, "GitCommandError");
+          assert.equal(
+            error._tag === "GitCommandError" ? error.detail : null,
+            "The untracked file is outside the repository.",
+          );
         }),
       ),
   );

@@ -898,7 +898,14 @@ export const make = Effect.gen(function* () {
         ...limits,
       });
     } else {
-      // `diff --no-index` reads any filesystem path, unlike the pathspecs above.
+      // `diff --no-index` reads any filesystem path, unlike the pathspecs above. git never
+      // descends into a symlinked directory, so listing the path also rules out symlink escapes.
+      const outsideError = new GitCommandError({
+        operation: `${operation}.untracked`,
+        command: "git",
+        cwd: repoRoot,
+        detail: "The untracked file is outside the repository.",
+      });
       const relative = path.relative(repoRoot, path.resolve(repoRoot, input.path));
       if (
         relative === "" ||
@@ -906,13 +913,17 @@ export const make = Effect.gen(function* () {
         relative.startsWith(`..${path.sep}`) ||
         path.isAbsolute(relative)
       ) {
-        return yield* new GitCommandError({
-          operation: `${operation}.untracked`,
-          command: "git",
-          cwd: repoRoot,
-          detail: "The untracked file is outside the repository.",
-        });
+        return yield* outsideError;
       }
+      const listed = yield* run(`${operation}.untrackedCheck`, repoRoot, [
+        "ls-files",
+        "-z",
+        "--others",
+        "--exclude-standard",
+        "--",
+        pathspec(input.path),
+      ]);
+      if (!listed.stdout.split("\0").includes(input.path)) return yield* outsideError;
       result = yield* git.execute({
         operation: `${operation}.untracked`,
         cwd: repoRoot,
