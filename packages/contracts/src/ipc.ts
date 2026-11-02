@@ -1239,6 +1239,8 @@ export type ConfirmDialogVariant = "default" | "destructive";
 
 export interface ConfirmDialogOptions {
   readonly variant?: ConfirmDialogVariant;
+  /** Replaces the generic confirm button text. */
+  readonly confirmLabel?: string;
 }
 
 export interface LocalApi {

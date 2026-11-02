@@ -278,8 +278,17 @@ export function GitProjectView(props: {
                         aria-label={t("git.detail.moreActions")}
                         onClick={(event) => {
                           const rect = event.currentTarget.getBoundingClientRect();
+                          const stash = refs?.stashes.find((entry) => entry.hash === detailHash);
                           openMenu(
-                            { kind: "commit", hash: detailHash },
+                            stash === undefined
+                              ? { kind: "commit", hash: detailHash }
+                              : {
+                                  kind: "stash",
+                                  index: stash.index,
+                                  ref: stash.ref,
+                                  message: stash.message,
+                                  hash: stash.hash,
+                                },
                             { x: rect.left, y: rect.bottom },
                           );
                         }}

@@ -60,6 +60,8 @@ export const gitEn = {
   "git.menu.checkout": "Checkout",
   "git.menu.rename": "Rename…",
   "git.menu.delete": "Delete",
+  "git.menu.applyStash": "Apply",
+  "git.menu.popStash": "Pop (apply and delete)",
   "git.menu.pushTag": "Push tag",
   "git.menu.inUse": 'Thread "{title}" is using this branch',
   "git.dialog.createBranch": "Create branch",
@@ -79,6 +81,12 @@ export const gitEn = {
     "{name} has unmerged commits. After a force delete it can only be recovered from the reflog. Delete anyway?",
   "git.confirm.checkoutActive":
     "An agent is working in this directory: {titles}. Switching branches will affect it. Switch anyway?",
+  "git.confirm.deleteStash": 'Delete {ref} "{message}"? This can\'t be undone.',
+  "git.confirm.agentActive":
+    "An agent is working in this directory: {titles}. {action} will affect it. Continue anyway?",
+  "git.confirm.agentAction.discard": "Discarding changes",
+  "git.confirm.agentAction.stash": "Stashing",
+  "git.confirm.agentAction.applyStash": "Applying the stash",
   "git.confirm.threadTitle": '"{title}"',
   "git.confirm.threadTitleSeparator": ", ",
   "git.toast.switched": "Switched to {ref}",
@@ -89,5 +97,11 @@ export const gitEn = {
   "git.toast.deletedRemoteBranch": "Deleted remote branch {name}",
   "git.toast.deletedTag": "Deleted tag {name}",
   "git.toast.pushedTag": "Pushed tag {name} to {remote}",
+  "git.toast.appliedStash": "Applied stash",
+  "git.toast.poppedStash": "Popped stash",
+  "git.toast.deletedStash": "Deleted stash",
+  "git.toast.stashMoved": "The stash list changed. Refresh and try again.",
+  "git.toast.stashApplyConflict": "Applying the stash hit conflicts; the stash was kept",
+  "git.toast.stashPopConflict": "Popping the stash hit conflicts; the stash was kept",
   "git.toast.copiedHash": "Copied commit hash",
 } as const;

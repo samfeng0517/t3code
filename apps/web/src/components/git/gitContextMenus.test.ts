@@ -21,10 +21,25 @@ describe("buildGitMenu", () => {
       { kind: "local", name: "main", hash: HASH },
       { kind: "remote", fullName: "origin/main", hash: HASH },
       { kind: "tag", name: "v1", hash: HASH },
+      { kind: "stash", index: 0, ref: "stash@{0}", message: "WIP", hash: HASH },
     ] as const) {
       const items = buildGitMenu(target, { ...context, canWrite: false });
       expect(items.map((item) => item.id)).toEqual(["copy-hash"]);
     }
+  });
+
+  it("buildGitMenu should list Apply, Pop and a destructive Delete when the target is a stash", () => {
+    const items = buildGitMenu(
+      { kind: "stash", index: 1, ref: "stash@{1}", message: "WIP on main", hash: HASH },
+      context,
+    );
+    expect(items.map((item) => [item.id, item.label, item.destructive === true])).toEqual([
+      ["apply-stash", "Apply", false],
+      ["pop-stash", "Pop (apply and delete)", false],
+      ["delete", "Delete", true],
+      ["copy-hash", "Copy commit hash", false],
+    ]);
+    expect(items[3]?.separatorBefore).toBe(true);
   });
 
   it("buildGitMenu should list the commit actions with a short hash when the target is a commit", () => {

@@ -1,4 +1,3 @@
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
   type AtomCommandResult,
   settlePromise,
@@ -8,7 +7,8 @@ import {
   type EnvironmentId,
   GitBranchNotFullyMergedError,
   type GitHistoryRefsResult,
-  type ProjectId,
+  GitStashConflictError,
+  GitStashMovedError,
 } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
 import * as Schema from "effect/Schema";
@@ -17,21 +17,25 @@ import { useState } from "react";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useT } from "~/i18n";
 import { readLocalApi } from "~/localApi";
-import { readProject, useQuietThreadShells } from "~/state/entities";
 import { gitEnvironment } from "~/state/git";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { vcsEnvironment } from "~/state/vcs";
 
 import { toastManager } from "../ui/toast";
-import { activeRootThreads, projectInRepoChecker, threadsUsingBranch } from "./gitActionGuards";
+import { threadsUsingBranch } from "./gitActionGuards";
 import { buildGitMenu, type GitMenuAction, type GitMenuTarget } from "./gitContextMenus";
 import { SHORT_HASH_LENGTH } from "./gitHistoryState";
 import type { GitRefNameChoice, GitRefNameRequest } from "./GitRefNameDialog";
+import { useGitConfirm } from "./useGitConfirm";
 import type { GitWriteActions } from "./useGitWriteActions";
 
 const PUSH_TAG_PREFIX = "push-tag:";
 
 const isNotFullyMerged = Schema.is(GitBranchNotFullyMergedError);
+const isStashMoved = Schema.is(GitStashMovedError);
+const isStashConflict = Schema.is(GitStashConflictError);
+
+type GitStashTarget = Extract<GitMenuTarget, { readonly kind: "stash" }>;
 
 /** Splits `origin/feature` by the refs' own remote list, since remote names can contain `/`. */
 function remoteBranchOf(refs: GitHistoryRefsResult | null, fullName: string) {
@@ -61,7 +65,7 @@ export function useGitRefActions(input: {
 }) {
   const t = useT();
   const { environmentId, refs, writes } = input;
-  const threads = useQuietThreadShells();
+  const { confirm, confirmAgentWork, projectInRepo, threads } = useGitConfirm(environmentId);
   const commandOptions = { reportFailure: false };
   const switchRefCommand = useAtomCommand(vcsEnvironment.switchRef, commandOptions);
   const createRefCommand = useAtomCommand(vcsEnvironment.createRef, commandOptions);
@@ -74,7 +78,7 @@ export function useGitRefActions(input: {
     gitEnvironment.deleteRemoteBranch,
     commandOptions,
   );
-  const historyRefsCommand = useAtomCommand(gitEnvironment.historyRefs, commandOptions);
+  const stashActionCommand = useAtomCommand(gitEnvironment.stashAction, commandOptions);
   const { copyToClipboard } = useCopyToClipboard({
     onCopy: () => toastManager.add({ type: "success", title: t("git.toast.copiedHash") }),
     onError: (error) =>
@@ -93,43 +97,6 @@ export function useGitRefActions(input: {
       });
     });
 
-  const confirm = async (message: string, destructive = false) => {
-    const api = readLocalApi();
-    if (!api) return false;
-    const result = await settlePromise(() =>
-      api.dialogs.confirm(message, destructive ? { variant: "destructive" } : undefined),
-    );
-    return result._tag === "Success" && result.value;
-  };
-
-  // A fresh checker per action, so a lookup never outlives the threads and projects it read.
-  const projectInRepo = (repoRoot: string, worktreePaths?: ReadonlyArray<string>) =>
-    projectInRepoChecker({
-      projectRootOf: (projectId: ProjectId) =>
-        readProject(scopeProjectRef(environmentId, projectId))?.workspaceRoot ?? null,
-      repoRoot,
-      showToplevel: async (cwd) => {
-        const result = await historyRefsCommand({ environmentId, input: { cwd } });
-        return result._tag === "Success" ? result.value.repoRoot : null;
-      },
-      ...(worktreePaths === undefined ? {} : { worktreePaths }),
-    });
-
-  /** A checkout changes the files under local-mode threads, so running ones are named first. */
-  const confirmCheckout = async (repoRoot: string) => {
-    const active = await activeRootThreads({
-      threads,
-      projectInRepo: projectInRepo(repoRoot),
-      environmentId,
-      repoRoot,
-    });
-    if (active.length === 0) return Promise.resolve(true);
-    const titles = active
-      .map((thread) => t("git.confirm.threadTitle", { title: thread.title }))
-      .join(t("git.confirm.threadTitleSeparator"));
-    return confirm(t("git.confirm.checkoutActive", { titles }));
-  };
-
   const checkout = async (cwd: string, target: GitMenuTarget) => {
     // A full hash checks out detached; a remote branch's full name makes the server switch to
     // (or create) its local tracking branch.
@@ -141,7 +108,7 @@ export function useGitRefActions(input: {
           : target.kind === "local"
             ? target.name
             : null;
-    if (ref === null || !(await confirmCheckout(cwd))) return;
+    if (ref === null || !(await confirmAgentWork(cwd, "checkout"))) return;
     await writes.run(
       "checkout",
       () => switchRefCommand({ environmentId, input: { cwd, refName: ref } }),
@@ -158,7 +125,7 @@ export function useGitRefActions(input: {
   const createBranch = async (cwd: string, hash: string) => {
     const choice = await askName({ kind: "create-branch" });
     if (choice === null) return;
-    if (choice.switchRef && !(await confirmCheckout(cwd))) return;
+    if (choice.switchRef && !(await confirmAgentWork(cwd, "checkout"))) return;
     await writes.run(
       "create-branch",
       () =>
@@ -191,7 +158,7 @@ export function useGitRefActions(input: {
   };
 
   const deleteBranch = async (cwd: string, name: string) => {
-    if (!(await confirm(t("git.confirm.deleteBranch", { name }), true))) return;
+    if (!(await confirm(t("git.confirm.deleteBranch", { name }), { destructive: true }))) return;
     const deleted = () => t("git.toast.deletedBranch", { name });
     // An unmerged branch is a question for the user, not a failure toast.
     const outcome = await writes.run(
@@ -210,7 +177,8 @@ export function useGitRefActions(input: {
       (value) => (value === "deleted" ? deleted() : null),
     );
     if (outcome !== "not-merged") return;
-    if (!(await confirm(t("git.confirm.forceDeleteBranch", { name }), true))) return;
+    if (!(await confirm(t("git.confirm.forceDeleteBranch", { name }), { destructive: true })))
+      return;
     await writes.run(
       "delete-branch",
       () => deleteBranchCommand({ environmentId, input: { cwd, refName: name, force: true } }),
@@ -225,7 +193,7 @@ export function useGitRefActions(input: {
     if (
       !(await confirm(
         t("git.confirm.deleteRemoteBranch", { remote: remoteName, name: branchName }),
-        true,
+        { destructive: true },
       ))
     )
       return;
@@ -237,7 +205,7 @@ export function useGitRefActions(input: {
   };
 
   const deleteTag = async (cwd: string, name: string) => {
-    if (!(await confirm(t("git.confirm.deleteTag", { name }), true))) return;
+    if (!(await confirm(t("git.confirm.deleteTag", { name }), { destructive: true }))) return;
     await writes.run(
       "delete-tag",
       () => deleteTagCommand({ environmentId, input: { cwd, tagName: name } }),
@@ -253,6 +221,54 @@ export function useGitRefActions(input: {
     );
   };
 
+  /** Stash failures get their own toast; the page refreshes on settle either way. */
+  const runStash = async (
+    cwd: string,
+    target: GitStashTarget,
+    action: "apply" | "pop" | "drop",
+    successToast: () => string,
+  ) => {
+    await writes.run(
+      `${action}-stash`,
+      async (): Promise<AtomCommandResult<boolean, unknown>> => {
+        const result = await stashActionCommand({
+          environmentId,
+          input: { cwd, action, index: target.index, hash: target.hash },
+        });
+        if (result._tag === "Success") return AsyncResult.success(true);
+        const error = squashAtomCommandFailure(result);
+        const handled = isStashMoved(error)
+          ? t("git.toast.stashMoved")
+          : isStashConflict(error)
+            ? error.action === "pop"
+              ? t("git.toast.stashPopConflict")
+              : t("git.toast.stashApplyConflict")
+            : null;
+        if (handled === null) return AsyncResult.failure(result.cause);
+        toastManager.add({ type: "error", title: handled });
+        return AsyncResult.success(false);
+      },
+      (succeeded) => (succeeded ? successToast() : null),
+    );
+  };
+
+  const applyStash = async (cwd: string, target: GitStashTarget, pop: boolean) => {
+    if (!(await confirmAgentWork(cwd, "applyStash"))) return;
+    await runStash(cwd, target, pop ? "pop" : "apply", () =>
+      pop ? t("git.toast.poppedStash") : t("git.toast.appliedStash"),
+    );
+  };
+
+  const dropStash = async (cwd: string, target: GitStashTarget) => {
+    const message = t("git.confirm.deleteStash", { ref: target.ref, message: target.message });
+    const confirmed = await confirm(message, {
+      destructive: true,
+      confirmLabel: t("git.menu.delete"),
+    });
+    if (!confirmed) return;
+    await runStash(cwd, target, "drop", () => t("git.toast.deletedStash"));
+  };
+
   const perform = async (cwd: string, target: GitMenuTarget, action: GitMenuAction) => {
     if (action === "copy-hash") return copyToClipboard(target.hash, undefined);
     if (action === "checkout") return checkout(cwd, target);
@@ -264,6 +280,9 @@ export function useGitRefActions(input: {
       return deleteRemoteBranch(cwd, target.fullName);
     }
     if (action === "delete" && target.kind === "tag") return deleteTag(cwd, target.name);
+    if (action === "delete" && target.kind === "stash") return dropStash(cwd, target);
+    if (action === "apply-stash" && target.kind === "stash") return applyStash(cwd, target, false);
+    if (action === "pop-stash" && target.kind === "stash") return applyStash(cwd, target, true);
     if (action.startsWith(PUSH_TAG_PREFIX) && target.kind === "tag") {
       return pushTag(cwd, target.name, action.slice(PUSH_TAG_PREFIX.length));
     }

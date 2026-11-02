@@ -30,7 +30,7 @@ export type GitRefsSidebarRow =
       readonly current: boolean;
       readonly nested: boolean;
       readonly target: GitRefsSidebarTarget | null;
-      /** Stashes and worktrees have no menu. */
+      /** Worktrees have no menu. */
       readonly menu: GitMenuTarget | null;
     };
 
@@ -99,7 +99,18 @@ export function buildRefsSidebarRows(
   }
   if (refs.stashes.length > 0 && header("stashes")) {
     for (const stash of refs.stashes) {
-      ref(`stash:${stash.ref}`, stash.message, { hash: stash.hash, select: false }, null);
+      ref(
+        `stash:${stash.ref}`,
+        stash.message,
+        { hash: stash.hash, select: false },
+        {
+          kind: "stash",
+          index: stash.index,
+          ref: stash.ref,
+          message: stash.message,
+          hash: stash.hash,
+        },
+      );
     }
   }
   if (refs.worktrees.length > 0 && header("worktrees")) {

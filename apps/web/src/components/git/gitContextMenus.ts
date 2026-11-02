@@ -8,7 +8,15 @@ export type GitMenuTarget =
   | { readonly kind: "commit"; readonly hash: string }
   | { readonly kind: "local"; readonly name: string; readonly hash: string }
   | { readonly kind: "remote"; readonly fullName: string; readonly hash: string }
-  | { readonly kind: "tag"; readonly name: string; readonly hash: string };
+  | { readonly kind: "tag"; readonly name: string; readonly hash: string }
+  | {
+      readonly kind: "stash";
+      readonly index: number;
+      readonly ref: string;
+      readonly message: string;
+      /** The full stash commit hash; the server rejects a pop or drop whose hash moved. */
+      readonly hash: string;
+    };
 
 /** Opens the menu for `target` at a viewport position. */
 export type GitOpenMenu = (target: GitMenuTarget, position: { x: number; y: number }) => void;
@@ -18,6 +26,8 @@ export type GitMenuAction =
   | "create-branch"
   | "create-tag"
   | "rename"
+  | "apply-stash"
+  | "pop-stash"
   | "delete"
   | "push-tag"
   | `push-tag:${string}`
@@ -93,10 +103,16 @@ function writeItems(
               };
       return [push, { id: "delete", label: t("git.menu.delete"), destructive: true }];
     }
+    case "stash":
+      return [
+        { id: "apply-stash", label: t("git.menu.applyStash") },
+        { id: "pop-stash", label: t("git.menu.popStash") },
+        { id: "delete", label: t("git.menu.delete"), destructive: true },
+      ];
   }
 }
 
-/** One menu for a commit or ref, shared by graph rows, ref labels, the refs sidebar and the detail's "⋯" button. */
+/** One menu for a commit, ref or stash, shared by graph rows, ref labels, the refs sidebar and the detail's "⋯" button. */
 export function buildGitMenu(
   target: GitMenuTarget,
   context: GitMenuContext,

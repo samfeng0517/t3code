@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { buildRefsSidebarRows } from "./gitRefsSidebarRows";
 
+const STASH_HASH = "5".repeat(40);
+
 const refs: GitHistoryRefsResult = {
   isRepo: true,
   repoRoot: "/repo",
@@ -21,7 +23,7 @@ const refs: GitHistoryRefsResult = {
   ],
   remoteNames: ["origin"],
   tags: [],
-  stashes: [{ index: 0, ref: "stash@{0}", message: "WIP", hash: "s1", baseHash: "h1" }],
+  stashes: [{ index: 0, ref: "stash@{0}", message: "WIP", hash: STASH_HASH, baseHash: "h1" }],
   worktrees: [{ path: "/gone", name: "gone", hash: null, branch: null }],
 };
 
@@ -82,11 +84,12 @@ describe("buildRefsSidebarRows", () => {
     const rows = buildRefsSidebarRows(refs, new Set());
 
     expect(rows.find((row) => row.key === "stash:stash@{0}")).toMatchObject({
-      target: { hash: "s1", select: false },
+      target: { hash: STASH_HASH, select: false },
     });
     expect(rows.find((row) => row.key === "worktree:/gone")).toMatchObject({ target: null });
   });
-  it("buildRefsSidebarRows should give branches, remote branches and tags a menu target and stashes and worktrees none when building items", () => {
+
+  it("buildRefsSidebarRows should give branches, remote branches, tags and stashes a menu target and worktrees none when building items", () => {
     const rows = buildRefsSidebarRows({ ...refs, tags: [{ name: "v1", hash: "h3" }] }, new Set());
     const menu = (key: string) => {
       const row = rows.find((entry) => entry.key === key);
@@ -100,7 +103,13 @@ describe("buildRefsSidebarRows", () => {
       hash: "h1",
     });
     expect(menu("tag:v1")).toEqual({ kind: "tag", name: "v1", hash: "h3" });
-    expect(menu("stash:stash@{0}")).toBeNull();
+    expect(menu("stash:stash@{0}")).toEqual({
+      kind: "stash",
+      index: 0,
+      ref: "stash@{0}",
+      message: "WIP",
+      hash: STASH_HASH,
+    });
     expect(menu("worktree:/gone")).toBeNull();
   });
 });

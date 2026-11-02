@@ -23,10 +23,15 @@ describe("confirm dialog coordinator", () => {
     resetConfirmDialogForTests();
   });
 
-  it("serializes concurrent confirmations", async () => {
+  it("should serialize concurrent confirmations and keep each one's variant and confirm label when several are requested", async () => {
     const unregister = mountHost();
     const first = requireConfirmation(requestConfirmDialog("Delete the project?"));
-    const second = requireConfirmation(requestConfirmDialog("Delete the worktree too?"));
+    const second = requireConfirmation(
+      requestConfirmDialog("Delete the worktree too?", {
+        variant: "destructive",
+        confirmLabel: "Delete",
+      }),
+    );
 
     respondToConfirmDialog(false);
     await expect(first).resolves.toBe(false);
@@ -34,13 +39,15 @@ describe("confirm dialog coordinator", () => {
       status: "closing",
       message: "Delete the project?",
       variant: "default",
+      confirmLabel: null,
     });
 
     completeConfirmDialogClose();
     expect(readConfirmDialogState()).toEqual({
       status: "confirming",
       message: "Delete the worktree too?",
-      variant: "default",
+      variant: "destructive",
+      confirmLabel: "Delete",
     });
 
     respondToConfirmDialog(true);
