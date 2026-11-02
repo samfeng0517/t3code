@@ -495,6 +495,21 @@ it.layer(NodeServices.layer)("GitWorkflowService", (it) => {
         assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "");
       }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-discard-all-"))),
   );
+  it.effect("discard should fail and change nothing when a path contains a NUL character", () =>
+    Effect.gen(function* () {
+      const workflow = yield* GitWorkflowService.GitWorkflowService;
+      const cwd = yield* makeEmptyRepo("t3-discard-nul-");
+      yield* writeFile(cwd, "a.txt", "v1");
+      yield* commitAll(cwd, "first");
+      yield* writeFile(cwd, "a.txt", "v2");
+      yield* writeFile(cwd, "c.txt", "new");
+
+      const error = yield* workflow.discard({ cwd, paths: ["c.txt\0*"] }).pipe(Effect.flip);
+
+      assert.equal(error.detail, "File paths cannot contain NUL characters.");
+      assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "M a.txt\n?? c.txt");
+    }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-discard-nul-"))),
+  );
   it.effect("discard should fail and keep the directory when the path is a nested repository", () =>
     Effect.gen(function* () {
       const workflow = yield* GitWorkflowService.GitWorkflowService;
@@ -545,6 +560,51 @@ it.layer(NodeServices.layer)("GitWorkflowService", (it) => {
 
         assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "?? debug.log");
       }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-discard-all-gitignore-"))),
+  );
+  it.effect(
+    "discardAll should succeed when the leftover is a directory a discarded gitignore used to ignore",
+    () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const cwd = yield* makeEmptyRepo("t3-discard-all-ignored-dir-");
+        yield* writeFile(cwd, "a.txt", "v1");
+        yield* commitAll(cwd, "first");
+        yield* writeFile(cwd, ".gitignore", "big/\n");
+        yield* runGit(cwd, ["init", "-q", "big"]);
+        yield* runGit(cwd, ["-C", "big", "rev-parse", "--git-dir"]);
+        const fileSystem = yield* FileSystem.FileSystem;
+        yield* fileSystem.remove(`${cwd}/big/.git`, { recursive: true });
+        yield* writeFile(cwd, "big/x.txt", "x");
+
+        yield* workflow.discardAll({ cwd });
+
+        assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "?? big/");
+      }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-discard-all-ignored-dir-"))),
+  );
+  it.effect(
+    "discardAll should fail when a nested repository sorts after more leftover output than the output cap",
+    () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const cwd = yield* makeEmptyRepo("t3-discard-all-many-leftover-");
+        yield* writeFile(cwd, "a.txt", "v1");
+        yield* commitAll(cwd, "first");
+        yield* writeFile(cwd, ".gitignore", "big/\n");
+        yield* fileSystem.makeDirectory(`${cwd}/big`);
+        const stem = "g".repeat(225);
+        yield* Effect.forEach(
+          Array.from({ length: 5000 }, (_, index) => index),
+          (index) => fileSystem.writeFileString(`${cwd}/big/${stem}-${index}.js`, ""),
+          { concurrency: 32, discard: true },
+        );
+        yield* runGit(cwd, ["init", "-q", "zz"]);
+        yield* writeFile(cwd, "zz/x.txt", "x");
+
+        const error = yield* workflow.discardAll({ cwd }).pipe(Effect.flip);
+
+        assert.equal(error.detail, "Nested Git repositories were left in place.");
+      }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-discard-all-many-leftover-"))),
   );
   it.effect("stashPush should include untracked files when a message is given", () =>
     Effect.gen(function* () {
@@ -683,6 +743,40 @@ it.layer(NodeServices.layer)("GitWorkflowService", (it) => {
         assert.equal(yield* readFile(cwd, "f.txt"), "stashed");
         assert.equal(yield* runGit(cwd, ["stash", "list"]), "");
       }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-stash-many-untracked-"))),
+  );
+  it.effect(
+    "stashAction should report a partial apply when many unrelated tracked edits overflow the output cap",
+    () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const cwd = yield* makeEmptyRepo("t3-stash-partial-many-");
+        const stem = "a".repeat(225);
+        const names = Array.from({ length: 4500 }, (_, index) => `${stem}-${index}.txt`);
+        const writeAll = (content: string) =>
+          Effect.forEach(names, (name) => fileSystem.writeFileString(`${cwd}/${name}`, content), {
+            concurrency: 32,
+            discard: true,
+          });
+        yield* writeAll("v1");
+        yield* writeFile(cwd, "zzz.txt", "v1");
+        yield* runGit(cwd, ["add", "-A"]);
+        yield* runGit(cwd, [...identity, "commit", "-q", "-m", "first"]);
+        yield* writeFile(cwd, "zzz.txt", "stashed");
+        yield* writeFile(cwd, "zzz-new.txt", "stashed new");
+        yield* runGit(cwd, ["stash", "push", "-u", "-q", "--", "zzz.txt", "zzz-new.txt"]);
+        // Sorted before zzz.txt, these push its `diff --raw` record past a 1 MB cap.
+        yield* writeAll("v2");
+        yield* writeFile(cwd, "zzz-new.txt", "mine");
+        const hash = yield* stashHash(cwd, 0);
+
+        const error = yield* workflow
+          .stashAction({ cwd, action: "pop", index: 0, hash })
+          .pipe(Effect.flip);
+
+        assert.equal(error._tag, "GitStashPartiallyAppliedError");
+        assert.equal(yield* readFile(cwd, "zzz.txt"), "stashed");
+      }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-stash-partial-many-"))),
   );
   it.effect("stashAction should apply by hash and keep the stash when action is apply", () =>
     Effect.gen(function* () {

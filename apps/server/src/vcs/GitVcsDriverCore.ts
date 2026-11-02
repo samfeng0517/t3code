@@ -198,6 +198,7 @@ interface ExecuteGitOptions {
   env?: NodeJS.ProcessEnv | undefined;
   maxOutputBytes?: number | undefined;
   appendTruncationMarker?: boolean | undefined;
+  keepLineCallbacksAfterTruncation?: boolean | undefined;
   progress?: GitVcsDriver.ExecuteGitProgress | undefined;
   writesSharedConfig?: boolean | undefined;
 }
@@ -1188,6 +1189,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       ...(options.maxOutputBytes !== undefined ? { maxOutputBytes: options.maxOutputBytes } : {}),
       ...(options.appendTruncationMarker !== undefined
         ? { appendTruncationMarker: options.appendTruncationMarker }
+        : {}),
+      ...(options.keepLineCallbacksAfterTruncation
+        ? { keepLineCallbacksAfterTruncation: true }
         : {}),
       ...(options.progress ? { progress: options.progress } : {}),
       ...(options.writesSharedConfig ? { writesSharedConfig: true } : {}),
@@ -5279,16 +5283,36 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
   // "Stage all" can name tens of thousands of paths; argv would overflow ARG_MAX.
   const pathspecStdinArgs = ["--pathspec-from-file=-", "--pathspec-file-nul"];
-  // A NUL inside a path would split it into a second pathspec without `:(top,literal)`.
-  const pathspecStdin = (operation: string, cwd: string, paths: readonly string[]) =>
+  // A NUL inside a path would split a stdin pathspec list, or make spawn throw for argv.
+  const rejectNulPaths = (operation: string, cwd: string, paths: readonly string[]) =>
     paths.some((path) => path.includes("\0"))
       ? Effect.fail(
           new GitCommandError({
-            ...gitCommandContext({ operation, cwd, args: pathspecStdinArgs }),
+            ...gitCommandContext({ operation, cwd, args: [] }),
             detail: "File paths cannot contain NUL characters.",
           }),
         )
-      : Effect.succeed(`${pathspecs(paths).join("\0")}\0`);
+      : Effect.void;
+  const pathspecStdin = (operation: string, cwd: string, paths: readonly string[]) =>
+    rejectNulPaths(operation, cwd, paths).pipe(Effect.as(`${pathspecs(paths).join("\0")}\0`));
+
+  /** Feeds every stdout line to `onLine` while keeping only a small text buffer. */
+  const streamGitLines = (
+    operation: string,
+    cwd: string,
+    args: readonly string[],
+    onLine: (line: string) => void,
+    options: { readonly allowNonZeroExit?: boolean; readonly fallbackErrorDetail?: string } = {},
+  ) =>
+    executeGit(operation, cwd, args, {
+      ...options,
+      timeoutMs: 10_000,
+      maxOutputBytes: 64 * 1024,
+      appendTruncationMarker: true,
+      keepLineCallbacksAfterTruncation: true,
+      env: { GIT_OPTIONAL_LOCKS: "0", LC_ALL: "C" },
+      progress: { onStdoutLine: (line) => Effect.sync(() => onLine(line)) },
+    });
 
   const stagePaths: GitVcsDriver.GitVcsDriver["Service"]["stagePaths"] = Effect.fn("stagePaths")(
     function* (input) {
@@ -5348,6 +5372,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         detail: "Nested Git repositories are not discarded.",
       });
     }
+    yield* rejectNulPaths(operation, input.cwd, input.paths);
     const specs = pathspecs(input.paths);
     const listed = yield* executeGitWithStableDiagnostics(
       operation,
@@ -5390,17 +5415,27 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         options,
       );
       yield* executeGitWithStableDiagnostics(operation, input.cwd, ["clean", "-fd", "-q"], options);
-      // `clean -fd` leaves untracked nested repositories (listed as `dir/`), so their row stays.
-      // Other leftovers, such as files a discarded .gitignore used to ignore, are not errors.
-      const leftover = yield* executeGitWithStableDiagnostics(
+      // `clean -fd` leaves untracked nested repositories, so their row stays. Other leftovers,
+      // such as what a discarded .gitignore used to ignore, are not errors. Quoted (unusual)
+      // directory names cannot be checked and count as nested.
+      const leftoverDirectories: string[] = [];
+      yield* streamGitLines(
         operation,
         input.cwd,
-        ["ls-files", "-z", "--others", "--exclude-standard"],
-        { ...options, maxOutputBytes: 1_000_000, appendTruncationMarker: true },
+        ["-c", "core.quotePath=false", "ls-files", "--others", "--exclude-standard", "--directory"],
+        (line) => {
+          if (line.endsWith("/") || line.endsWith('/"')) leftoverDirectories.push(line);
+        },
+        { fallbackErrorDetail: options.fallbackErrorDetail },
       );
-      const leftoverPaths = leftover.stdout.split("\0");
-      if (leftover.stdoutTruncated) leftoverPaths.pop();
-      if (leftoverPaths.some((path) => path.endsWith("/"))) {
+      const nested = yield* Effect.forEach(leftoverDirectories, (entry) =>
+        entry.startsWith('"')
+          ? Effect.succeed(true)
+          : fileSystem
+              .exists(path.join(input.cwd, entry, ".git"))
+              .pipe(Effect.orElseSucceed(() => true)),
+      );
+      if (nested.includes(true)) {
         return yield* new GitCommandError({
           ...gitCommandContext({ operation, cwd: input.cwd, args: ["clean", "-fd"] }),
           detail: "Nested Git repositories were left in place.",
@@ -5447,27 +5482,42 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         drop: "Could not delete the stash.",
       }[input.action];
       const action = input.action;
+      // Streams the whole output into a hash, so a large listing neither overflows nor truncates.
       const readState = (args: readonly string[]) =>
-        executeGit(operation, input.cwd, args, {
-          allowNonZeroExit: true,
-          maxOutputBytes: 1_000_000,
-          appendTruncationMarker: true,
-          env: { GIT_OPTIONAL_LOCKS: "0" },
-        }).pipe(Effect.map((result) => result.stdout));
-      // Bounded fingerprint: tracked edits plus untracked entries with whole new directories
-      // collapsed, so a large generated folder cannot overflow it. A failed read skips detection.
+        Effect.suspend(() => {
+          // Two FNV-1a lanes: a change detector over git's own output, not a security hash.
+          let low = 0x811c9dc5;
+          let high = 0x01000193;
+          let lines = 0;
+          return streamGitLines(
+            operation,
+            input.cwd,
+            args,
+            (line) => {
+              lines += 1;
+              for (let index = 0; index <= line.length; index++) {
+                const code = index < line.length ? line.charCodeAt(index) : 10;
+                low = Math.imul(low ^ code, 0x01000193);
+                high = Math.imul(high ^ code, 0x5bd1e995) ^ (low >>> 15);
+              }
+            },
+            { allowNonZeroExit: true },
+          ).pipe(Effect.map(() => ({ lines, digest: `${low >>> 0}.${high >>> 0}` })));
+        });
+      // Tracked edits plus untracked entries with whole new directories collapsed. A failed
+      // read skips detection rather than blocking the apply.
       const readWorktreeState = Effect.all(
         [
-          readState(["ls-files", "-u", "-z"]),
-          readState(["diff", "--raw", "-z"]),
-          readState(["diff", "--cached", "--raw", "-z"]),
-          readState(["ls-files", "-z", "--others", "--exclude-standard", "--directory"]),
+          readState(["ls-files", "-u"]),
+          readState(["diff", "--raw"]),
+          readState(["diff", "--cached", "--raw"]),
+          readState(["ls-files", "--others", "--exclude-standard", "--directory"]),
         ],
         { concurrency: "unbounded" },
       ).pipe(
         Effect.map(([unmerged, ...rest]) => ({
-          unmerged: unmerged.length > 0,
-          fingerprint: rest.join("\0\0"),
+          unmerged: unmerged.lines > 0,
+          fingerprint: rest.map((state) => `${state.lines}:${state.digest}`).join(" "),
         })),
         Effect.orElseSucceed(() => null),
       );
