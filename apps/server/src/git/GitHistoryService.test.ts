@@ -671,4 +671,178 @@ describe("GitHistoryService", () => {
       }),
     ),
   );
+
+  it.effect(
+    "workingTreeStatus should list a partially staged file with both statuses and sum numstat totals when index and worktree differ",
+    () =>
+      inWorkspace((workspace) =>
+        Effect.gen(function* () {
+          const repo = yield* makeRepo(workspace);
+          yield* writeAndAdd(repo, "a.txt", "1\n2\n3\n");
+          yield* commit(repo, "root");
+          yield* writeAndAdd(repo, "a.txt", "1\n2\n3\n4\n5\n");
+          yield* writeFile(repo, "a.txt", "1\n2\n3\n4\n5\n6\n");
+
+          const history = yield* GitHistoryService.GitHistoryService;
+          const status = yield* history.workingTreeStatus({ cwd: repo });
+
+          assert.deepEqual(status, {
+            isRepo: true,
+            files: [
+              {
+                path: "a.txt",
+                previousPath: null,
+                indexStatus: "modified",
+                worktreeStatus: "modified",
+                conflicted: false,
+              },
+            ],
+            insertions: 3,
+            deletions: 0,
+          });
+        }),
+      ),
+  );
+
+  it.effect(
+    "workingTreeStatus should report renamed with previousPath and untracked files when both exist",
+    () =>
+      inWorkspace((workspace) =>
+        Effect.gen(function* () {
+          const repo = yield* makeRepo(workspace);
+          yield* writeAndAdd(repo, "old name.txt", "one\ntwo\nthree\nfour\n");
+          yield* commit(repo, "root");
+          yield* gitIn(repo, ["mv", "old name.txt", "new name.txt"]);
+          yield* writeFile(repo, "fresh.txt", "x\n");
+
+          const history = yield* GitHistoryService.GitHistoryService;
+          const status = yield* history.workingTreeStatus({ cwd: repo });
+
+          assert.deepEqual(status.files, [
+            {
+              path: "new name.txt",
+              previousPath: "old name.txt",
+              indexStatus: "renamed",
+              worktreeStatus: null,
+              conflicted: false,
+            },
+            {
+              path: "fresh.txt",
+              previousPath: null,
+              indexStatus: null,
+              worktreeStatus: "untracked",
+              conflicted: false,
+            },
+          ]);
+          assert.equal(status.insertions, 0);
+        }),
+      ),
+  );
+
+  it.effect("workingTreeStatus should mark a merge conflict as conflicted when a merge stops", () =>
+    inWorkspace((workspace) =>
+      Effect.gen(function* () {
+        const repo = yield* makeRepo(workspace);
+        yield* writeAndAdd(repo, "c.txt", "base\n");
+        yield* commit(repo, "root");
+        yield* gitIn(repo, ["switch", "-c", "feature"]);
+        yield* writeAndAdd(repo, "c.txt", "feature\n");
+        yield* commit(repo, "feature");
+        yield* gitIn(repo, ["switch", "main"]);
+        yield* writeAndAdd(repo, "c.txt", "main\n");
+        yield* commit(repo, "main change");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.execute({
+          operation: "test.merge",
+          cwd: repo,
+          args: [...identity, "merge", "feature"],
+          allowNonZeroExit: true,
+        });
+
+        const history = yield* GitHistoryService.GitHistoryService;
+        const status = yield* history.workingTreeStatus({ cwd: repo });
+
+        assert.deepEqual(status.files, [
+          {
+            path: "c.txt",
+            previousPath: null,
+            indexStatus: null,
+            worktreeStatus: "modified",
+            conflicted: true,
+          },
+        ]);
+      }),
+    ),
+  );
+
+  it.effect("workingTreeStatus should list staged files when HEAD is unborn", () =>
+    inWorkspace((workspace) =>
+      Effect.gen(function* () {
+        const repo = yield* makeRepo(workspace);
+        yield* writeAndAdd(repo, "first.txt", "a\nb\n");
+
+        const history = yield* GitHistoryService.GitHistoryService;
+        const status = yield* history.workingTreeStatus({ cwd: repo });
+
+        assert.deepEqual(status.files, [
+          {
+            path: "first.txt",
+            previousPath: null,
+            indexStatus: "added",
+            worktreeStatus: null,
+            conflicted: false,
+          },
+        ]);
+        assert.equal(status.insertions, 2);
+      }),
+    ),
+  );
+
+  it.effect(
+    "workingTreeFileDiff should return different patches for the staged and unstaged areas when a file is partially staged",
+    () =>
+      inWorkspace((workspace) =>
+        Effect.gen(function* () {
+          const repo = yield* makeRepo(workspace);
+          yield* writeAndAdd(repo, "a.txt", "1\n");
+          yield* commit(repo, "root");
+          yield* writeAndAdd(repo, "a.txt", "1\nstaged line\n");
+          yield* writeFile(repo, "a.txt", "1\nstaged line\nunstaged line\n");
+
+          const history = yield* GitHistoryService.GitHistoryService;
+          const base = { cwd: repo, path: "a.txt", previousPath: null };
+          const staged = yield* history.workingTreeFileDiff({ ...base, area: "staged" });
+          const unstaged = yield* history.workingTreeFileDiff({ ...base, area: "unstaged" });
+
+          assert.include(staged.diff, "+staged line");
+          assert.notInclude(staged.diff, "unstaged line");
+          assert.include(unstaged.diff, "+unstaged line");
+          assert.notInclude(unstaged.diff, "+staged line");
+          assert.notEqual(staged.diffHash, unstaged.diffHash);
+          assert.isFalse(staged.truncated);
+        }),
+      ),
+  );
+
+  it.effect("workingTreeFileDiff should return the whole new file when the area is untracked", () =>
+    inWorkspace((workspace) =>
+      Effect.gen(function* () {
+        const repo = yield* makeRepo(workspace);
+        yield* commit(repo, "root");
+        yield* writeFile(repo, "new.txt", "hello\nworld\n");
+
+        const history = yield* GitHistoryService.GitHistoryService;
+        const result = yield* history.workingTreeFileDiff({
+          cwd: repo,
+          path: "new.txt",
+          previousPath: null,
+          area: "untracked",
+        });
+
+        assert.include(result.diff, "+++ b/new.txt");
+        assert.include(result.diff, "+hello");
+        assert.include(result.diff, "+world");
+      }),
+    ),
+  );
 });

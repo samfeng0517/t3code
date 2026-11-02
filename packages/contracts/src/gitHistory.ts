@@ -162,6 +162,48 @@ export const GitCommitFileDiffResult = Schema.Struct({
 });
 export type GitCommitFileDiffResult = typeof GitCommitFileDiffResult.Type;
 
+export const GitWorkingTreeFileStatus = Schema.Literals([
+  "modified",
+  "added",
+  "deleted",
+  "renamed",
+  "untracked",
+]);
+export type GitWorkingTreeFileStatus = typeof GitWorkingTreeFileStatus.Type;
+
+export const GitWorkingTreeFile = Schema.Struct({
+  path: Schema.String,
+  previousPath: Schema.NullOr(Schema.String),
+  indexStatus: Schema.NullOr(GitWorkingTreeFileStatus),
+  worktreeStatus: Schema.NullOr(GitWorkingTreeFileStatus),
+  conflicted: Schema.Boolean,
+});
+export type GitWorkingTreeFile = typeof GitWorkingTreeFile.Type;
+
+export const GitWorkingTreeStatusInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+});
+export type GitWorkingTreeStatusInput = typeof GitWorkingTreeStatusInput.Type;
+
+export const GitWorkingTreeStatusResult = Schema.Struct({
+  isRepo: Schema.Boolean,
+  files: Schema.Array(GitWorkingTreeFile),
+  insertions: NonNegativeInt,
+  deletions: NonNegativeInt,
+});
+export type GitWorkingTreeStatusResult = typeof GitWorkingTreeStatusResult.Type;
+
+export const GitWorkingTreeDiffArea = Schema.Literals(["staged", "unstaged", "untracked"]);
+export type GitWorkingTreeDiffArea = typeof GitWorkingTreeDiffArea.Type;
+
+export const GitWorkingTreeFileDiffInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  path: Schema.NonEmptyString,
+  previousPath: Schema.NullOr(Schema.NonEmptyString),
+  area: GitWorkingTreeDiffArea,
+});
+export type GitWorkingTreeFileDiffInput = typeof GitWorkingTreeFileDiffInput.Type;
+
 export class GitHistoryTipsExpiredError extends Schema.TaggedError<GitHistoryTipsExpiredError>()(
   "GitHistoryTipsExpiredError",
   {

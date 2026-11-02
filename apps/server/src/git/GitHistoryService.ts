@@ -8,6 +8,7 @@ import * as Path from "effect/Path";
 
 import {
   GIT_HISTORY_PAGE_SIZE,
+  GitCommandError,
   GitHistoryTipsExpiredError,
   VcsRepositoryDetectionError,
   type GitCommitDetailInput,
@@ -23,6 +24,11 @@ import {
   type GitHistoryRefsInput,
   type GitHistoryRefsResult,
   type GitLogCommit,
+  type GitWorkingTreeFile,
+  type GitWorkingTreeFileDiffInput,
+  type GitWorkingTreeFileStatus,
+  type GitWorkingTreeStatusInput,
+  type GitWorkingTreeStatusResult,
 } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
@@ -61,6 +67,12 @@ export class GitHistoryService extends Context.Service<
     ) => Effect.Effect<GitCommitDetailResult, GitHistoryError>;
     readonly commitFileDiff: (
       input: GitCommitFileDiffInput,
+    ) => Effect.Effect<GitCommitFileDiffResult, GitHistoryError>;
+    readonly workingTreeStatus: (
+      input: GitWorkingTreeStatusInput,
+    ) => Effect.Effect<GitWorkingTreeStatusResult, GitHistoryError>;
+    readonly workingTreeFileDiff: (
+      input: GitWorkingTreeFileDiffInput,
     ) => Effect.Effect<GitCommitFileDiffResult, GitHistoryError>;
   }
 >()("t3/git/GitHistoryService") {}
@@ -209,12 +221,86 @@ function parseNameStatus(stdout: string): Map<string, GitCommitFileStat["status"
   return statuses;
 }
 
+const PORCELAIN_FIELDS_BEFORE_PATH = { "1": 8, "2": 9, u: 10 } as const;
+const WORKING_TREE_DIFF_FLAGS = [
+  "--no-color",
+  "--no-ext-diff",
+  "--no-textconv",
+  "--src-prefix=a/",
+  "--dst-prefix=b/",
+];
+
+function porcelainStatus(letter: string | undefined): GitWorkingTreeFileStatus | null {
+  switch (letter) {
+    case "M":
+    case "T":
+      return "modified";
+    case "A":
+    case "C":
+      return "added";
+    case "D":
+      return "deleted";
+    case "R":
+      return "renamed";
+    default:
+      return null;
+  }
+}
+
+/** Parses `status --porcelain=v2 -z`, keeping git's order. */
+function parseWorkingTreeStatus(stdout: string): GitWorkingTreeFile[] {
+  const fields = stdout.split("\0");
+  const files: GitWorkingTreeFile[] = [];
+  for (let index = 0; index < fields.length; index++) {
+    const record = fields[index]!;
+    const kind = record[0];
+    if (record.length < 3) continue;
+    if (kind === "?") {
+      files.push({
+        path: record.slice(2),
+        previousPath: null,
+        indexStatus: null,
+        worktreeStatus: "untracked",
+        conflicted: false,
+      });
+      continue;
+    }
+    if (kind !== "1" && kind !== "2" && kind !== "u") continue;
+    // The path may contain spaces, so it is everything after the fixed fields.
+    let offset = 0;
+    for (let seen = 0; seen < PORCELAIN_FIELDS_BEFORE_PATH[kind]; seen++) {
+      offset = record.indexOf(" ", offset) + 1;
+    }
+    const path = record.slice(offset);
+    const xy = record.slice(2, 4);
+    if (kind === "u") {
+      files.push({
+        path,
+        previousPath: null,
+        indexStatus: null,
+        worktreeStatus: "modified",
+        conflicted: true,
+      });
+      continue;
+    }
+    files.push({
+      path,
+      previousPath: kind === "2" ? (fields[++index] ?? null) : null,
+      indexStatus: porcelainStatus(xy[0]),
+      worktreeStatus: porcelainStatus(xy[1]),
+      conflicted: false,
+    });
+  }
+  return files;
+}
+
 /** @public */
 export const make = Effect.gen(function* () {
   const git = yield* GitVcsDriver.GitVcsDriver;
   const registry = yield* VcsDriverRegistry.VcsDriverRegistry;
   const crypto = yield* Crypto.Crypto;
   const path = yield* Path.Path;
+  const fileSystem = yield* FileSystem.FileSystem;
   const workspaceContext = yield* Effect.context<
     ServerConfig.ServerConfig | FileSystem.FileSystem | Path.Path | KnownWorkspaces.KnownWorkspaces
   >();
@@ -681,7 +767,161 @@ export const make = Effect.gen(function* () {
     return { diff: result.stdout, truncated: result.stdoutTruncated, diffHash };
   });
 
-  return GitHistoryService.of({ logPage, fingerprint, refs, commitDetail, commitFileDiff });
+  /** `HEAD`, or the empty tree while HEAD is unborn (hashed so SHA-256 repositories work). */
+  const resolveWorkingTreeBase = Effect.fn("GitHistoryService.resolveWorkingTreeBase")(function* (
+    operation: string,
+    repoRoot: string,
+  ) {
+    const head = yield* run(
+      `${operation}.head`,
+      repoRoot,
+      ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
+      { allowNonZeroExit: true },
+    );
+    if (head.exitCode === 0) return "HEAD";
+    return (yield* run(
+      `${operation}.emptyTree`,
+      repoRoot,
+      ["hash-object", "-t", "tree", "--stdin"],
+      {
+        stdin: "",
+      },
+    )).stdout.trim();
+  });
+
+  const workingTreeStatus: GitHistoryService["Service"]["workingTreeStatus"] = Effect.fn(
+    "GitHistoryService.workingTreeStatus",
+  )(function* (input) {
+    const operation = "GitHistoryService.workingTreeStatus";
+    const repoRoot = yield* resolveRepoRoot(operation, input.cwd);
+    if (repoRoot === null) return { isRepo: false, files: [], insertions: 0, deletions: 0 };
+
+    const indexPath = (yield* run(`${operation}.indexPath`, repoRoot, [
+      "rev-parse",
+      "--git-path",
+      "index",
+    ])).stdout.trim();
+    const lockError = new GitCommandError({
+      operation: `${operation}.indexPath`,
+      command: "git",
+      cwd: repoRoot,
+      detail: "Git index is locked. Status will resume when the index lock is removed.",
+    });
+    const locked = yield* fileSystem.exists(`${path.resolve(repoRoot, indexPath)}.lock`).pipe(
+      Effect.mapError(
+        (cause) =>
+          new GitCommandError({
+            ...lockError,
+            detail: "Failed to check the Git index lock.",
+            cause,
+          }),
+      ),
+    );
+    if (locked) return yield* lockError;
+
+    const base = yield* resolveWorkingTreeBase(operation, repoRoot);
+    const options = { maxOutputBytes: LARGE_OUTPUT_MAX_BYTES };
+    const [status, staged, unstaged] = yield* Effect.all(
+      [
+        run(
+          `${operation}.status`,
+          repoRoot,
+          ["status", "--porcelain=v2", "-z", "--untracked-files=all", "--renames"],
+          options,
+        ),
+        run(
+          `${operation}.staged`,
+          repoRoot,
+          ["diff-index", "--cached", "--numstat", "-z", "-M", base, "--"],
+          options,
+        ),
+        run(`${operation}.unstaged`, repoRoot, ["diff-files", "--numstat", "-z"], options),
+      ],
+      { concurrency: "unbounded" },
+    );
+
+    let insertions = 0;
+    let deletions = 0;
+    for (const file of [
+      ...parseReviewNumstat(staged.stdout),
+      ...parseReviewNumstat(unstaged.stdout),
+    ]) {
+      insertions += file.additions;
+      deletions += file.deletions;
+    }
+    return {
+      isRepo: true,
+      files: parseWorkingTreeStatus(status.stdout),
+      insertions,
+      deletions,
+    };
+  });
+
+  const workingTreeFileDiff: GitHistoryService["Service"]["workingTreeFileDiff"] = Effect.fn(
+    "GitHistoryService.workingTreeFileDiff",
+  )(function* (input) {
+    const operation = "GitHistoryService.workingTreeFileDiff";
+    const repoRoot = yield* requireRepoRoot(operation, input.cwd);
+    const pathspec = (value: string) => `:(top,literal)${value}`;
+    const limits = { maxOutputBytes: FILE_DIFF_MAX_BYTES, appendTruncationMarker: true } as const;
+    let result;
+    if (input.area === "staged") {
+      const base = yield* resolveWorkingTreeBase(operation, repoRoot);
+      result = yield* git.execute({
+        operation: `${operation}.staged`,
+        cwd: repoRoot,
+        args: [
+          "diff-index",
+          "--cached",
+          "-p",
+          "-M",
+          ...WORKING_TREE_DIFF_FLAGS,
+          base,
+          "--",
+          ...[input.path, ...(input.previousPath === null ? [] : [input.previousPath])].map(
+            pathspec,
+          ),
+        ],
+        ...limits,
+      });
+    } else if (input.area === "unstaged") {
+      result = yield* git.execute({
+        operation: `${operation}.unstaged`,
+        cwd: repoRoot,
+        args: ["diff-files", "-p", ...WORKING_TREE_DIFF_FLAGS, "--", pathspec(input.path)],
+        ...limits,
+      });
+    } else {
+      result = yield* git.execute({
+        operation: `${operation}.untracked`,
+        cwd: repoRoot,
+        args: ["diff", "--no-index", ...WORKING_TREE_DIFF_FLAGS, "--", "/dev/null", input.path],
+        allowNonZeroExit: true,
+        ...limits,
+      });
+      // Exit 1 only means the files differ.
+      if (result.exitCode > 1) {
+        return yield* new GitCommandError({
+          operation: `${operation}.untracked`,
+          command: "git",
+          cwd: repoRoot,
+          detail: result.stderr.trim() || "git diff --no-index failed.",
+        });
+      }
+    }
+    const diffHash = yield* sha256Hex(result.stdout);
+    return { diff: result.stdout, truncated: result.stdoutTruncated, diffHash };
+  });
+
+  return GitHistoryService.of({
+    logPage,
+    fingerprint,
+    refs,
+    commitDetail,
+    commitFileDiff,
+    workingTreeStatus,
+    workingTreeFileDiff,
+  });
 });
 
 export const layer = Layer.effect(GitHistoryService, make);
