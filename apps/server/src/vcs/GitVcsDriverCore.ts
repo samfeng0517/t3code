@@ -24,6 +24,8 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import {
   GitCommandError,
+  GitStashConflictError,
+  GitStashMovedError,
   type GitCommandFailureReason,
   T3_PROJECT_FILE_NAME,
   type ReviewBranchCommitsInput,
@@ -5255,6 +5257,158 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     },
   );
 
+  const pathspecs = (paths: readonly string[]) => paths.map((path) => `:(top,literal)${path}`);
+
+  const headExists = (operation: string, cwd: string) =>
+    executeGit(operation, cwd, ["rev-parse", "--verify", "-q", "HEAD"], {
+      allowNonZeroExit: true,
+    }).pipe(Effect.map((result) => result.exitCode === 0));
+
+  const stagePaths: GitVcsDriver.GitVcsDriver["Service"]["stagePaths"] = Effect.fn("stagePaths")(
+    function* (input) {
+      yield* executeGitWithStableDiagnostics(
+        "GitVcsDriver.stagePaths",
+        input.cwd,
+        ["add", "-A", "--", ...pathspecs(input.paths)],
+        { timeoutMs: 10_000, fallbackErrorDetail: "Could not stage the selected files." },
+      );
+    },
+  );
+
+  const stageAll: GitVcsDriver.GitVcsDriver["Service"]["stageAll"] = Effect.fn("stageAll")(
+    function* (cwd) {
+      yield* executeGitWithStableDiagnostics("GitVcsDriver.stageAll", cwd, ["add", "-A"], {
+        timeoutMs: 10_000,
+        fallbackErrorDetail: "Could not stage the selected files.",
+      });
+    },
+  );
+
+  const unstagePaths: GitVcsDriver.GitVcsDriver["Service"]["unstagePaths"] = Effect.fn(
+    "unstagePaths",
+  )(function* (input) {
+    const operation = "GitVcsDriver.unstagePaths";
+    const specs = pathspecs(input.paths);
+    const args = (yield* headExists(operation, input.cwd))
+      ? ["restore", "--staged", "--", ...specs]
+      : ["rm", "--cached", "-q", "--", ...specs];
+    yield* executeGitWithStableDiagnostics(operation, input.cwd, args, {
+      timeoutMs: 10_000,
+      fallbackErrorDetail: "Could not unstage the selected files.",
+    });
+  });
+
+  const discardPaths: GitVcsDriver.GitVcsDriver["Service"]["discardPaths"] = Effect.fn(
+    "discardPaths",
+  )(function* (input) {
+    const operation = "GitVcsDriver.discardPaths";
+    const options = {
+      timeoutMs: 10_000,
+      fallbackErrorDetail: "Could not discard the selected changes.",
+    };
+    const specs = pathspecs(input.paths);
+    const listed = yield* executeGitWithStableDiagnostics(
+      operation,
+      input.cwd,
+      ["ls-files", "-z", "--full-name", "--others", "--exclude-standard", "--", ...specs],
+      options,
+    );
+    const untracked = new Set(listed.stdout.split("\0").filter((path) => path.length > 0));
+    // Paths are repo-root relative; --full-name keeps the listing in the same form.
+    const untrackedSpecs = input.paths.filter((path) => untracked.has(path));
+    const trackedSpecs = input.paths.filter((path) => !untracked.has(path));
+    if (trackedSpecs.length > 0) {
+      yield* executeGitWithStableDiagnostics(
+        operation,
+        input.cwd,
+        ["restore", "--worktree", "--", ...pathspecs(trackedSpecs)],
+        options,
+      );
+    }
+    if (untrackedSpecs.length > 0) {
+      yield* executeGitWithStableDiagnostics(
+        operation,
+        input.cwd,
+        ["clean", "-f", "-q", "--", ...pathspecs(untrackedSpecs)],
+        options,
+      );
+    }
+  });
+
+  const discardAll: GitVcsDriver.GitVcsDriver["Service"]["discardAll"] = Effect.fn("discardAll")(
+    function* (input) {
+      const operation = "GitVcsDriver.discardAll";
+      const options = { timeoutMs: 10_000, fallbackErrorDetail: "Could not discard all changes." };
+      yield* executeGitWithStableDiagnostics(
+        operation,
+        input.cwd,
+        (yield* headExists(operation, input.cwd))
+          ? ["reset", "--hard", "-q", "HEAD"]
+          : ["read-tree", "--empty"],
+        options,
+      );
+      yield* executeGitWithStableDiagnostics(operation, input.cwd, ["clean", "-fd", "-q"], options);
+    },
+  );
+
+  const stashPush: GitVcsDriver.GitVcsDriver["Service"]["stashPush"] = Effect.fn("stashPush")(
+    function* (input) {
+      yield* executeGitWithStableDiagnostics(
+        "GitVcsDriver.stashPush",
+        input.cwd,
+        ["stash", "push", "-u", ...(input.message === undefined ? [] : ["-m", input.message])],
+        { timeoutMs: 10_000, fallbackErrorDetail: "Could not stash the changes." },
+      );
+    },
+  );
+
+  const stashAction: GitVcsDriver.GitVcsDriver["Service"]["stashAction"] = Effect.fn("stashAction")(
+    function* (input) {
+      const operation = "GitVcsDriver.stashAction";
+      const ref = `stash@{${input.index}}`;
+      if (input.action !== "apply") {
+        const current = yield* executeGit(
+          operation,
+          input.cwd,
+          ["rev-parse", "--verify", "-q", ref],
+          {
+            allowNonZeroExit: true,
+          },
+        );
+        if (current.exitCode !== 0 || current.stdout.trim() !== input.hash) {
+          return yield* new GitStashMovedError({ cwd: input.cwd, index: input.index });
+        }
+      }
+      const args =
+        input.action === "apply"
+          ? ["stash", "apply", "-q", input.hash]
+          : ["stash", input.action, "-q", ref];
+      const fallbackErrorDetail = {
+        apply: "Could not apply the stash.",
+        pop: "Could not pop the stash.",
+        drop: "Could not delete the stash.",
+      }[input.action];
+      const action = input.action;
+      yield* executeGitWithStableDiagnostics(operation, input.cwd, args, {
+        timeoutMs: 10_000,
+        fallbackErrorDetail,
+      }).pipe(
+        Effect.catchTags({
+          GitCommandError: Effect.fnUntraced(function* (error) {
+            if (action === "drop") return yield* error;
+            const unmerged = yield* executeGit(operation, input.cwd, ["ls-files", "-u", "-z"], {
+              allowNonZeroExit: true,
+            });
+            if (unmerged.stdout.length > 0) {
+              return yield* new GitStashConflictError({ cwd: input.cwd, action });
+            }
+            return yield* error;
+          }),
+        }),
+      );
+    },
+  );
+
   const deleteRemoteBranch: GitVcsDriver.GitVcsDriver["Service"]["deleteRemoteBranch"] = Effect.fn(
     "deleteRemoteBranch",
   )(function* (input) {
@@ -5489,6 +5643,13 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       return yield* withListRefsInvalidation(input.cwd, deleteTag(input));
     }),
     pushTag,
+    stagePaths,
+    stageAll,
+    unstagePaths,
+    discardPaths,
+    discardAll,
+    stashPush,
+    stashAction,
     deleteRemoteBranch: Effect.fnUntraced(function* (input) {
       return yield* withListRefsInvalidation(input.cwd, deleteRemoteBranch(input));
     }),

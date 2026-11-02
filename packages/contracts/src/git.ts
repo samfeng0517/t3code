@@ -219,6 +219,32 @@ export const VcsDeleteBranchInput = Schema.Struct({
 });
 export type VcsDeleteBranchInput = typeof VcsDeleteBranchInput.Type;
 
+export const GitWorkingTreePathsInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  paths: Schema.Array(GitFilePath).check(Schema.isMinLength(1)),
+});
+export type GitWorkingTreePathsInput = typeof GitWorkingTreePathsInput.Type;
+
+export const GitDiscardAllInput = Schema.Struct({ cwd: TrimmedNonEmptyStringSchema });
+export type GitDiscardAllInput = typeof GitDiscardAllInput.Type;
+
+export const GitStashPushInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  message: Schema.optional(TrimmedNonEmptyStringSchema.check(Schema.isMaxLength(10_000))),
+});
+export type GitStashPushInput = typeof GitStashPushInput.Type;
+
+export const GitStashActionKind = Schema.Literals(["apply", "pop", "drop"]);
+export type GitStashActionKind = typeof GitStashActionKind.Type;
+
+export const GitStashActionInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  action: GitStashActionKind,
+  index: NonNegativeInt,
+  hash: GitObjectHash,
+});
+export type GitStashActionInput = typeof GitStashActionInput.Type;
+
 export const GitCreateTagInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
   tagName: TrimmedNonEmptyStringSchema,
@@ -458,6 +484,30 @@ export class GitBranchNotFullyMergedError extends Schema.TaggedError<GitBranchNo
 ) {
   override get message(): string {
     return "The branch has commits that are not fully merged.";
+  }
+}
+
+export class GitStashMovedError extends Schema.TaggedError<GitStashMovedError>()(
+  "GitStashMovedError",
+  {
+    cwd: Schema.String,
+    index: Schema.Number,
+  },
+) {
+  override get message(): string {
+    return "The stash list changed since it was read.";
+  }
+}
+
+export class GitStashConflictError extends Schema.TaggedError<GitStashConflictError>()(
+  "GitStashConflictError",
+  {
+    cwd: Schema.String,
+    action: Schema.Literals(["apply", "pop"]),
+  },
+) {
+  override get message(): string {
+    return "Applying the stash left merge conflicts; the stash was kept.";
   }
 }
 

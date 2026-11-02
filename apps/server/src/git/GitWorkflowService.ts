@@ -7,9 +7,15 @@ import {
   GitBranchNotFullyMergedError,
   GitManagerError,
   GitCommandError,
+  GitStashConflictError,
+  GitStashMovedError,
   type GitCreateTagInput,
   type GitDeleteTagInput,
   type GitPushTagInput,
+  type GitWorkingTreePathsInput,
+  type GitDiscardAllInput,
+  type GitStashPushInput,
+  type GitStashActionInput,
   type GitDeleteRemoteBranchInput,
   type VcsDeleteBranchInput,
   type VcsRenameBranchInput,
@@ -151,6 +157,14 @@ export class GitWorkflowService extends Context.Service<
     readonly createTag: (input: GitCreateTagInput) => Effect.Effect<void, GitCommandError>;
     readonly deleteTag: (input: GitDeleteTagInput) => Effect.Effect<void, GitCommandError>;
     readonly pushTag: (input: GitPushTagInput) => Effect.Effect<void, GitCommandError>;
+    readonly stage: (input: GitWorkingTreePathsInput) => Effect.Effect<void, GitCommandError>;
+    readonly unstage: (input: GitWorkingTreePathsInput) => Effect.Effect<void, GitCommandError>;
+    readonly discard: (input: GitWorkingTreePathsInput) => Effect.Effect<void, GitCommandError>;
+    readonly discardAll: (input: GitDiscardAllInput) => Effect.Effect<void, GitCommandError>;
+    readonly stashPush: (input: GitStashPushInput) => Effect.Effect<void, GitCommandError>;
+    readonly stashAction: (
+      input: GitStashActionInput,
+    ) => Effect.Effect<void, GitCommandError | GitStashMovedError | GitStashConflictError>;
     readonly deleteRemoteBranch: (
       input: GitDeleteRemoteBranchInput,
     ) => Effect.Effect<void, GitCommandError>;
@@ -582,6 +596,48 @@ export const make = Effect.gen(function* () {
     deleteTag: Effect.fn("GitWorkflowService.deleteTag")(function (input) {
       return ensureGitCommand("GitWorkflowService.deleteTag", input.cwd).pipe(
         Effect.andThen(git.deleteTag(input)),
+      );
+    }),
+    stage: Effect.fn("GitWorkflowService.stage")(function (input) {
+      return ensureGitCommand("GitWorkflowService.stage", input.cwd).pipe(
+        Effect.flatMap((handle) =>
+          withCheckoutLease(handle.repository.rootPath, git.stagePaths(input)),
+        ),
+      );
+    }),
+    unstage: Effect.fn("GitWorkflowService.unstage")(function (input) {
+      return ensureGitCommand("GitWorkflowService.unstage", input.cwd).pipe(
+        Effect.flatMap((handle) =>
+          withCheckoutLease(handle.repository.rootPath, git.unstagePaths(input)),
+        ),
+      );
+    }),
+    discard: Effect.fn("GitWorkflowService.discard")(function (input) {
+      return ensureGitCommand("GitWorkflowService.discard", input.cwd).pipe(
+        Effect.flatMap((handle) =>
+          withCheckoutLease(handle.repository.rootPath, git.discardPaths(input)),
+        ),
+      );
+    }),
+    discardAll: Effect.fn("GitWorkflowService.discardAll")(function (input) {
+      return ensureGitCommand("GitWorkflowService.discardAll", input.cwd).pipe(
+        Effect.flatMap((handle) =>
+          withCheckoutLease(handle.repository.rootPath, git.discardAll(input)),
+        ),
+      );
+    }),
+    stashPush: Effect.fn("GitWorkflowService.stashPush")(function (input) {
+      return ensureGitCommand("GitWorkflowService.stashPush", input.cwd).pipe(
+        Effect.flatMap((handle) =>
+          withCheckoutLease(handle.repository.rootPath, git.stashPush(input)),
+        ),
+      );
+    }),
+    stashAction: Effect.fn("GitWorkflowService.stashAction")(function (input) {
+      return ensureGitCommand("GitWorkflowService.stashAction", input.cwd).pipe(
+        Effect.flatMap((handle) =>
+          withCheckoutLease(handle.repository.rootPath, git.stashAction(input)),
+        ),
       );
     }),
     pushTag: Effect.fn("GitWorkflowService.pushTag")(function (input) {

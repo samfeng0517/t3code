@@ -12,6 +12,8 @@ import { ChildProcessSpawner } from "effect/process";
 
 import {
   GitCommandError,
+  GitStashConflictError,
+  GitStashMovedError,
   VcsProcessExitError,
   VcsUnsupportedOperationError,
   type VcsSwitchRefInput,
@@ -23,6 +25,10 @@ import {
   type GitCreateTagInput,
   type GitDeleteTagInput,
   type GitPushTagInput,
+  type GitWorkingTreePathsInput,
+  type GitDiscardAllInput,
+  type GitStashPushInput,
+  type GitStashActionInput,
   type GitDeleteRemoteBranchInput,
   type ReviewBranchCommitsInput,
   type ReviewBranchCommitsResult,
@@ -496,6 +502,23 @@ export class GitVcsDriver extends Context.Service<
     /** Deletes the local tag only; remotes keep theirs. */
     readonly deleteTag: (input: GitDeleteTagInput) => Effect.Effect<void, GitCommandError>;
     readonly pushTag: (input: GitPushTagInput) => Effect.Effect<void, GitCommandError>;
+    readonly stagePaths: (input: GitWorkingTreePathsInput) => Effect.Effect<void, GitCommandError>;
+    readonly stageAll: (cwd: string) => Effect.Effect<void, GitCommandError>;
+    readonly unstagePaths: (
+      input: GitWorkingTreePathsInput,
+    ) => Effect.Effect<void, GitCommandError>;
+    /** Restores tracked paths from the index and deletes untracked ones. */
+    readonly discardPaths: (
+      input: GitWorkingTreePathsInput,
+    ) => Effect.Effect<void, GitCommandError>;
+    /** Resets to HEAD and removes untracked files; ignored files stay. */
+    readonly discardAll: (input: GitDiscardAllInput) => Effect.Effect<void, GitCommandError>;
+    /** Stashes tracked and untracked changes. */
+    readonly stashPush: (input: GitStashPushInput) => Effect.Effect<void, GitCommandError>;
+    /** `pop` and `drop` fail when `stash@{index}` is no longer `hash`. */
+    readonly stashAction: (
+      input: GitStashActionInput,
+    ) => Effect.Effect<void, GitCommandError | GitStashMovedError | GitStashConflictError>;
     /** Deletes the branch on the remote; refuses the remote's default branch. */
     readonly deleteRemoteBranch: (
       input: GitDeleteRemoteBranchInput,

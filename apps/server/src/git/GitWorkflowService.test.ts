@@ -75,6 +75,34 @@ const withBareRemote = (cwd: string, prefix: string) =>
     yield* runGit(cwd, ["remote", "add", "origin", remote]);
   });
 
+const makeEmptyRepo = (prefix: string) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const cwd = yield* fileSystem.makeTempDirectoryScoped({ prefix });
+    yield* runGit(cwd, ["init", "-b", "main"]);
+    return cwd;
+  });
+
+const writeFile = (cwd: string, name: string, content: string) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    yield* fileSystem.writeFileString(`${cwd}/${name}`, content);
+  });
+
+const readFile = (cwd: string, name: string) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    return yield* fileSystem.readFileString(`${cwd}/${name}`);
+  });
+
+const commitAll = (cwd: string, message: string) =>
+  Effect.gen(function* () {
+    yield* runGit(cwd, ["add", "-A"]);
+    yield* runGit(cwd, [...identity, "commit", "-m", message]);
+  });
+
+const stashHash = (cwd: string, index: number) => runGit(cwd, ["rev-parse", `stash@{${index}}`]);
+
 it.layer(NodeServices.layer)("GitWorkflowService", (it) => {
   it.effect("runs the project's removal action while the worktree still exists", () => {
     const calls: Array<{
@@ -341,5 +369,152 @@ it.layer(NodeServices.layer)("GitWorkflowService", (it) => {
       assert.equal(error.detail, "Refusing to delete the remote's default branch.");
       assert.include(yield* runGit(cwd, ["ls-remote", "--heads", "origin"]), "refs/heads/main");
     }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-delete-remote-default-"))),
+  );
+
+  it.effect(
+    "stage should stage a new file and unstage should return it to untracked when HEAD is unborn",
+    () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const cwd = yield* makeEmptyRepo("t3-stage-unborn-");
+        yield* writeFile(cwd, "a.txt", "a");
+
+        assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "?? a.txt");
+        yield* workflow.stage({ cwd, paths: ["a.txt"] });
+        assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "A  a.txt");
+        yield* workflow.unstage({ cwd, paths: ["a.txt"] });
+        assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "?? a.txt");
+      }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-stage-unborn-"))),
+  );
+  it.effect("unstage should keep the worktree edit when a staged modification is unstaged", () =>
+    Effect.gen(function* () {
+      const workflow = yield* GitWorkflowService.GitWorkflowService;
+      const cwd = yield* makeEmptyRepo("t3-unstage-edit-");
+      yield* writeFile(cwd, "a.txt", "v1");
+      yield* commitAll(cwd, "first");
+      yield* writeFile(cwd, "a.txt", "v2");
+      yield* workflow.stage({ cwd, paths: ["a.txt"] });
+
+      yield* workflow.unstage({ cwd, paths: ["a.txt"] });
+
+      assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "M a.txt");
+      assert.equal(yield* readFile(cwd, "a.txt"), "v2");
+    }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-unstage-edit-"))),
+  );
+  it.effect(
+    "discard should restore the staged version and delete untracked files when paths mix both",
+    () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const cwd = yield* makeEmptyRepo("t3-discard-mixed-");
+        yield* writeFile(cwd, "a.txt", "v1");
+        yield* commitAll(cwd, "first");
+        yield* writeFile(cwd, "a.txt", "v2");
+        yield* runGit(cwd, ["add", "a.txt"]);
+        yield* writeFile(cwd, "a.txt", "v3");
+        yield* writeFile(cwd, "new.txt", "new");
+
+        yield* workflow.discard({ cwd, paths: ["a.txt", "new.txt"] });
+
+        assert.equal(yield* readFile(cwd, "a.txt"), "v2");
+        assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "M  a.txt");
+      }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-discard-mixed-"))),
+  );
+  it.effect(
+    "discardAll should reset tracked and staged changes and keep ignored files when run",
+    () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const cwd = yield* makeEmptyRepo("t3-discard-all-");
+        yield* writeFile(cwd, ".gitignore", "ignored.txt\n");
+        yield* writeFile(cwd, "a.txt", "v1");
+        yield* commitAll(cwd, "first");
+        yield* writeFile(cwd, "a.txt", "v2");
+        yield* runGit(cwd, ["add", "a.txt"]);
+        yield* writeFile(cwd, "a.txt", "v3");
+        yield* writeFile(cwd, "new.txt", "new");
+        yield* writeFile(cwd, "ignored.txt", "keep");
+
+        yield* workflow.discardAll({ cwd });
+
+        assert.equal(yield* readFile(cwd, "a.txt"), "v1");
+        assert.equal(yield* readFile(cwd, "ignored.txt"), "keep");
+        assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "");
+      }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-discard-all-"))),
+  );
+  it.effect("stashPush should include untracked files when a message is given", () =>
+    Effect.gen(function* () {
+      const workflow = yield* GitWorkflowService.GitWorkflowService;
+      const cwd = yield* makeEmptyRepo("t3-stash-push-");
+      yield* writeFile(cwd, "a.txt", "v1");
+      yield* commitAll(cwd, "first");
+      yield* writeFile(cwd, "a.txt", "v2");
+      yield* writeFile(cwd, "new.txt", "new");
+
+      yield* workflow.stashPush({ cwd, message: "my stash" });
+
+      assert.include(yield* runGit(cwd, ["stash", "list"]), "my stash");
+      assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "");
+      assert.equal(yield* readFile(cwd, "a.txt"), "v1");
+    }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-stash-push-"))),
+  );
+  it.effect(
+    "stashAction should refuse pop when the stash at the index no longer has the given hash",
+    () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const cwd = yield* makeEmptyRepo("t3-stash-moved-");
+        yield* writeFile(cwd, "a.txt", "v1");
+        yield* commitAll(cwd, "first");
+        yield* writeFile(cwd, "a.txt", "v2");
+        yield* workflow.stashPush({ cwd, message: "one" });
+        const staleHash = yield* stashHash(cwd, 0);
+        yield* writeFile(cwd, "a.txt", "v3");
+        yield* workflow.stashPush({ cwd, message: "two" });
+
+        const error = yield* workflow
+          .stashAction({ cwd, action: "pop", index: 0, hash: staleHash })
+          .pipe(Effect.flip);
+
+        assert.equal(error._tag, "GitStashMovedError");
+        assert.equal((yield* runGit(cwd, ["stash", "list"])).split("\n").length, 2);
+      }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-stash-moved-"))),
+  );
+  it.effect("stashAction should report a conflict and keep the stash when pop conflicts", () =>
+    Effect.gen(function* () {
+      const workflow = yield* GitWorkflowService.GitWorkflowService;
+      const cwd = yield* makeEmptyRepo("t3-stash-conflict-");
+      yield* writeFile(cwd, "a.txt", "v1");
+      yield* commitAll(cwd, "first");
+      yield* writeFile(cwd, "a.txt", "stashed");
+      yield* workflow.stashPush({ cwd, message: "conflicting" });
+      yield* writeFile(cwd, "a.txt", "committed");
+      yield* commitAll(cwd, "second");
+      const hash = yield* stashHash(cwd, 0);
+
+      const error = yield* workflow
+        .stashAction({ cwd, action: "pop", index: 0, hash })
+        .pipe(Effect.flip);
+
+      assert.equal(error._tag, "GitStashConflictError");
+      assert.equal(error._tag === "GitStashConflictError" ? error.action : null, "pop");
+      assert.equal((yield* runGit(cwd, ["stash", "list"])).split("\n").length, 1);
+    }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-stash-conflict-"))),
+  );
+  it.effect("stashAction should apply by hash and keep the stash when action is apply", () =>
+    Effect.gen(function* () {
+      const workflow = yield* GitWorkflowService.GitWorkflowService;
+      const cwd = yield* makeEmptyRepo("t3-stash-apply-");
+      yield* writeFile(cwd, "a.txt", "v1");
+      yield* commitAll(cwd, "first");
+      yield* writeFile(cwd, "a.txt", "v2");
+      yield* workflow.stashPush({ cwd });
+      const hash = yield* stashHash(cwd, 0);
+
+      yield* workflow.stashAction({ cwd, action: "apply", index: 0, hash });
+
+      assert.equal(yield* readFile(cwd, "a.txt"), "v2");
+      assert.equal((yield* runGit(cwd, ["stash", "list"])).split("\n").length, 1);
+    }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-stash-apply-"))),
   );
 });
