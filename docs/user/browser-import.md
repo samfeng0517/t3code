@@ -74,3 +74,20 @@ a page's right-click menu. Options pages cannot be opened from the toolbar, and 
 such as side panels, are not available, so extensions that need them do not work. To connect the
 1Password extension to the 1Password desktop app, add this app under **Settings → Browser** in the
 1Password app. If an extension fails to load or update, its row in settings shows why.
+
+## Site permissions
+
+In the desktop app, sites in the browser ask before showing notifications and before using your
+camera or microphone. Camera and microphone are asked separately for each device. **Allow** and
+**Block** are remembered, and the choices are listed under **Settings → Browser → Browsing**, in
+**Site notifications** and **Site camera and microphone**. Remove a row to be asked again. **Not
+now** is not remembered: the site asks again after you reload the page.
+
+Incognito tabs ask too, but the answers are forgotten when you quit T3 Code and are not listed in
+settings.
+
+Screen sharing asks every time. On macOS 15 or later you pick what to share in the system picker;
+elsewhere a dialog lets you share a whole screen. Stop sharing from the site, or close the tab.
+
+If macOS blocks T3 Code's camera, microphone or screen recording, turn it on in **System Settings
+→ Privacy & Security**.
