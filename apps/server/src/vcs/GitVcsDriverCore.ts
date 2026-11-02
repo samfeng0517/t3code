@@ -2509,6 +2509,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     }
   });
 
+  // Untraced: only called inside the prepareCommitContext span, which already covers it.
   const readStagedCommitContext = Effect.fnUntraced(function* (
     cwd: string,
     env: NodeJS.ProcessEnv | undefined,
