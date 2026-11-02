@@ -284,6 +284,9 @@ export function GitWorkingTreePanel(props: {
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     event.preventDefault();
+    // Arrows from a nested row or section button hand focus back to the listbox, which
+    // tracks the selection through aria-activedescendant.
+    if (event.target !== event.currentTarget) event.currentTarget.focus();
     const nextIndex =
       selectedIndex === -1
         ? 0
