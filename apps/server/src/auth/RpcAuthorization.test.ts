@@ -87,6 +87,13 @@ it("RPC authorization should require source-control write for Git page branch an
     WS_METHODS.gitDeleteTag,
     WS_METHODS.gitPushTag,
     WS_METHODS.gitDeleteRemoteBranch,
+    WS_METHODS.gitStage,
+    WS_METHODS.gitUnstage,
+    WS_METHODS.gitDiscard,
+    WS_METHODS.gitDiscardAll,
+    WS_METHODS.gitStashPush,
+    WS_METHODS.gitStashAction,
+    WS_METHODS.gitCommitIndex,
   ]) {
     expect(RPC_REQUIRED_SCOPES[method]).toBe(AuthSourceControlWriteScope);
     expect(clientRpcRequiredScopes(method, undefined)).toEqual([AuthSourceControlWriteScope]);
@@ -98,7 +105,12 @@ it("RPC authorization should require source-control write for Git page branch an
   ]) {
     expect(RPC_REQUIRED_SCOPES[method]).toBe(AuthOrchestrationReadScope);
   }
-  for (const method of [WS_METHODS.gitCommitDetail, WS_METHODS.gitCommitFileDiff]) {
+  for (const method of [
+    WS_METHODS.gitCommitDetail,
+    WS_METHODS.gitCommitFileDiff,
+    WS_METHODS.gitWorkingTreeStatus,
+    WS_METHODS.gitWorkingTreeFileDiff,
+  ]) {
     expect(RPC_REQUIRED_SCOPES[method]).toBe(AuthFilesystemReadScope);
   }
   // Git page RPCs must go through the scope middleware, not only declare a scope.
@@ -114,6 +126,15 @@ it("RPC authorization should require source-control write for Git page branch an
     WS_METHODS.gitDeleteTag,
     WS_METHODS.gitPushTag,
     WS_METHODS.gitDeleteRemoteBranch,
+    WS_METHODS.gitStage,
+    WS_METHODS.gitUnstage,
+    WS_METHODS.gitDiscard,
+    WS_METHODS.gitDiscardAll,
+    WS_METHODS.gitStashPush,
+    WS_METHODS.gitStashAction,
+    WS_METHODS.gitCommitIndex,
+    WS_METHODS.gitWorkingTreeStatus,
+    WS_METHODS.gitWorkingTreeFileDiff,
   ]) {
     expect(WsRpcGroup.requests.get(method)?.middlewares.has(RpcScopeAuthorization)).toBe(true);
   }

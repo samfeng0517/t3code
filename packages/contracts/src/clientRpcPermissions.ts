@@ -59,6 +59,13 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   // Pushing a tag writes to a remote with the server's Git credentials.
   [WS_METHODS.gitPushTag]: AuthSourceControlWriteScope,
   [WS_METHODS.gitDeleteRemoteBranch]: AuthSourceControlWriteScope,
+  [WS_METHODS.gitStage]: AuthSourceControlWriteScope,
+  [WS_METHODS.gitUnstage]: AuthSourceControlWriteScope,
+  [WS_METHODS.gitDiscard]: AuthSourceControlWriteScope,
+  [WS_METHODS.gitDiscardAll]: AuthSourceControlWriteScope,
+  [WS_METHODS.gitStashPush]: AuthSourceControlWriteScope,
+  [WS_METHODS.gitStashAction]: AuthSourceControlWriteScope,
+  [WS_METHODS.gitCommitIndex]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsInit]: AuthSourceControlWriteScope,
 
   // Starts an agent session on this environment that can read its logs and database.

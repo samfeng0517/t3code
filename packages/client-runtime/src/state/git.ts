@@ -83,5 +83,56 @@ export function createGitEnvironmentAtoms<R, E>(
       concurrency: vcsCommandConcurrency,
       onSettled: invalidateRefs,
     }),
+    workingTreeStatus: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:git:working-tree-status",
+      tag: WS_METHODS.gitWorkingTreeStatus,
+    }),
+    workingTreeFileDiff: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:git:working-tree-file-diff",
+      tag: WS_METHODS.gitWorkingTreeFileDiff,
+    }),
+    stage: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:git:stage",
+      tag: WS_METHODS.gitStage,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+    }),
+    unstage: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:git:unstage",
+      tag: WS_METHODS.gitUnstage,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+    }),
+    discard: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:git:discard",
+      tag: WS_METHODS.gitDiscard,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+    }),
+    discardAll: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:git:discard-all",
+      tag: WS_METHODS.gitDiscardAll,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+    }),
+    stashPush: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:git:stash-push",
+      tag: WS_METHODS.gitStashPush,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+    }),
+    stashAction: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:git:stash-action",
+      tag: WS_METHODS.gitStashAction,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+    }),
+    commitIndex: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:git:commit-index",
+      tag: WS_METHODS.gitCommitIndex,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+      onSettled: invalidateRefs,
+    }),
   };
 }

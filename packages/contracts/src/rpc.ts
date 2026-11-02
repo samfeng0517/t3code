@@ -164,6 +164,15 @@ import {
   GitDeleteTagInput,
   GitPushTagInput,
   GitDeleteRemoteBranchInput,
+  GitWorkingTreePathsInput,
+  GitDiscardAllInput,
+  GitStashPushInput,
+  GitStashActionInput,
+  GitStashMovedError,
+  GitStashConflictError,
+  GitCommitIndexInput,
+  GitCommitIndexResult,
+  GitCommitHookRejectedError,
 } from "./git.ts";
 import {
   GitCommitDetailInput,
@@ -177,6 +186,9 @@ import {
   GitHistoryLogResult,
   GitHistoryRefsInput,
   GitHistoryRefsResult,
+  GitWorkingTreeStatusInput,
+  GitWorkingTreeStatusResult,
+  GitWorkingTreeFileDiffInput,
 } from "./gitHistory.ts";
 import {
   ReviewBranchCommitsInput,
@@ -507,6 +519,15 @@ export const WS_METHODS = {
   gitDeleteTag: "git.deleteTag",
   gitPushTag: "git.pushTag",
   gitDeleteRemoteBranch: "git.deleteRemoteBranch",
+  gitWorkingTreeStatus: "git.workingTreeStatus",
+  gitWorkingTreeFileDiff: "git.workingTreeFileDiff",
+  gitStage: "git.stage",
+  gitUnstage: "git.unstage",
+  gitDiscard: "git.discard",
+  gitDiscardAll: "git.discardAll",
+  gitStashPush: "git.stashPush",
+  gitStashAction: "git.stashAction",
+  gitCommitIndex: "git.commitIndex",
 
   reviewGetBranchCommits: "review.getBranchCommits",
   reviewGetDiffPreview: "review.getDiffPreview",
@@ -1665,6 +1686,63 @@ const WsReviewGetBranchCommitsRpc = Rpc.make(WS_METHODS.reviewGetBranchCommits, 
   error: Schema.Union([ReviewDiffPreviewError, EnvironmentAuthorizationError]),
 });
 
+const WsGitWorkingTreeStatusRpc = Rpc.make(WS_METHODS.gitWorkingTreeStatus, {
+  payload: GitWorkingTreeStatusInput,
+  success: GitWorkingTreeStatusResult,
+  error: Schema.Union([GitHistoryError, EnvironmentAuthorizationError]),
+});
+
+const WsGitWorkingTreeFileDiffRpc = Rpc.make(WS_METHODS.gitWorkingTreeFileDiff, {
+  payload: GitWorkingTreeFileDiffInput,
+  success: GitCommitFileDiffResult,
+  error: Schema.Union([GitHistoryError, EnvironmentAuthorizationError]),
+});
+
+const WsGitStageRpc = Rpc.make(WS_METHODS.gitStage, {
+  payload: GitWorkingTreePathsInput,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
+const WsGitUnstageRpc = Rpc.make(WS_METHODS.gitUnstage, {
+  payload: GitWorkingTreePathsInput,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
+const WsGitDiscardRpc = Rpc.make(WS_METHODS.gitDiscard, {
+  payload: GitWorkingTreePathsInput,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
+const WsGitDiscardAllRpc = Rpc.make(WS_METHODS.gitDiscardAll, {
+  payload: GitDiscardAllInput,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
+const WsGitStashPushRpc = Rpc.make(WS_METHODS.gitStashPush, {
+  payload: GitStashPushInput,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
+const WsGitStashActionRpc = Rpc.make(WS_METHODS.gitStashAction, {
+  payload: GitStashActionInput,
+  error: Schema.Union([
+    GitCommandError,
+    GitStashMovedError,
+    GitStashConflictError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+const WsGitCommitIndexRpc = Rpc.make(WS_METHODS.gitCommitIndex, {
+  payload: GitCommitIndexInput,
+  success: GitCommitIndexResult,
+  error: Schema.Union([
+    GitManagerServiceError,
+    GitCommitHookRejectedError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
 const WsReviewGetDiffPreviewRpc = Rpc.make(WS_METHODS.reviewGetDiffPreview, {
   payload: ReviewDiffPreviewInput,
   success: ReviewDiffPreviewResult,
@@ -2274,6 +2352,15 @@ export const WsRpcGroup = RpcGroup.make(
   WsGitDeleteTagRpc,
   WsGitPushTagRpc,
   WsGitDeleteRemoteBranchRpc,
+  WsGitWorkingTreeStatusRpc,
+  WsGitWorkingTreeFileDiffRpc,
+  WsGitStageRpc,
+  WsGitUnstageRpc,
+  WsGitDiscardRpc,
+  WsGitDiscardAllRpc,
+  WsGitStashPushRpc,
+  WsGitStashActionRpc,
+  WsGitCommitIndexRpc,
   WsReviewGetBranchCommitsRpc,
   WsReviewGetDiffPreviewRpc,
   WsReviewGetDiffFileContentsRpc,

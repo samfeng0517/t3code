@@ -180,6 +180,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.gitHistoryRefs]: AuthOrchestrationReadScope,
   [WS_METHODS.gitCommitDetail]: AuthFilesystemReadScope,
   [WS_METHODS.gitCommitFileDiff]: AuthFilesystemReadScope,
+  [WS_METHODS.gitWorkingTreeStatus]: AuthFilesystemReadScope,
+  [WS_METHODS.gitWorkingTreeFileDiff]: AuthFilesystemReadScope,
   [WS_METHODS.reviewGetBranchCommits]: AuthFilesystemReadScope,
   [WS_METHODS.reviewGetDiffPreview]: AuthFilesystemReadScope,
   [WS_METHODS.reviewGetDiffFileContents]: AuthFilesystemReadScope,
