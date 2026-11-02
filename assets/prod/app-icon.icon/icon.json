@@ -1,14 +1,14 @@
 {
   "fill": {
-    "automatic-gradient": "display-p3:0.96000,0.97000,0.99000,1.00000"
+    "automatic-gradient": "display-p3:0.00000,0.00000,0.00000,1.00000"
   },
   "groups": [
     {
       "layers": [
         {
-          "glass": false,
-          "image-name": "code.svg",
-          "name": "Code",
+          "glass": true,
+          "image-name": "prompt.svg",
+          "name": "Prompt",
           "position": {
             "scale": 1,
             "translation-in-points": [0, 0]
@@ -27,9 +27,18 @@
     {
       "layers": [
         {
+          "glass": false,
+          "image-name": "chrome.svg",
+          "name": "Chrome",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [0, 0]
+          }
+        },
+        {
           "glass": true,
-          "image-name": "bubble.svg",
-          "name": "Bubble",
+          "image-name": "window.svg",
+          "name": "Window",
           "position": {
             "scale": 1,
             "translation-in-points": [0, 0]
@@ -37,12 +46,51 @@
         }
       ],
       "shadow": {
-        "kind": "layer-color",
-        "opacity": 0.5
+        "kind": "neutral",
+        "opacity": 0.6
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    },
+    {
+      "layers": [
+        {
+          "glass": false,
+          "image-name": "cloud-upper-right.svg",
+          "name": "Cloud Upper Right",
+          "position": {
+            "scale": 15,
+            "translation-in-points": [387.96, -134.3]
+          }
+        },
+        {
+          "glass": false,
+          "image-name": "cloud-lower-left.svg",
+          "name": "Cloud Lower Left",
+          "position": {
+            "scale": 25,
+            "translation-in-points": [-309.64, 268.66]
+          }
+        },
+        {
+          "glass": true,
+          "image-name": "background.svg",
+          "name": "Background",
+          "position": {
+            "scale": 8.1,
+            "translation-in-points": [0, -2.17]
+          }
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.6
       },
       "translucency": {
         "enabled": true,
-        "value": 0.15
+        "value": 0.2
       }
     }
   ],
