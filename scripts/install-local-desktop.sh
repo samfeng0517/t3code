@@ -104,16 +104,25 @@ for _ in $(seq 1 60); do
   pgrep -qf "$executable" || break
   sleep 0.5
 done
-# open -b may pick the build copy with the same bundle id; 1Password only trusts /Applications.
-for attempt in 1 2 3; do
-  open "$target" || echo "$(date '+%F %T') open attempt $attempt failed"
-  for _ in $(seq 1 20); do
-    running && break 2
+# A launch that loses the single-instance lock to a still-exiting copy quits within a second,
+# so count the app as reopened only once it has stayed up for a few seconds.
+stays_up() {
+  local up=0
+  for _ in $(seq 1 30); do
+    if pgrep -qf "$executable"; then up=$((up + 1)); else up=0; fi
+    ((up >= 10)) && return 0
     sleep 0.5
   done
-  echo "$(date '+%F %T') the app was not running after open attempt $attempt"
+  return 1
+}
+# open -b may pick the build copy with the same bundle id; 1Password only trusts /Applications.
+for attempt in 1 2 3 4 5; do
+  sleep 2
+  open "$target" || echo "$(date '+%F %T') open attempt $attempt failed"
+  stays_up && break
+  echo "$(date '+%F %T') the app did not stay up after open attempt $attempt"
 done
-if running; then
+if pgrep -qf "$executable"; then
   echo "$(date '+%F %T') reopened $target"
 else
   echo "$(date '+%F %T') could not reopen $target; open it from /Applications"
