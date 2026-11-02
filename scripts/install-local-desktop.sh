@@ -96,7 +96,8 @@ if [[ -d "$target" ]]; then
   mv "$target" "$backup"
 fi
 ditto "$new_app" "$target"
-open -b "$bundle_id"
+# open -b may pick the build copy with the same bundle id; 1Password only trusts /Applications.
+open "$target"
 echo "$(date '+%F %T') installed $target; the previous copy is at $backup"
 INSTALLER
 chmod +x "$installer"
