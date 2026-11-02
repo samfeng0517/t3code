@@ -28,6 +28,7 @@ export interface GitWriteActions {
     kind: string,
     action: () => Promise<AtomCommandResult<T, unknown>>,
     successToast: (value: T) => string | null,
+    options?: { readonly awaitRefresh?: boolean },
   ) => Promise<T | null>;
   readonly fetch: () => Promise<unknown>;
   readonly pull: () => Promise<unknown>;
@@ -65,11 +66,12 @@ export function useGitWriteActions(input: {
     kind: string,
     action: () => Promise<AtomCommandResult<T, unknown>>,
     successToast: (value: T) => string | null,
+    options?: { readonly awaitRefresh?: boolean },
   ): Promise<T | null> => {
     if (lock.current) return null;
     lock.current = true;
     setPending(kind);
-    const result = await settleGitWriteAndRefresh(action, refresh);
+    const result = await settleGitWriteAndRefresh(action, refresh, options);
     lock.current = false;
     setPending(null);
     if (result._tag === "Failure") {

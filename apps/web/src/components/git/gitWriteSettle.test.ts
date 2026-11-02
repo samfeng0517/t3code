@@ -51,4 +51,28 @@ describe("settleGitWriteAndRefresh", () => {
     await settleGitWriteAndRefresh(async () => AsyncResult.failure(Cause.interrupt()), refresh);
     expect(refresh).not.toHaveBeenCalled();
   });
+
+  it("should wait for the refresh when awaitRefresh is set", async () => {
+    const order: string[] = [];
+    let markCalled = () => {};
+    const called = new Promise<void>((resolve) => {
+      markCalled = resolve;
+    });
+    let openGate = () => {};
+    const gate = new Promise<void>((resolve) => {
+      openGate = resolve;
+    });
+    const refresh = async () => {
+      markCalled();
+      await gate;
+      order.push("refreshed");
+    };
+    const settling = settleGitWriteAndRefresh(async () => AsyncResult.success(1), refresh, {
+      awaitRefresh: true,
+    }).then(() => order.push("settled"));
+    await called;
+    openGate();
+    await settling;
+    expect(order).toEqual(["refreshed", "settled"]);
+  });
 });

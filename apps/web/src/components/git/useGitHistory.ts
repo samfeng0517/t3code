@@ -32,6 +32,7 @@ import {
   shouldRetryFirstLoad,
   shouldRetryLateFailure,
 } from "./gitHistoryState";
+import { type GitWorkingTreeController, useGitWorkingTree } from "./useGitWorkingTree";
 
 export interface GitHistoryTarget {
   readonly environmentId: EnvironmentId;
@@ -44,10 +45,14 @@ export interface GitHistoryController {
   readonly layout: GraphLayout;
   readonly labels: ReadonlyMap<string, ReadonlyArray<GitRefLabel>>;
   readonly refs: GitHistoryRefsResult | null;
+  readonly workingTree: GitWorkingTreeController;
   readonly loadMore: () => void;
-  /** Silently reloads refs and every loaded page, keeping the current view until it lands. */
+  /**
+   * Silently reloads refs, every loaded page and the working tree, keeping the current view
+   * until it lands.
+   */
   readonly refresh: () => Promise<void>;
-  /** Refreshes only when the repository fingerprint moved. */
+  /** Reloads the working tree, and the history only when the repository fingerprint moved. */
   readonly checkForChanges: () => Promise<void>;
   /** `failed` when a page could not be read (disconnect, error) before the commit was found. */
   readonly jumpTo: (hash: string) => Promise<"found" | "too-old" | "failed">;
@@ -93,6 +98,7 @@ export function useGitHistory(target: GitHistoryTarget): GitHistoryController {
   const historyRefs = useAtomCommand(gitEnvironment.historyRefs, { reportFailure: false });
   const [state, setState] = useState(initialGitHistoryState);
   const [refs, setRefs] = useState<GitHistoryRefsResult | null>(null);
+  const workingTree = useGitWorkingTree({ environmentId, cwd });
   const session = useRef<GitHistorySession>({
     state: initialGitHistoryState,
     generation: 0,
@@ -134,6 +140,7 @@ export function useGitHistory(target: GitHistoryTarget): GitHistoryController {
       dispatch({ type: "failed", error: failureError(log) ?? failureError(refsResult) });
     };
     current.firstLoad = run();
+    void workingTree.reload();
     return current.firstLoad;
   };
 
@@ -180,7 +187,9 @@ export function useGitHistory(target: GitHistoryTarget): GitHistoryController {
     return current.refreshing;
   };
 
-  const refresh = () => startRefresh(1);
+  const refresh = async () => {
+    await Promise.all([startRefresh(1), workingTree.reload()]);
+  };
 
   const loadMore = (): Promise<void> => {
     const current = session.current;
@@ -216,15 +225,20 @@ export function useGitHistory(target: GitHistoryTarget): GitHistoryController {
     return current.loadingMore;
   };
 
-  const checkForChanges = async () => {
+  const checkHistoryForChanges = async () => {
     const current = session.current;
-    // The first load is still reading the snapshot this check would compare against.
-    if (current.state.status === "loading") return;
     const generation = current.generation;
     const result = await historyFingerprint({ environmentId, input: { cwd } });
     if (!AsyncResult.isSuccess(result) || current.generation !== generation) return;
     if (result.value.fingerprint === current.state.fingerprint) return;
-    await refresh();
+    await startRefresh(1);
+  };
+
+  const checkForChanges = async () => {
+    // The first load is still reading the snapshot this check would compare against.
+    if (session.current.state.status === "loading") return;
+    // The fingerprint does not cover the working tree, so it reloads regardless.
+    await Promise.all([checkHistoryForChanges(), workingTree.reload()]);
   };
 
   const jumpTo = async (hash: string): Promise<"found" | "too-old" | "failed"> => {
@@ -334,6 +348,7 @@ export function useGitHistory(target: GitHistoryTarget): GitHistoryController {
     layout,
     labels,
     refs,
+    workingTree,
     loadMore: stableLoadMore,
     refresh: stableRefresh,
     checkForChanges: stableCheckForChanges,

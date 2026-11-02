@@ -20,13 +20,16 @@ export function settleGitWrite<T>(
 /**
  * Settles a write, then refreshes the page unless it was interrupted. Failed writes refresh too:
  * a pull fetches before its merge is refused, and a create-and-switch keeps the new branch when
- * the switch fails.
+ * the switch fails. `awaitRefresh` resolves only once the page shows the write's result.
  */
 export async function settleGitWriteAndRefresh<T>(
   action: () => Promise<AtomCommandResult<T, unknown>>,
   refresh: () => Promise<void>,
+  options?: { readonly awaitRefresh?: boolean },
 ): Promise<AtomCommandResult<T, unknown>> {
   const result = await settleGitWrite(action);
-  if (!isAtomCommandInterrupted(result)) void refresh();
+  if (isAtomCommandInterrupted(result)) return result;
+  if (options?.awaitRefresh === true) await refresh();
+  else void refresh();
   return result;
 }
