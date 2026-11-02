@@ -1,4 +1,4 @@
-import { TriangleAlertIcon } from "lucide-react";
+import { MinusIcon, PlusIcon, TriangleAlertIcon, Undo2Icon } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent, type ReactNode, useId } from "react";
 
 import { RESIZABLE_WIDTH_PROPERTY, useResizableWidth } from "~/hooks/useResizableWidth";
@@ -10,6 +10,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { Skeleton } from "../ui/skeleton";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { GIT_DETAIL_WIDTH_OPTIONS } from "./gitGraphStyle";
 import { GitWorkingTreeDiff } from "./GitWorkingTreeDiff";
 import type {
@@ -29,6 +30,45 @@ const LETTER_CLASSES: Record<WorkingTreeLetter, string> = {
 
 const rowKey = (row: WorkingTreeFileSelection) => `${row.section}:${row.path}`;
 
+/** Write controls for the file rows; absent when the connection cannot write. */
+interface WorkingTreeRowActions {
+  /** Offline or another write holds the page's lock. */
+  readonly disabled: boolean;
+  readonly stage: (paths: ReadonlyArray<string>) => void;
+  readonly unstage: (paths: ReadonlyArray<string>) => void;
+  readonly discard: (row: WorkingTreeRow) => void;
+}
+
+// A staged rename also stages its old path's deletion, so unstaging restores both.
+const unstagePaths = (rows: ReadonlyArray<WorkingTreeRow>) =>
+  rows.flatMap((row) => (row.previousPath === null ? [row.path] : [row.path, row.previousPath]));
+
+function RowActionButton(props: {
+  readonly label: string;
+  readonly disabled: boolean;
+  readonly onClick: () => void;
+  readonly children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-micro"
+            aria-label={props.label}
+            disabled={props.disabled}
+            onClick={props.onClick}
+          >
+            {props.children}
+          </Button>
+        }
+      />
+      <TooltipPopup>{props.label}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
 function splitPath(path: string) {
   const slash = path.lastIndexOf("/");
   return slash === -1
@@ -41,9 +81,10 @@ function WorkingTreeFileRow(props: {
   readonly row: WorkingTreeRow;
   readonly selected: boolean;
   readonly onSelect: (selection: WorkingTreeFileSelection) => void;
+  readonly actions: WorkingTreeRowActions | undefined;
 }) {
   const t = useT();
-  const { row } = props;
+  const { row, actions } = props;
   const { name, directory } = splitPath(row.path);
   return (
     <div
@@ -51,7 +92,7 @@ function WorkingTreeFileRow(props: {
       role="option"
       aria-selected={props.selected}
       className={cn(
-        "flex min-w-0 cursor-default items-center gap-1.5 px-3 py-0.5 text-xs",
+        "group flex min-w-0 cursor-default items-center gap-1.5 px-3 py-0.5 text-xs",
         props.selected && "bg-accent",
       )}
       onClick={() => props.onSelect({ section: row.section, path: row.path })}
@@ -70,14 +111,58 @@ function WorkingTreeFileRow(props: {
           {t("git.workingTree.conflict")}
         </Badge>
       ) : null}
+      {actions === undefined ? null : (
+        <span
+          className={cn(
+            "ml-auto flex shrink-0 items-center gap-0.5 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
+            props.selected && "opacity-100",
+          )}
+        >
+          {row.section === "staged" ? (
+            <RowActionButton
+              label={t("git.workingTree.unstage")}
+              disabled={actions.disabled}
+              onClick={() => actions.unstage(unstagePaths([row]))}
+            >
+              <MinusIcon className="size-3.5" />
+            </RowActionButton>
+          ) : (
+            <>
+              {row.conflicted ? null : (
+                <RowActionButton
+                  label={t("git.workingTree.discard")}
+                  disabled={actions.disabled}
+                  onClick={() => actions.discard(row)}
+                >
+                  <Undo2Icon className="size-3.5" />
+                </RowActionButton>
+              )}
+              <RowActionButton
+                label={t("git.workingTree.stage")}
+                disabled={actions.disabled}
+                onClick={() => actions.stage([row.path])}
+              >
+                <PlusIcon className="size-3.5" />
+              </RowActionButton>
+            </>
+          )}
+        </span>
+      )}
     </div>
   );
 }
 
-function WorkingTreeSection(props: { readonly title: string; readonly children: ReactNode }) {
+function WorkingTreeSection(props: {
+  readonly title: string;
+  readonly action?: ReactNode;
+  readonly children: ReactNode;
+}) {
   return (
     <div role="group" aria-label={props.title}>
-      <div className="px-3 pt-2 pb-1 text-xs text-muted-foreground">{props.title}</div>
+      <div className="flex items-center justify-between gap-2 px-3 pt-2 pb-1 text-xs text-muted-foreground">
+        <span className="min-w-0 truncate">{props.title}</span>
+        {props.action}
+      </div>
       {props.children}
     </div>
   );
@@ -99,9 +184,10 @@ export function GitWorkingTreePanel(props: {
   readonly headerAccessory?: ReactNode;
   /** Shown between the header and the file sections. */
   readonly actions?: ReactNode;
+  readonly rowActions?: WorkingTreeRowActions;
 }) {
   const t = useT();
-  const { controller } = props;
+  const { controller, rowActions } = props;
   const { sections, selection } = controller;
   const rowIdPrefix = useId();
   // Paths can hold whitespace, which ids cannot, so rows are named by position.
@@ -152,6 +238,7 @@ export function GitWorkingTreePanel(props: {
         row={row}
         selected={offset + index === selectedIndex}
         onSelect={controller.select}
+        actions={rowActions}
       />
     ));
 
@@ -183,6 +270,18 @@ export function GitWorkingTreePanel(props: {
           {sections.staged.length > 0 ? (
             <WorkingTreeSection
               title={t("git.workingTree.staged", { count: sections.staged.length })}
+              action={
+                rowActions === undefined ? null : (
+                  <Button
+                    variant="ghost-muted"
+                    size="micro"
+                    disabled={rowActions.disabled}
+                    onClick={() => rowActions.unstage(unstagePaths(sections.staged))}
+                  >
+                    {t("git.workingTree.unstageAll")}
+                  </Button>
+                )
+              }
             >
               {renderRows(sections.staged, 0)}
             </WorkingTreeSection>
@@ -190,6 +289,18 @@ export function GitWorkingTreePanel(props: {
           {sections.unstaged.length > 0 ? (
             <WorkingTreeSection
               title={t("git.workingTree.unstaged", { count: sections.unstaged.length })}
+              action={
+                rowActions === undefined ? null : (
+                  <Button
+                    variant="ghost-muted"
+                    size="micro"
+                    disabled={rowActions.disabled}
+                    onClick={() => rowActions.stage(sections.unstaged.map((row) => row.path))}
+                  >
+                    {t("git.workingTree.stageAll")}
+                  </Button>
+                )
+              }
             >
               {renderRows(sections.unstaged, sections.staged.length)}
             </WorkingTreeSection>

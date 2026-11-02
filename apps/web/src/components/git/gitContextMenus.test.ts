@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildGitMenu } from "./gitContextMenus";
+import { buildGitMenu, buildWorkingTreeMenu } from "./gitContextMenus";
 
 const HASH = "a".repeat(40);
 
@@ -134,5 +134,27 @@ describe("buildGitMenu", () => {
       { ...context, isRemoteDefaultBranch: true },
     );
     expect(items.find((item) => item.id === "delete")?.disabled).toBe(true);
+  });
+});
+
+describe("buildWorkingTreeMenu", () => {
+  it("buildWorkingTreeMenu should disable Stash and Discard all when another write is pending", () => {
+    const idle = buildWorkingTreeMenu({ canWrite: true, isOnline: true, pending: false });
+    expect(
+      idle.map((item) => [item.id, item.disabled === true, item.destructive === true]),
+    ).toEqual([
+      ["stash-changes", false, false],
+      ["discard-all", false, true],
+    ]);
+    expect(idle[1]?.separatorBefore).toBe(true);
+    for (const state of [{ pending: true }, { isOnline: false }]) {
+      const items = buildWorkingTreeMenu({
+        canWrite: true,
+        isOnline: true,
+        pending: false,
+        ...state,
+      });
+      expect(items.map((item) => item.disabled)).toEqual([true, true]);
+    }
   });
 });

@@ -28,17 +28,21 @@ import { GitCommitDetail } from "./GitCommitDetail";
 import { GitGraphList, type GitGraphScrollTarget } from "./GitGraphList";
 import { GitRefNameDialog } from "./GitRefNameDialog";
 import { GitRefsSidebar } from "./GitRefsSidebar";
+import { GitStashDialog } from "./GitStashDialog";
 import type { GitMenuTarget } from "./gitContextMenus";
 import { jumpFeedbackKey, planRefJump } from "./gitHistoryState";
 import { GitToolbar } from "./GitToolbar";
 import { GitWorkingTreePanel } from "./GitWorkingTreePanel";
 import {
+  defaultStashMessage,
   hasUncommittedChanges,
   resolveGraphSelection,
   UNCOMMITTED_ROW_ID,
 } from "./gitWorkingTreeState";
 import { useGitHistory } from "./useGitHistory";
+import { useGitConfirm } from "./useGitConfirm";
 import { useGitRefActions } from "./useGitRefActions";
+import { useGitWorkingTreeActions } from "./useGitWorkingTreeActions";
 import { useGitWriteActions } from "./useGitWriteActions";
 
 const SPLIT_MIN_PX = 120;
@@ -111,7 +115,8 @@ export function GitProjectView(props: {
     repoRoot,
     refresh: controller.refresh,
   });
-  const refActions = useGitRefActions({ environmentId, refs, writes });
+  const confirm = useGitConfirm(environmentId);
+  const refActions = useGitRefActions({ environmentId, refs, writes, confirm });
   // Rows and sidebar items keep the first handler they get, so it must always see the latest state.
   const openMenu = useStableCallback(
     (target: GitMenuTarget, position: { x: number; y: number }) =>
@@ -126,6 +131,14 @@ export function GitProjectView(props: {
 
   // A hash or `UNCOMMITTED_ROW_ID`; `undefined` until the first page picks the initial selection.
   const [selectedHash, setSelectedHash] = useState<string | null | undefined>(undefined);
+  const workingTreeActions = useGitWorkingTreeActions({
+    environmentId,
+    repoRoot,
+    writes,
+    confirm,
+    // `undefined` makes the next render pick HEAD and scroll to it.
+    onHeadChanged: () => setSelectedHash(undefined),
+  });
   const [scrollTarget, setScrollTarget] = useState<GitGraphScrollTarget | null>(null);
   const latestJump = useRef(0);
   const narrow = useMediaQuery("(max-width: 999px)");
@@ -265,7 +278,35 @@ export function GitProjectView(props: {
                 }}
               >
                 {detailHash === UNCOMMITTED_ROW_ID ? (
-                  <GitWorkingTreePanel controller={workingTree} />
+                  <GitWorkingTreePanel
+                    controller={workingTree}
+                    {...(writes.canWrite
+                      ? {
+                          rowActions: {
+                            disabled: writes.pending !== null || !writes.isOnline,
+                            stage: (paths) => void workingTreeActions.stage(paths),
+                            unstage: (paths) => void workingTreeActions.unstage(paths),
+                            discard: (row) => void workingTreeActions.discard(row),
+                          },
+                          headerAccessory: (
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              aria-label={t("git.detail.moreActions")}
+                              onClick={(event) => {
+                                const rect = event.currentTarget.getBoundingClientRect();
+                                void workingTreeActions.openPanelMenu({
+                                  x: rect.left,
+                                  y: rect.bottom,
+                                });
+                              }}
+                            >
+                              <EllipsisIcon />
+                            </Button>
+                          ),
+                        }
+                      : {})}
+                  />
                 ) : (
                   <GitCommitDetail
                     environmentId={environmentId}
@@ -327,6 +368,17 @@ export function GitProjectView(props: {
           request={refActions.namePrompt.request}
           pending={writes.pending !== null}
           onFinish={refActions.namePrompt.finish}
+        />
+      )}
+      {workingTreeActions.stashPrompt === null ? null : (
+        <GitStashDialog
+          placeholder={defaultStashMessage({
+            branch: refs?.head.branch ?? null,
+            hash: refs?.head.hash ?? null,
+            subject: commits.find((commit) => commit.hash === refs?.head.hash)?.subject ?? null,
+          })}
+          pending={writes.pending !== null}
+          onFinish={workingTreeActions.stashPrompt.finish}
         />
       )}
     </div>

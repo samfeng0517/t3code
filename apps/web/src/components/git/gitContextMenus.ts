@@ -138,3 +138,23 @@ export function buildGitMenu(
   }
   return items;
 }
+
+export type GitWorkingTreeMenuAction = "stash-changes" | "discard-all";
+
+/** The uncommitted changes panel's "⋯" menu; it has no read-only items. */
+export function buildWorkingTreeMenu(
+  context: Pick<GitMenuContext, "canWrite" | "isOnline" | "pending">,
+): ContextMenuItem<GitWorkingTreeMenuAction>[] {
+  if (!context.canWrite) return [];
+  const disabled = !context.isOnline || context.pending;
+  return [
+    { id: "stash-changes", label: t("git.workingTree.stashChanges"), disabled },
+    {
+      id: "discard-all",
+      label: t("git.workingTree.discardAll"),
+      destructive: true,
+      separatorBefore: true,
+      disabled,
+    },
+  ];
+}

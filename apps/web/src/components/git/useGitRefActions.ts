@@ -26,7 +26,7 @@ import { threadsUsingBranch } from "./gitActionGuards";
 import { buildGitMenu, type GitMenuAction, type GitMenuTarget } from "./gitContextMenus";
 import { SHORT_HASH_LENGTH } from "./gitHistoryState";
 import type { GitRefNameChoice, GitRefNameRequest } from "./GitRefNameDialog";
-import { useGitConfirm } from "./useGitConfirm";
+import type { useGitConfirm } from "./useGitConfirm";
 import type { GitWriteActions } from "./useGitWriteActions";
 
 const PUSH_TAG_PREFIX = "push-tag:";
@@ -62,10 +62,11 @@ export function useGitRefActions(input: {
   readonly environmentId: EnvironmentId;
   readonly refs: GitHistoryRefsResult | null;
   readonly writes: GitWriteActions;
+  readonly confirm: ReturnType<typeof useGitConfirm>;
 }) {
   const t = useT();
   const { environmentId, refs, writes } = input;
-  const { confirm, confirmAgentWork, projectInRepo, threads } = useGitConfirm(environmentId);
+  const { confirm, confirmAgentWork, projectInRepo, threads } = input.confirm;
   const commandOptions = { reportFailure: false };
   const switchRefCommand = useAtomCommand(vcsEnvironment.switchRef, commandOptions);
   const createRefCommand = useAtomCommand(vcsEnvironment.createRef, commandOptions);
