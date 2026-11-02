@@ -4,7 +4,8 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 
 import { useT, type Translate } from "~/i18n";
 import { cn } from "~/lib/utils";
-import { readLocalApi } from "~/localApi";
+import { useOpenLink } from "~/browser/useOpenLink";
+import { useThreadRouteRef } from "~/hooks/useThreadRouteTarget";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { openOnHostLabel, showPullRequestLinkContextMenu } from "./pullRequestLinkContextMenu";
@@ -58,6 +59,18 @@ function BackButton({ onBack, focusable }: { onBack: () => void; focusable: bool
   );
 }
 
+type OpenCrumbLink = (
+  url: string,
+  event?: { metaKey: boolean; ctrlKey: boolean; button: number },
+) => void;
+
+/** Opens crumb links in the on-screen thread's browser panel, or the system browser without one. */
+function useOpenCrumbLink(): OpenCrumbLink {
+  const openLink = useOpenLink(useThreadRouteRef());
+  return (url, event) =>
+    void openLink(url, event ? { event } : {}).catch((error: unknown) => console.error(error));
+}
+
 function NumberLink({
   detail,
   toneClassName,
@@ -70,6 +83,7 @@ function NumberLink({
   focusable: boolean;
 }) {
   const t = useT();
+  const openCrumbLink = useOpenCrumbLink();
   return (
     <Tooltip>
       <TooltipTrigger
@@ -77,9 +91,9 @@ function NumberLink({
           <button
             type="button"
             {...(focusable ? {} : { tabIndex: -1 })}
-            onClick={() => void readLocalApi()?.shell.openExternal(detail.url)}
+            onClick={(event) => openCrumbLink(detail.url, event)}
             onAuxClick={(event) => {
-              if (event.button === 1) void readLocalApi()?.shell.openExternal(detail.url);
+              if (event.button === 1) openCrumbLink(detail.url, event);
             }}
             onContextMenu={(event) => openNumberContextMenu(event, detail, t)}
             className={cn(
@@ -121,6 +135,7 @@ export function PullRequestDetailCrumbs({
   onBack: (() => void) | undefined;
 }) {
   const t = useT();
+  const openCrumbLink = useOpenCrumbLink();
   const ready = detail !== null && toneClassName !== null;
   return (
     <div className="pl-4 grid h-7 min-w-0 items-center overflow-hidden">
@@ -143,7 +158,7 @@ export function PullRequestDetailCrumbs({
                   repositoryUrl ? (
                     <button
                       type="button"
-                      onClick={() => void readLocalApi()?.shell.openExternal(repositoryUrl)}
+                      onClick={(event) => openCrumbLink(repositoryUrl, event)}
                       className="min-w-0 cursor-pointer truncate text-left font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                     >
                       {detail.repository}
