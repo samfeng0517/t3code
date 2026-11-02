@@ -97,6 +97,14 @@ export const browserEn = {
   "browser.notifications.blocked": "Blocked",
   "browser.notifications.removeAria": "Forget the notification choice for {origin}",
   "browser.notifications.removeFailed": "Could not forget this site",
+  "browser.media.title": "Site camera and microphone",
+  "browser.media.description":
+    "Sites in the browser ask before using your camera or microphone. Remove a choice to be asked again.",
+  "browser.media.camera": "Camera",
+  "browser.media.microphone": "Microphone",
+  "browser.media.removeCameraAria": "Forget the camera choice for {origin}",
+  "browser.media.removeMicrophoneAria": "Forget the microphone choice for {origin}",
+  "browser.media.removeFailed": "Could not forget this choice",
   "browser.extensions.title": "Extensions",
   "browser.extensions.description":
     "Load Chrome extensions into every browser profile except incognito. Extensions added from another browser stay in sync with it. Reload open tabs to apply changes.",

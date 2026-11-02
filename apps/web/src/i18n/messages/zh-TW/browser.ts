@@ -98,6 +98,14 @@ export const browserZhTW: Readonly<Record<keyof typeof browserEn, string>> = {
   "browser.notifications.blocked": "已封鎖",
   "browser.notifications.removeAria": "忘記 {origin} 的通知選擇",
   "browser.notifications.removeFailed": "無法移除這個網站",
+  "browser.media.title": "網站相機與麥克風",
+  "browser.media.description":
+    "瀏覽器裡的網站要使用相機或麥克風前會先詢問你。移除後，下次會重新詢問。",
+  "browser.media.camera": "相機",
+  "browser.media.microphone": "麥克風",
+  "browser.media.removeCameraAria": "忘記 {origin} 的相機選擇",
+  "browser.media.removeMicrophoneAria": "忘記 {origin} 的麥克風選擇",
+  "browser.media.removeFailed": "無法移除這個選擇",
   "browser.extensions.title": "擴充功能",
   "browser.extensions.description":
     "將 Chrome 擴充功能載入到除了無痕模式以外的所有瀏覽器設定檔。從其他瀏覽器加入的擴充功能會跟著該瀏覽器自動更新。重新載入已開啟的分頁即可套用變更。",

@@ -8,6 +8,7 @@ import type {
   BrowserExtensionUpdateResult,
 } from "./browserExtension.ts";
 
+import type { BrowserMediaDevice, BrowserMediaPermission } from "./browserMedia.ts";
 import type { BrowserNotificationPermission } from "./browserNotifications.ts";
 import { SnapShotSource } from "./chatAttachment.ts";
 import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas.ts";
@@ -1205,6 +1206,14 @@ export interface DesktopPreviewBridge {
   notificationPermissions?: {
     list: () => Promise<ReadonlyArray<BrowserNotificationPermission>>;
     remove: (origin: string) => Promise<ReadonlyArray<BrowserNotificationPermission>>;
+  };
+  /** Sites' remembered camera and microphone answers; removing one asks again next time. */
+  mediaPermissions?: {
+    list: () => Promise<ReadonlyArray<BrowserMediaPermission>>;
+    remove: (
+      origin: string,
+      device: BrowserMediaDevice,
+    ) => Promise<ReadonlyArray<BrowserMediaPermission>>;
   };
   setAnnotationTheme: (theme: DesktopPreviewAnnotationTheme) => Promise<void>;
   setAnnotationSendEnabled: (tabId: string, enabled: boolean) => Promise<void>;
