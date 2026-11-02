@@ -78,13 +78,14 @@ such as side panels, are not available, so extensions that need them do not work
 ## Site permissions
 
 In the desktop app, sites in the browser ask before showing notifications and before using your
-camera or microphone. Camera and microphone are asked separately for each device. **Allow** and
-**Block** are remembered, and the choices are listed under **Settings → Browser → Browsing**, in
-**Site notifications** and **Site camera and microphone**. Remove a row to be asked again. **Not
-now** is not remembered: the site asks again after you reload the page.
+camera or microphone. **Allow** and **Block** are remembered, separately for the camera and the
+microphone, and listed under **Settings → Browser → Browsing**, in **Site notifications** and
+**Site camera and microphone**. Remove a row to be asked again. **Not now** is not saved. For the
+camera or microphone, the site asks again after you reload the page. For notifications, it asks
+again after you restart T3 Code.
 
-Incognito tabs ask too, but the answers are forgotten when you quit T3 Code and are not listed in
-settings.
+Incognito tabs ask for the camera and microphone too, but forget the answers when you quit T3 Code
+and do not list them in settings. They never show site notifications.
 
 Screen sharing asks every time. On macOS 15 or later you pick what to share in the system picker;
 elsewhere a dialog lets you share a whole screen. Stop sharing from the site, or close the tab.
