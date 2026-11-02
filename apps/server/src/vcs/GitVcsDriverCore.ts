@@ -25,6 +25,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import {
   GitCommandError,
   GitStashConflictError,
+  GitStashPartiallyAppliedError,
   GitStashMovedError,
   type GitCommandFailureReason,
   T3_PROJECT_FILE_NAME,
@@ -5276,13 +5277,21 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       allowNonZeroExit: true,
     }).pipe(Effect.map((result) => result.exitCode === 0));
 
+  // "Stage all" can name tens of thousands of paths; argv would overflow ARG_MAX.
+  const pathspecStdinArgs = ["--pathspec-from-file=-", "--pathspec-file-nul"];
+  const pathspecStdin = (paths: readonly string[]) => `${pathspecs(paths).join("\0")}\0`;
+
   const stagePaths: GitVcsDriver.GitVcsDriver["Service"]["stagePaths"] = Effect.fn("stagePaths")(
     function* (input) {
       yield* executeGitWithStableDiagnostics(
         "GitVcsDriver.stagePaths",
         input.cwd,
-        ["add", "-A", "--", ...pathspecs(input.paths)],
-        { timeoutMs: 10_000, fallbackErrorDetail: "Could not stage the selected files." },
+        ["add", "-A", ...pathspecStdinArgs],
+        {
+          stdin: pathspecStdin(input.paths),
+          timeoutMs: 10_000,
+          fallbackErrorDetail: "Could not stage the selected files.",
+        },
       );
     },
   );
@@ -5299,15 +5308,18 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   const unstagePaths: GitVcsDriver.GitVcsDriver["Service"]["unstagePaths"] = Effect.fn(
     "unstagePaths",
   )(function* (input) {
-    const operation = "GitVcsDriver.unstagePaths";
-    const specs = pathspecs(input.paths);
-    const args = (yield* headExists(operation, input.cwd))
-      ? ["restore", "--staged", "--", ...specs]
-      : ["rm", "--cached", "-q", "--", ...specs];
-    yield* executeGitWithStableDiagnostics(operation, input.cwd, args, {
-      timeoutMs: 10_000,
-      fallbackErrorDetail: "Could not unstage the selected files.",
-    });
+    // Path-limited reset also works on an unborn HEAD, where `git rm --cached` refuses
+    // entries that differ from both the file and HEAD and takes no pathspec file.
+    yield* executeGitWithStableDiagnostics(
+      "GitVcsDriver.unstagePaths",
+      input.cwd,
+      ["reset", "-q", ...pathspecStdinArgs],
+      {
+        stdin: pathspecStdin(input.paths),
+        timeoutMs: 10_000,
+        fallbackErrorDetail: "Could not unstage the selected files.",
+      },
+    );
   });
 
   const discardPaths: GitVcsDriver.GitVcsDriver["Service"]["discardPaths"] = Effect.fn(
@@ -5318,6 +5330,13 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       timeoutMs: 10_000,
       fallbackErrorDetail: "Could not discard the selected changes.",
     };
+    // Status lists an untracked nested repository as `dir/`; `git clean` without -ff skips it.
+    if (input.paths.some((path) => path.endsWith("/"))) {
+      return yield* new GitCommandError({
+        ...gitCommandContext({ operation, cwd: input.cwd, args: ["clean"] }),
+        detail: "Nested Git repositories are not discarded.",
+      });
+    }
     const specs = pathspecs(input.paths);
     const listed = yield* executeGitWithStableDiagnostics(
       operation,
@@ -5360,6 +5379,19 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         options,
       );
       yield* executeGitWithStableDiagnostics(operation, input.cwd, ["clean", "-fd", "-q"], options);
+      // `clean -fd` leaves untracked nested repositories, so the changes row would stay.
+      const leftover = yield* executeGitWithStableDiagnostics(
+        operation,
+        input.cwd,
+        ["ls-files", "-z", "--others", "--exclude-standard"],
+        options,
+      );
+      if (leftover.stdout.length > 0) {
+        return yield* new GitCommandError({
+          ...gitCommandContext({ operation, cwd: input.cwd, args: ["clean", "-fd"] }),
+          detail: "Nested Git repositories were left in place.",
+        });
+      }
     },
   );
 
@@ -5401,10 +5433,16 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         drop: "Could not delete the stash.",
       }[input.action];
       const action = input.action;
-      const listUnmerged = executeGit(operation, input.cwd, ["ls-files", "-u", "-z"], {
-        allowNonZeroExit: true,
-      }).pipe(Effect.map((result) => result.stdout));
-      const unmergedBefore = action === "drop" ? "" : yield* listUnmerged;
+      // Without renames every NUL-separated record is one entry, so `u ` marks an unmerged one.
+      const readWorktreeState = executeGit(
+        operation,
+        input.cwd,
+        ["status", "--porcelain=v2", "-z", "--untracked-files=all", "--no-renames"],
+        { allowNonZeroExit: true, env: { GIT_OPTIONAL_LOCKS: "0" } },
+      ).pipe(Effect.map((result) => result.stdout));
+      const hasUnmerged = (state: string) =>
+        state.split("\0").some((record) => record.startsWith("u "));
+      const stateBefore = action === "drop" ? "" : yield* readWorktreeState;
       yield* executeGitWithStableDiagnostics(operation, input.cwd, args, {
         timeoutMs: 10_000,
         fallbackErrorDetail,
@@ -5412,9 +5450,13 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         Effect.catchTags({
           GitCommandError: Effect.fnUntraced(function* (error) {
             if (action === "drop") return yield* error;
-            const unmergedAfter = yield* listUnmerged;
-            if (unmergedBefore.length === 0 && unmergedAfter.length > 0) {
+            const stateAfter = yield* readWorktreeState;
+            if (!hasUnmerged(stateBefore) && hasUnmerged(stateAfter)) {
               return yield* new GitStashConflictError({ cwd: input.cwd, action });
+            }
+            // e.g. a stashed new file already exists: git applies tracked edits, then stops.
+            if (stateAfter !== stateBefore) {
+              return yield* new GitStashPartiallyAppliedError({ cwd: input.cwd, action });
             }
             return yield* error;
           }),

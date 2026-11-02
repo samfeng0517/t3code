@@ -300,8 +300,10 @@ export function GitProjectView(props: {
                                   ? "generating"
                                   : "committing",
                             disabled: writes.pending !== null || !writes.isOnline,
-                            submit: async (message) => {
-                              if (await workingTreeActions.commit(message)) setCommitMessage("");
+                            submit: async (message, mode) => {
+                              if (await workingTreeActions.commit(message, mode)) {
+                                setCommitMessage("");
+                              }
                             },
                           },
                           headerAccessory: (

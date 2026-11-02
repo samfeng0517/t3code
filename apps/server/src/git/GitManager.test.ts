@@ -2822,7 +2822,11 @@ it.layer(layerGitManagerTest)("GitManager", (it) => {
       NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "hello\nstaged\nunstaged\n");
 
       const { manager } = yield* makeManager();
-      const result = yield* manager.commitIndex({ cwd: repoDir, message: "Commit staged hunk" });
+      const result = yield* manager.commitIndex({
+        cwd: repoDir,
+        mode: "staged",
+        message: "Commit staged hunk",
+      });
 
       expect(result.subject).toBe("Commit staged hunk");
       const committed = yield* runGit(repoDir, ["show", `${result.commitSha}:README.md`]);
@@ -2852,7 +2856,7 @@ it.layer(layerGitManagerTest)("GitManager", (it) => {
             },
           },
         });
-        const result = yield* manager.commitIndex({ cwd: repoDir });
+        const result = yield* manager.commitIndex({ cwd: repoDir, mode: "staged" });
 
         expect(result.subject).toBe("Add file a");
         expect(stagedSummary).toContain("a.txt");
@@ -2870,12 +2874,75 @@ it.layer(layerGitManagerTest)("GitManager", (it) => {
         NodeFS.writeFileSync(NodePath.join(repoDir, "new.txt"), "new\n");
 
         const { manager } = yield* makeManager();
-        const result = yield* manager.commitIndex({ cwd: repoDir, message: "Commit everything" });
+        const result = yield* manager.commitIndex({
+          cwd: repoDir,
+          mode: "all",
+          message: "Commit everything",
+        });
 
         const tree = yield* runGit(repoDir, ["ls-tree", "--name-only", result.commitSha]);
         expect(tree.stdout).toContain("new.txt");
         const status = yield* runGit(repoDir, ["status", "--porcelain"]);
         expect(status.stdout).toBe("");
+      }),
+  );
+
+  it.effect(
+    "commitIndex should fail with GitNothingStagedError and keep unstaged edits uncommitted when mode is staged and the index is empty",
+    () =>
+      Effect.gen(function* () {
+        const repoDir = yield* makeTempDir("t3code-git-manager-");
+        yield* initRepo(repoDir);
+        NodeFS.writeFileSync(NodePath.join(repoDir, "staged.txt"), "staged\n");
+        yield* runGit(repoDir, ["add", "staged.txt"]);
+        NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "hello\nunstaged\n");
+
+        const { manager } = yield* makeManager();
+        // Two windows press "Commit staged" for the same index.
+        yield* manager.commitIndex({ cwd: repoDir, mode: "staged", message: "First" });
+        const headBefore = (yield* runGit(repoDir, ["rev-parse", "HEAD"])).stdout;
+        const error = yield* manager
+          .commitIndex({ cwd: repoDir, mode: "staged", message: "Second" })
+          .pipe(Effect.flip);
+
+        expect(error._tag).toBe("GitNothingStagedError");
+        expect((yield* runGit(repoDir, ["rev-parse", "HEAD"])).stdout).toBe(headBefore);
+        const status = yield* runGit(repoDir, ["status", "--porcelain"]);
+        expect(status.stdout).toBe(" M README.md\n");
+      }),
+  );
+
+  it.effect(
+    "commitIndex should leave the index untouched when mode is all and message generation fails",
+    () =>
+      Effect.gen(function* () {
+        const repoDir = yield* makeTempDir("t3code-git-manager-");
+        yield* initRepo(repoDir);
+        NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "hello\nworld\n");
+        NodeFS.writeFileSync(NodePath.join(repoDir, "new.txt"), "new\n");
+        let stagedSummary: string | undefined;
+
+        const { manager } = yield* makeManager({
+          textGeneration: {
+            generateCommitMessage: (input) => {
+              stagedSummary = input.stagedSummary;
+              return Effect.fail(
+                new TextGenerationError({
+                  operation: "generateCommitMessage",
+                  detail: "Provider rejected generation",
+                }),
+              );
+            },
+          },
+        });
+        const result = yield* manager
+          .commitIndex({ cwd: repoDir, mode: "all" })
+          .pipe(Effect.result);
+
+        expect(Result.isFailure(result)).toBe(true);
+        expect(stagedSummary).toContain("new.txt");
+        const status = yield* runGit(repoDir, ["status", "--porcelain"]);
+        expect(status.stdout).toBe(" M README.md\n?? new.txt\n");
       }),
   );
 
@@ -2898,6 +2965,7 @@ it.layer(layerGitManagerTest)("GitManager", (it) => {
         });
         const result = yield* manager.commitIndex({
           cwd: repoDir,
+          mode: "all",
           message: "Hand-written subject",
         });
 
@@ -2921,7 +2989,7 @@ it.layer(layerGitManagerTest)("GitManager", (it) => {
 
         const { manager } = yield* makeManager();
         const error = yield* manager
-          .commitIndex({ cwd: repoDir, message: "Rejected commit" })
+          .commitIndex({ cwd: repoDir, mode: "all", message: "Rejected commit" })
           .pipe(Effect.flip);
 
         expect(error).toMatchObject({ _tag: "GitCommitHookRejectedError", hookName: "pre-commit" });

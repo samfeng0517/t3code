@@ -170,6 +170,8 @@ import {
   GitStashActionInput,
   GitStashMovedError,
   GitStashConflictError,
+  GitStashPartiallyAppliedError,
+  GitNothingStagedError,
   GitCommitIndexInput,
   GitCommitIndexResult,
   GitCommitHookRejectedError,
@@ -1729,6 +1731,7 @@ const WsGitStashActionRpc = Rpc.make(WS_METHODS.gitStashAction, {
     GitCommandError,
     GitStashMovedError,
     GitStashConflictError,
+    GitStashPartiallyAppliedError,
     EnvironmentAuthorizationError,
   ]),
 });
@@ -1738,6 +1741,7 @@ const WsGitCommitIndexRpc = Rpc.make(WS_METHODS.gitCommitIndex, {
   success: GitCommitIndexResult,
   error: Schema.Union([
     GitManagerServiceError,
+    GitNothingStagedError,
     GitCommitHookRejectedError,
     EnvironmentAuthorizationError,
   ]),

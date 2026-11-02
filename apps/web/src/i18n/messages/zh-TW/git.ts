@@ -119,6 +119,7 @@ export const gitZhTW: Readonly<Record<keyof typeof gitEn, string>> = {
   "git.toast.deletedStash": "已刪除 stash",
   "git.toast.stashMoved": "Stash 清單已變更，請重新整理",
   "git.toast.stashApplyConflict": "套用時發生衝突，stash 已保留",
+  "git.toast.stashPartiallyApplied": "部分變更已套用，stash 已保留",
   "git.toast.stashPopConflict": "取出時發生衝突，stash 已保留",
   "git.toast.copiedHash": "已複製 commit hash",
   "git.toast.discarded": "已捨棄變更",
@@ -131,4 +132,5 @@ export const gitZhTW: Readonly<Record<keyof typeof gitEn, string>> = {
   "git.workingTree.shortcutHint": "{shortcut} Commit",
   "git.toast.committed": "已 commit {hash}",
   "git.toast.commitHookRejected": "git hook 拒絕了這次 commit",
+  "git.toast.nothingStaged": "已經沒有 stage 的變更，請確認後再試一次",
 };

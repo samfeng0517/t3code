@@ -3,7 +3,13 @@ import {
   settlePromise,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { type EnvironmentId, GitCommitHookRejectedError, type ProjectId } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  GitCommitHookRejectedError,
+  type GitCommitIndexMode,
+  GitNothingStagedError,
+  type ProjectId,
+} from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
 import * as Schema from "effect/Schema";
 import { useState } from "react";
@@ -21,6 +27,7 @@ import type { useGitConfirm } from "./useGitConfirm";
 import type { GitWriteActions } from "./useGitWriteActions";
 
 const isCommitHookRejected = Schema.is(GitCommitHookRejectedError);
+const isNothingStaged = Schema.is(GitNothingStagedError);
 
 interface GitStashPrompt {
   /** `null` cancels; an empty message lets git write its default one. */
@@ -51,8 +58,8 @@ export function useGitWorkingTreeActions(input: {
   // Held here, not in the commit box, so the running label survives the box unmounting.
   const [commitGeneratesMessage, setCommitGeneratesMessage] = useState(false);
 
-  /** Commits what is staged (or everything when nothing is); an empty message is generated. Resolves true on success. */
-  const commit = async (message: string): Promise<boolean> => {
+  /** Commits what is staged, or everything for `all`; an empty message is generated. Resolves true on success. */
+  const commit = async (message: string, mode: GitCommitIndexMode): Promise<boolean> => {
     if (repoRoot === null) return false;
     const cwd = repoRoot;
     const trimmed = message.trim();
@@ -62,13 +69,20 @@ export function useGitWorkingTreeActions(input: {
       async (): Promise<AtomCommandResult<{ commitSha: string } | null, unknown>> => {
         const result = await commitCommand({
           environmentId,
-          input: trimmed.length === 0 ? { cwd, projectId } : { cwd, projectId, message: trimmed },
+          input:
+            trimmed.length === 0
+              ? { cwd, projectId, mode }
+              : { cwd, projectId, mode, message: trimmed },
         });
         if (result._tag === "Success") return AsyncResult.success(result.value);
-        if (!isCommitHookRejected(squashAtomCommandFailure(result))) {
-          return AsyncResult.failure(result.cause);
-        }
-        toastManager.add({ type: "error", title: t("git.toast.commitHookRejected") });
+        const error = squashAtomCommandFailure(result);
+        const handled = isCommitHookRejected(error)
+          ? t("git.toast.commitHookRejected")
+          : isNothingStaged(error)
+            ? t("git.toast.nothingStaged")
+            : null;
+        if (handled === null) return AsyncResult.failure(result.cause);
+        toastManager.add({ type: "error", title: handled });
         return AsyncResult.success(null);
       },
       (value) =>

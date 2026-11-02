@@ -23,6 +23,7 @@ import {
   GitActionProgressPhase,
   GitCommandError,
   GitCommitHookRejectedError,
+  GitNothingStagedError,
   type GitCommitIndexInput,
   type GitCommitIndexResult,
   GitPreparePullRequestThreadInput,
@@ -154,10 +155,13 @@ export class GitManager extends Context.Service<
       input: GitRunStackedActionInput,
       options?: GitRunStackedActionOptions,
     ) => Effect.Effect<GitRunStackedActionResult, GitManagerServiceError>;
-    /** Commits the index as staged, staging everything first when nothing is staged. */
+    /** Commits the index as staged, or stages everything first when `mode` is `all`. */
     readonly commitIndex: (
       input: GitCommitIndexInput,
-    ) => Effect.Effect<GitCommitIndexResult, GitManagerServiceError | GitCommitHookRejectedError>;
+    ) => Effect.Effect<
+      GitCommitIndexResult,
+      GitManagerServiceError | GitNothingStagedError | GitCommitHookRejectedError
+    >;
     readonly subscribePullRequestStateChanges: Effect.Effect<
       Stream.Stream<ThreadPullRequestKey>,
       never,
@@ -3085,31 +3089,28 @@ export const make = Effect.gen(function* () {
 
   const commitIndex: GitManager["Service"]["commitIndex"] = Effect.fn("commitIndex")(
     function* (input) {
-      const staged = yield* gitCore.prepareCommitContext(input.cwd, undefined, {
-        fromIndex: true,
-        includePatch: false,
-      });
-      if (staged === null) {
-        yield* gitCore.stageAll(input.cwd);
-      }
       const { branch } = yield* gitCore.statusDetailsLocal(input.cwd, {
         includeDivergence: false,
       });
       const settings = yield* resolveTextGenerationSettings(input, "commitIndex");
+      // `all` reads its message context from a temporary index, so a failed generation
+      // leaves the real index as the user left it.
       const suggestion = yield* resolveCommitAndBranchSuggestion({
         cwd: input.cwd,
         branch,
         ...(input.message ? { commitMessage: input.message } : {}),
         settings,
-        fromIndex: true,
+        fromIndex: input.mode === "staged",
       });
       if (!suggestion) {
+        if (input.mode === "staged") return yield* new GitNothingStagedError({ cwd: input.cwd });
         return yield* new GitManagerError({
           operation: "commitIndex",
           cwd: input.cwd,
           detail: "There are no changes to commit.",
         });
       }
+      if (input.mode === "all") yield* gitCore.stageAll(input.cwd);
 
       let rejectingHookName: string | null = null;
       const { commitSha } = yield* gitCore

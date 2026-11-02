@@ -734,7 +734,7 @@ describe("GitHistoryService", () => {
               conflicted: false,
             },
           ]);
-          assert.equal(status.insertions, 0);
+          assert.equal(status.insertions, 1);
         }),
       ),
   );

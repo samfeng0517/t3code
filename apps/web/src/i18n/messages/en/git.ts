@@ -118,6 +118,7 @@ export const gitEn = {
   "git.toast.deletedStash": "Deleted stash",
   "git.toast.stashMoved": "The stash list changed. Refresh and try again.",
   "git.toast.stashApplyConflict": "Applying the stash hit conflicts; the stash was kept",
+  "git.toast.stashPartiallyApplied": "Some changes were applied; the stash was kept",
   "git.toast.stashPopConflict": "Popping the stash hit conflicts; the stash was kept",
   "git.toast.copiedHash": "Copied commit hash",
   "git.toast.discarded": "Discarded changes",
@@ -130,4 +131,5 @@ export const gitEn = {
   "git.workingTree.shortcutHint": "{shortcut} Commit",
   "git.toast.committed": "Committed {hash}",
   "git.toast.commitHookRejected": "A Git hook rejected this commit",
+  "git.toast.nothingStaged": "Nothing is staged anymore. Check the changes and try again.",
 } as const;

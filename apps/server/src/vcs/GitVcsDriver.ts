@@ -13,6 +13,7 @@ import { ChildProcessSpawner } from "effect/process";
 import {
   GitCommandError,
   GitStashConflictError,
+  GitStashPartiallyAppliedError,
   GitStashMovedError,
   VcsProcessExitError,
   VcsUnsupportedOperationError,
@@ -519,7 +520,10 @@ export class GitVcsDriver extends Context.Service<
     /** `pop` and `drop` fail when `stash@{index}` is no longer `hash`. */
     readonly stashAction: (
       input: GitStashActionInput,
-    ) => Effect.Effect<void, GitCommandError | GitStashMovedError | GitStashConflictError>;
+    ) => Effect.Effect<
+      void,
+      GitCommandError | GitStashMovedError | GitStashConflictError | GitStashPartiallyAppliedError
+    >;
     /** Deletes the branch on the remote; refuses the remote's default branch. */
     readonly deleteRemoteBranch: (
       input: GitDeleteRemoteBranchInput,

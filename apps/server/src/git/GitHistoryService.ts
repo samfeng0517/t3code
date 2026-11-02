@@ -50,6 +50,9 @@ import {
 const BOUNDARY_DETAIL = "Git history cwd must stay within the configured workspace root.";
 const LARGE_OUTPUT_MAX_BYTES = 16 * 1024 * 1024;
 const FILE_DIFF_MAX_BYTES = 1024 * 1024;
+// Untracked files have no numstat; reading them for the total is capped so refresh stays cheap.
+const UNTRACKED_COUNT_MAX_FILES = 1000;
+const UNTRACKED_COUNT_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
 const SUBJECT_MAX_LENGTH = 300;
 const NULL_HASH = /^0+$/;
 const tagNameCollator = new Intl.Collator("en", { numeric: true });
@@ -254,6 +257,14 @@ function porcelainStatus(letter: string | undefined): GitWorkingTreeFileStatus |
  * Parses `status --porcelain=v2 -z`, keeping git's order. When the output was cut at the byte
  * limit, the trailing partial record is dropped rather than shown as a wrong path.
  */
+/** Lines `git diff --no-index /dev/null <file>` adds; binary content counts 0 like numstat. */
+function countAddedLines(bytes: Uint8Array): number {
+  if (bytes.length === 0 || bytes.subarray(0, 8000).includes(0)) return 0;
+  let lines = 0;
+  for (const byte of bytes) if (byte === 10) lines++;
+  return bytes[bytes.length - 1] === 10 ? lines : lines + 1;
+}
+
 function parseWorkingTreeStatus(stdout: string, truncated: boolean): GitWorkingTreeFile[] {
   const fields = stdout.split("\0");
   if (truncated) fields.pop();
@@ -792,6 +803,60 @@ export const make = Effect.gen(function* () {
     )).stdout.trim();
   });
 
+  const countUntrackedInsertions = Effect.fn("GitHistoryService.countUntrackedInsertions")(
+    function* (repoRoot: string, files: ReadonlyArray<GitWorkingTreeFile>) {
+      const candidates = files
+        // A `dir/` entry is a nested repository, which has no diff of its own.
+        .filter((file) => file.worktreeStatus === "untracked" && !file.path.endsWith("/"))
+        .slice(0, UNTRACKED_COUNT_MAX_FILES);
+      const sized = yield* Effect.forEach(
+        candidates,
+        (file) => {
+          const absolute = path.join(repoRoot, file.path);
+          // git diffs a symlink as its one-line target, never the file it points to.
+          return fileSystem.readLink(absolute).pipe(
+            Effect.as({ absolute, symlink: true, size: 0 }),
+            Effect.catch(() =>
+              fileSystem
+                .stat(absolute)
+                .pipe(
+                  Effect.map((info) =>
+                    info.type === "File"
+                      ? { absolute, symlink: false, size: Number(info.size) }
+                      : null,
+                  ),
+                ),
+            ),
+            Effect.orElseSucceed(() => null),
+          );
+        },
+        { concurrency: 16 },
+      );
+      let budget = UNTRACKED_COUNT_MAX_TOTAL_BYTES;
+      let insertions = 0;
+      const toRead: string[] = [];
+      for (const entry of sized) {
+        if (entry === null) continue;
+        if (entry.symlink) {
+          insertions += 1;
+        } else if (entry.size <= FILE_DIFF_MAX_BYTES && entry.size <= budget) {
+          budget -= entry.size;
+          toRead.push(entry.absolute);
+        }
+      }
+      const counts = yield* Effect.forEach(
+        toRead,
+        (absolute) =>
+          fileSystem.readFile(absolute).pipe(
+            Effect.map(countAddedLines),
+            Effect.orElseSucceed(() => 0),
+          ),
+        { concurrency: 16 },
+      );
+      return counts.reduce((total, count) => total + count, insertions);
+    },
+  );
+
   const workingTreeStatus: GitHistoryService["Service"]["workingTreeStatus"] = Effect.fn(
     "GitHistoryService.workingTreeStatus",
   )(function* (input) {
@@ -855,12 +920,9 @@ export const make = Effect.gen(function* () {
       insertions += file.additions;
       deletions += file.deletions;
     }
-    return {
-      isRepo: true,
-      files: parseWorkingTreeStatus(status.stdout, status.stdoutTruncated),
-      insertions,
-      deletions,
-    };
+    const files = parseWorkingTreeStatus(status.stdout, status.stdoutTruncated);
+    insertions += yield* countUntrackedInsertions(repoRoot, files);
+    return { isRepo: true, files, insertions, deletions };
   });
 
   const workingTreeFileDiff: GitHistoryService["Service"]["workingTreeFileDiff"] = Effect.fn(

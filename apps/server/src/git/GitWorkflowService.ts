@@ -11,6 +11,8 @@ import {
   type GitCommitIndexInput,
   type GitCommitIndexResult,
   GitStashConflictError,
+  type GitStashPartiallyAppliedError,
+  type GitNothingStagedError,
   GitStashMovedError,
   type GitCreateTagInput,
   type GitDeleteTagInput,
@@ -89,7 +91,10 @@ export class GitWorkflowService extends Context.Service<
     ) => Effect.Effect<GitRunStackedActionResult, GitManagerServiceError>;
     readonly commitIndex: (
       input: GitCommitIndexInput,
-    ) => Effect.Effect<GitCommitIndexResult, GitManagerServiceError | GitCommitHookRejectedError>;
+    ) => Effect.Effect<
+      GitCommitIndexResult,
+      GitManagerServiceError | GitNothingStagedError | GitCommitHookRejectedError
+    >;
     readonly resolvePullRequest: (
       input: GitPullRequestRefInput,
     ) => Effect.Effect<GitResolvePullRequestResult, GitManagerServiceError>;
@@ -170,7 +175,10 @@ export class GitWorkflowService extends Context.Service<
     readonly stashPush: (input: GitStashPushInput) => Effect.Effect<void, GitCommandError>;
     readonly stashAction: (
       input: GitStashActionInput,
-    ) => Effect.Effect<void, GitCommandError | GitStashMovedError | GitStashConflictError>;
+    ) => Effect.Effect<
+      void,
+      GitCommandError | GitStashMovedError | GitStashConflictError | GitStashPartiallyAppliedError
+    >;
     readonly deleteRemoteBranch: (
       input: GitDeleteRemoteBranchInput,
     ) => Effect.Effect<void, GitCommandError>;

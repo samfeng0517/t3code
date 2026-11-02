@@ -386,6 +386,44 @@ it.layer(NodeServices.layer)("GitWorkflowService", (it) => {
         assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "?? a.txt");
       }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-stage-unborn-"))),
   );
+  it.effect(
+    "unstage should return a partially staged new file to untracked and keep its edit when HEAD is unborn",
+    () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const cwd = yield* makeEmptyRepo("t3-unstage-unborn-am-");
+        yield* writeFile(cwd, "a.txt", "a");
+        yield* workflow.stage({ cwd, paths: ["a.txt"] });
+        yield* writeFile(cwd, "a.txt", "a2");
+        assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "AM a.txt");
+
+        yield* workflow.unstage({ cwd, paths: ["a.txt"] });
+
+        assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "?? a.txt");
+        assert.equal(yield* readFile(cwd, "a.txt"), "a2");
+      }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-unstage-unborn-am-"))),
+  );
+  it.effect(
+    "stage and unstage should succeed when the path list is larger than the process argument limit",
+    () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const cwd = yield* makeEmptyRepo("t3-stage-many-");
+        yield* writeFile(cwd, "a.txt", "v1");
+        yield* commitAll(cwd, "first");
+        const name = `${"n".repeat(200)}.txt`;
+        yield* writeFile(cwd, name, "new");
+        yield* writeFile(cwd, "a.txt", "v2");
+        // Repeated pathspecs push argv past ARG_MAX (1 MiB on macOS, 2 MiB on Linux).
+        const paths = [...Array.from({ length: 20_000 }, () => name), "a.txt"];
+
+        yield* workflow.stage({ cwd, paths });
+        assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), `M  a.txt\nA  ${name}`);
+
+        yield* workflow.unstage({ cwd, paths });
+        assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), `M a.txt\n?? ${name}`);
+      }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-stage-many-"))),
+  );
   it.effect("unstage should keep the worktree edit when a staged modification is unstaged", () =>
     Effect.gen(function* () {
       const workflow = yield* GitWorkflowService.GitWorkflowService;
@@ -441,6 +479,41 @@ it.layer(NodeServices.layer)("GitWorkflowService", (it) => {
         assert.equal(yield* readFile(cwd, "ignored.txt"), "keep");
         assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "");
       }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-discard-all-"))),
+  );
+  it.effect("discard should fail and keep the directory when the path is a nested repository", () =>
+    Effect.gen(function* () {
+      const workflow = yield* GitWorkflowService.GitWorkflowService;
+      const cwd = yield* makeEmptyRepo("t3-discard-nested-");
+      yield* writeFile(cwd, "a.txt", "v1");
+      yield* commitAll(cwd, "first");
+      yield* runGit(cwd, ["init", "-q", "nested"]);
+      yield* writeFile(cwd, "nested/x.txt", "x");
+
+      const error = yield* workflow.discard({ cwd, paths: ["nested/"] }).pipe(Effect.flip);
+
+      assert.equal(error.detail, "Nested Git repositories are not discarded.");
+      assert.equal(yield* readFile(cwd, "nested/x.txt"), "x");
+    }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-discard-nested-"))),
+  );
+  it.effect(
+    "discardAll should discard everything else and then fail when a nested repository remains",
+    () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const cwd = yield* makeEmptyRepo("t3-discard-all-nested-");
+        yield* writeFile(cwd, "a.txt", "v1");
+        yield* commitAll(cwd, "first");
+        yield* writeFile(cwd, "a.txt", "v2");
+        yield* writeFile(cwd, "new.txt", "new");
+        yield* runGit(cwd, ["init", "-q", "nested"]);
+        yield* writeFile(cwd, "nested/x.txt", "x");
+
+        const error = yield* workflow.discardAll({ cwd }).pipe(Effect.flip);
+
+        assert.equal(error.detail, "Nested Git repositories were left in place.");
+        assert.equal(yield* readFile(cwd, "a.txt"), "v1");
+        assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "?? nested/");
+      }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-discard-all-nested-"))),
   );
   it.effect("stashPush should include untracked files when a message is given", () =>
     Effect.gen(function* () {
@@ -527,6 +600,31 @@ it.layer(NodeServices.layer)("GitWorkflowService", (it) => {
       assert.equal(error._tag === "GitStashConflictError" ? error.action : null, "pop");
       assert.equal((yield* runGit(cwd, ["stash", "list"])).split("\n").length, 1);
     }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-stash-conflict-"))),
+  );
+  it.effect(
+    "stashAction should fail with GitStashPartiallyAppliedError and keep the stash when a stashed new file already exists",
+    () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const cwd = yield* makeEmptyRepo("t3-stash-partial-");
+        yield* writeFile(cwd, "f.txt", "v1");
+        yield* commitAll(cwd, "first");
+        yield* writeFile(cwd, "f.txt", "stashed");
+        yield* writeFile(cwd, "u.txt", "stashed new");
+        yield* workflow.stashPush({ cwd });
+        yield* writeFile(cwd, "u.txt", "mine");
+        const hash = yield* stashHash(cwd, 0);
+
+        const error = yield* workflow
+          .stashAction({ cwd, action: "pop", index: 0, hash })
+          .pipe(Effect.flip);
+
+        assert.equal(error._tag, "GitStashPartiallyAppliedError");
+        assert.equal(error._tag === "GitStashPartiallyAppliedError" ? error.action : null, "pop");
+        assert.equal(yield* readFile(cwd, "f.txt"), "stashed");
+        assert.equal(yield* readFile(cwd, "u.txt"), "mine");
+        assert.equal(yield* stashHash(cwd, 0), hash);
+      }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-stash-partial-"))),
   );
   it.effect("stashAction should apply by hash and keep the stash when action is apply", () =>
     Effect.gen(function* () {

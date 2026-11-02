@@ -1,5 +1,6 @@
 import { MinusIcon, PlusIcon, TriangleAlertIcon, Undo2Icon } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent, type ReactNode, useId } from "react";
+import type { GitCommitIndexMode } from "@t3tools/contracts";
 import { isMacPlatform } from "@t3tools/shared/keybindings";
 
 import { RESIZABLE_WIDTH_PROPERTY, useResizableWidth } from "~/hooks/useResizableWidth";
@@ -53,7 +54,8 @@ interface WorkingTreeCommitBox {
   readonly running: "generating" | "committing" | null;
   /** Offline, or another write holds the page's lock. */
   readonly disabled: boolean;
-  readonly submit: (message: string) => Promise<void>;
+  /** `mode` is what the button offered, so the server can refuse when the index moved. */
+  readonly submit: (message: string, mode: GitCommitIndexMode) => Promise<void>;
 }
 
 function WorkingTreeCommitBox(props: {
@@ -63,7 +65,7 @@ function WorkingTreeCommitBox(props: {
 }) {
   const t = useT();
   const { box, stagedCount, fileCount } = props;
-  const submit = () => void box.submit(box.message);
+  const submit = () => void box.submit(box.message, stagedCount > 0 ? "staged" : "all");
   const label =
     box.running === "generating"
       ? t("git.workingTree.generating")
@@ -191,7 +193,8 @@ function WorkingTreeFileRow(props: {
             </RowActionButton>
           ) : (
             <>
-              {row.conflicted ? null : (
+              {/* A `dir/` row is an untracked nested repository, which discard leaves alone. */}
+              {row.conflicted || row.path.endsWith("/") ? null : (
                 <RowActionButton
                   label={t("git.workingTree.discard")}
                   disabled={actions.disabled}

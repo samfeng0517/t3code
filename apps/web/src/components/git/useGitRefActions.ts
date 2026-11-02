@@ -9,6 +9,7 @@ import {
   type GitHistoryRefsResult,
   GitStashConflictError,
   GitStashMovedError,
+  GitStashPartiallyAppliedError,
 } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
 import * as Schema from "effect/Schema";
@@ -34,6 +35,7 @@ const PUSH_TAG_PREFIX = "push-tag:";
 const isNotFullyMerged = Schema.is(GitBranchNotFullyMergedError);
 const isStashMoved = Schema.is(GitStashMovedError);
 const isStashConflict = Schema.is(GitStashConflictError);
+const isStashPartiallyApplied = Schema.is(GitStashPartiallyAppliedError);
 
 type GitStashTarget = Extract<GitMenuTarget, { readonly kind: "stash" }>;
 
@@ -244,7 +246,9 @@ export function useGitRefActions(input: {
             ? error.action === "pop"
               ? t("git.toast.stashPopConflict")
               : t("git.toast.stashApplyConflict")
-            : null;
+            : isStashPartiallyApplied(error)
+              ? t("git.toast.stashPartiallyApplied")
+              : null;
         if (handled === null) return AsyncResult.failure(result.cause);
         toastManager.add({ type: "error", title: handled });
         return AsyncResult.success(false);

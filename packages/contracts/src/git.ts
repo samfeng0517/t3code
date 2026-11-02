@@ -245,8 +245,13 @@ export const GitStashActionInput = Schema.Struct({
 });
 export type GitStashActionInput = typeof GitStashActionInput.Type;
 
+export const GitCommitIndexMode = Schema.Literals(["staged", "all"]);
+export type GitCommitIndexMode = typeof GitCommitIndexMode.Type;
+
 export const GitCommitIndexInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
+  /** `staged` refuses an empty index instead of falling back to committing everything. */
+  mode: GitCommitIndexMode,
   message: Schema.optional(TrimmedNonEmptyStringSchema.check(Schema.isMaxLength(10_000))),
   projectId: Schema.optional(ProjectId),
 });
@@ -521,6 +526,27 @@ export class GitStashConflictError extends Schema.TaggedError<GitStashConflictEr
 ) {
   override get message(): string {
     return "Applying the stash left merge conflicts; the stash was kept.";
+  }
+}
+
+export class GitStashPartiallyAppliedError extends Schema.TaggedError<GitStashPartiallyAppliedError>()(
+  "GitStashPartiallyAppliedError",
+  {
+    cwd: Schema.String,
+    action: Schema.Literals(["apply", "pop"]),
+  },
+) {
+  override get message(): string {
+    return "Some stash changes were applied before Git stopped; the stash was kept.";
+  }
+}
+
+export class GitNothingStagedError extends Schema.TaggedError<GitNothingStagedError>()(
+  "GitNothingStagedError",
+  { cwd: Schema.String },
+) {
+  override get message(): string {
+    return "Nothing is staged to commit.";
   }
 }
 
