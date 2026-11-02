@@ -1,9 +1,16 @@
 import type { BrowserMediaDecision, BrowserMediaDevice } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import type { WebContents } from "electron";
-import { systemPreferences } from "electron";
+import type {
+  DesktopCapturerSource,
+  DisplayMediaRequestHandlerHandlerRequest,
+  Session,
+  Streams,
+  WebContents,
+} from "electron";
+import { desktopCapturer, screen, systemPreferences, webContents } from "electron";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
@@ -15,6 +22,11 @@ interface MediaRequestDetails {
   readonly isMainFrame?: boolean;
   readonly mediaTypes?: ReadonlyArray<string>;
   readonly securityOrigin?: string;
+}
+
+interface DisplayCaptureDetails {
+  readonly requestingUrl?: string;
+  readonly isMainFrame?: boolean;
 }
 
 interface MediaCheckDetails {
@@ -39,6 +51,8 @@ export class BrowserMediaAccess extends Context.Service<
       details: MediaCheckDetails,
       persistent: boolean,
     ) => boolean;
+    readonly allowDisplayCapture: (details: DisplayCaptureDetails) => boolean;
+    readonly installDisplayMediaHandler: (browserSession: Session) => void;
   }
 >()("@t3tools/desktop/preview/BrowserMediaAccess") {}
 
@@ -80,6 +94,20 @@ const MAC_DEVICE_HINTS: Record<BrowserMediaDevice, string> = {
     "macOS is blocking T3 Code from using the camera. Turn it on in System Settings → Privacy & Security → Camera.",
   microphone:
     "macOS is blocking T3 Code from using the microphone. Turn it on in System Settings → Privacy & Security → Microphone.",
+};
+
+const MAC_SCREEN_HINT =
+  "macOS is blocking T3 Code from recording the screen. Allow it in System Settings → Privacy & Security, then try again.";
+
+const screenLabels = (sources: ReadonlyArray<DesktopCapturerSource>): Array<string> => {
+  const displays = screen.getAllDisplays();
+  return sources.map((source, index) => {
+    const label =
+      source.display_id === ""
+        ? undefined
+        : displays.find((display) => String(display.id) === source.display_id)?.label;
+    return label ? label : `Screen ${index + 1}`;
+  });
 };
 
 interface PendingRequest {
@@ -259,7 +287,90 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
     );
   };
 
-  return BrowserMediaAccess.of({ requestMedia, checkMedia });
+  const allowDisplayCapture = (details: DisplayCaptureDetails): boolean =>
+    details.isMainFrame === true && httpOrigin(details.requestingUrl) !== null;
+
+  // One fallback screen dialog at a time across every session.
+  let screenDialogOpen = false;
+
+  const handleDisplayMedia = (
+    request: DisplayMediaRequestHandlerHandlerRequest,
+    callback: (streams: Streams) => void,
+  ): void => {
+    const frame = request.frame;
+    const origin = httpOrigin(request.securityOrigin);
+    if (
+      request.userGesture !== true ||
+      frame === null ||
+      frame.parent !== null ||
+      origin === null ||
+      screenDialogOpen
+    ) {
+      callback({});
+      return;
+    }
+    screenDialogOpen = true;
+    const host = new URL(origin).host;
+
+    const chooseScreen = Effect.tryPromise(() =>
+      desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 0, height: 0 } }),
+    ).pipe(
+      Effect.flatMap((sources): Effect.Effect<Streams, unknown> => {
+        const screenDenied =
+          platform === "darwin" && systemPreferences.getMediaAccessStatus("screen") === "denied";
+        if (sources.length === 0 && !screenDenied) return Effect.succeed({});
+        const buttons = [...screenLabels(sources), "Cancel"];
+        return electronDialog
+          .showMessageBox(
+            {
+              type: "question",
+              buttons,
+              // Default to Cancel so an Enter typed into the page cannot start a share.
+              defaultId: sources.length,
+              cancelId: sources.length,
+              message: `Share your screen with ${host}?`,
+              detail: screenDenied
+                ? MAC_SCREEN_HINT
+                : `${host} will see everything on the screen you choose.`,
+            },
+            previewHostWindow(webContents.fromFrame(frame) ?? null),
+          )
+          .pipe(
+            Effect.map(({ response }): Streams => {
+              const source = sources[response];
+              return source === undefined ? {} : { video: source };
+            }),
+          );
+      }),
+      Effect.orElseSucceed((): Streams => ({})),
+    );
+
+    runFork(
+      chooseScreen.pipe(
+        Effect.onExit((exit) =>
+          Effect.sync(() => {
+            screenDialogOpen = false;
+            callback(Exit.isSuccess(exit) ? exit.value : {});
+          }),
+        ),
+      ),
+    );
+  };
+
+  const displayMediaSessions = new WeakSet<Session>();
+  const installDisplayMediaHandler = (browserSession: Session): void => {
+    if (displayMediaSessions.has(browserSession)) return;
+    displayMediaSessions.add(browserSession);
+    // Electron skips the handler when the system picker is available, so it only runs as the fallback.
+    browserSession.setDisplayMediaRequestHandler(handleDisplayMedia, { useSystemPicker: true });
+  };
+
+  return BrowserMediaAccess.of({
+    requestMedia,
+    checkMedia,
+    allowDisplayCapture,
+    installDisplayMediaHandler,
+  });
 }).pipe(Effect.withSpan("BrowserMediaAccess.make"));
 
 /** @public */
