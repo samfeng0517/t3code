@@ -63,18 +63,15 @@ export function getSourceControlPresentationForKind(kind: string): SourceControl
 }
 
 /**
- * A project's host for change request markers. The default host and unrecognized hosts keep
- * the generic glyph, so only another host (GitLab, Bitbucket...) swaps in its own logo.
+ * A project's host for change request markers: its terminology ("MR"), with the generic glyph.
+ * Only surfaces that show the host's own logo use `getSourceControlPresentation`.
  */
 export function getProjectSourceControlPresentation(
   kind: string | null | undefined,
 ): SourceControlPresentation {
-  const fallback = sourceControlClients.get(undefined);
-  const definition = (kind ? sourceControlClients.find(kind) : undefined) ?? fallback;
-  const presentation = presentDefinition(definition, definition.label);
-  return definition === fallback
-    ? { ...presentation, Icon: PullRequestGlyph.pullRequest }
-    : presentation;
+  const definition =
+    (kind ? sourceControlClients.find(kind) : undefined) ?? sourceControlClients.get(undefined);
+  return { ...presentDefinition(definition, definition.label), Icon: PullRequestGlyph.pullRequest };
 }
 
 /** Message params for copy that names a host's change request ("pull request", "MR"). */
