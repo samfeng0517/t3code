@@ -73,6 +73,8 @@ import * as DesktopUpdates from "./updates/DesktopUpdates.ts";
 import * as BrowserImport from "./preview/BrowserImport/BrowserImport.ts";
 import * as LinuxBrowserSecret from "./preview/BrowserImport/LinuxBrowserSecret.ts";
 import * as BrowserSession from "./preview/BrowserSession.ts";
+import * as BrowserMediaAccess from "./preview/BrowserMediaAccess.ts";
+import * as BrowserMediaPermissions from "./preview/BrowserMediaPermissions.ts";
 import * as BrowserNotificationPermissions from "./preview/BrowserNotificationPermissions.ts";
 import * as BrowserExtensions from "./preview/BrowserExtensions.ts";
 import * as DesktopBrowserHost from "./preview/DesktopBrowserHost.ts";
@@ -183,7 +185,9 @@ const layerDesktopPreview = PreviewManager.layer.pipe(
   Layer.provideMerge(BrowserImport.layer.pipe(Layer.provide(LinuxBrowserSecret.layer))),
   Layer.provideMerge(BrowserExtensions.layer),
   Layer.provideMerge(BrowserSession.layer),
+  Layer.provideMerge(BrowserMediaAccess.layer),
   Layer.provideMerge(BrowserNotificationPermissions.layer),
+  Layer.provideMerge(BrowserMediaPermissions.layer),
   Layer.provideMerge(PreviewPasskeys.layer),
   Layer.provideMerge(layerDesktopFoundation),
 );

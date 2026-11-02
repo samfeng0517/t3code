@@ -35,7 +35,6 @@ interface MediaCheckDetails {
   readonly mediaType?: string;
 }
 
-/** @public */
 export class BrowserMediaAccess extends Context.Service<
   BrowserMediaAccess,
   {
@@ -56,7 +55,8 @@ export class BrowserMediaAccess extends Context.Service<
   }
 >()("@t3tools/desktop/preview/BrowserMediaAccess") {}
 
-const httpOrigin = (rawUrl: string | undefined): string | null => {
+/** The http(s) origin a site permission is remembered under, or null for any other page. */
+export const httpOrigin = (rawUrl: string | undefined): string | null => {
   if (!rawUrl) return null;
   try {
     const url = new URL(rawUrl);
@@ -374,5 +374,4 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
   });
 }).pipe(Effect.withSpan("BrowserMediaAccess.make"));
 
-/** @public */
 export const layer = Layer.effect(BrowserMediaAccess, make);

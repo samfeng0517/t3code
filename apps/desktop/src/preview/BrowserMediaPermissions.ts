@@ -59,7 +59,6 @@ export const makeAt = Effect.fn("BrowserMediaPermissions.make")(function* (store
 
 const BROWSER_MEDIA_PERMISSIONS_FILE_NAME = "browser-media-permissions.json";
 
-/** @public */
 export const layer = Layer.effect(
   BrowserMediaPermissions,
   Effect.gen(function* () {
