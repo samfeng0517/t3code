@@ -3,6 +3,7 @@ import type {
   GitWorkingTreeFile,
   GitWorkingTreeFileDiffInput,
   GitWorkingTreeFileStatus,
+  GitWorkingTreeStatusResult,
 } from "@t3tools/contracts";
 
 import { type GitHistoryState, SHORT_HASH_LENGTH } from "./gitHistoryState";
@@ -96,6 +97,11 @@ export function diffBelongsToRow(
     input.previousPath === row.previousPath &&
     input.area === row.diffArea
   );
+}
+
+/** Whether the graph shows the uncommitted changes row. */
+export function hasUncommittedChanges(status: GitWorkingTreeStatusResult | null): boolean {
+  return (status?.files.length ?? 0) > 0;
 }
 
 export function graphRowIds(

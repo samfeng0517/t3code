@@ -9,7 +9,7 @@ import type { GitOpenMenu } from "./gitContextMenus";
 import { GitGraphRow, GitUncommittedRow } from "./GitGraphRow";
 import { GRAPH_ROW_HEIGHT } from "./gitGraphStyle";
 import { nextSelectedHash } from "./gitHistoryState";
-import { graphRowIds, UNCOMMITTED_ROW_ID } from "./gitWorkingTreeState";
+import { graphRowIds, hasUncommittedChanges, UNCOMMITTED_ROW_ID } from "./gitWorkingTreeState";
 import type { GitHistoryController } from "./useGitHistory";
 
 const NAVIGATION_KEYS = new Set(["ArrowUp", "ArrowDown", "Home", "End"]);
@@ -37,7 +37,7 @@ export function GitGraphList(props: {
   const commits = state.commits;
   const headHash = refs?.head.hash ?? null;
   const workingTreeStatus = workingTree.status;
-  const hasUncommitted = (workingTreeStatus?.files.length ?? 0) > 0;
+  const hasUncommitted = hasUncommittedChanges(workingTreeStatus);
   const rowIdPrefix = useId();
   const rowId = (id: string) => `${rowIdPrefix}-${id}`;
   const listRef = useRef<LegendListRef | null>(null);

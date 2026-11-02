@@ -32,7 +32,11 @@ import type { GitMenuTarget } from "./gitContextMenus";
 import { jumpFeedbackKey, planRefJump } from "./gitHistoryState";
 import { GitToolbar } from "./GitToolbar";
 import { GitWorkingTreePanel } from "./GitWorkingTreePanel";
-import { resolveGraphSelection, UNCOMMITTED_ROW_ID } from "./gitWorkingTreeState";
+import {
+  hasUncommittedChanges,
+  resolveGraphSelection,
+  UNCOMMITTED_ROW_ID,
+} from "./gitWorkingTreeState";
 import { useGitHistory } from "./useGitHistory";
 import { useGitRefActions } from "./useGitRefActions";
 import { useGitWriteActions } from "./useGitWriteActions";
@@ -138,7 +142,7 @@ export function GitProjectView(props: {
     headHash: refs?.head.hash ?? null,
     commitHashes: commits.map((commit) => commit.hash),
     stashHashes: refs?.stashes.map((stash) => stash.hash) ?? [],
-    hasUncommitted: (workingTree.status?.files.length ?? 0) > 0,
+    hasUncommitted: hasUncommittedChanges(workingTree.status),
     workingTreeLoaded: workingTree.status !== null,
   });
   if (resolved.selected !== selectedHash) {

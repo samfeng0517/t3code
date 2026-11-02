@@ -21,6 +21,7 @@ import { RightPanelResizeHandle } from "../preview/RightPanelResizeHandle";
 import { Button } from "../ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { Skeleton } from "../ui/skeleton";
+import { GIT_DETAIL_WIDTH_OPTIONS } from "./gitGraphStyle";
 import { GitCommitDiff } from "./GitCommitDiff";
 import { SHORT_HASH_LENGTH } from "./gitHistoryState";
 
@@ -65,13 +66,7 @@ export function GitCommitDetail(props: {
   const query = useEnvironmentQuery(
     gitEnvironment.commitDetail({ environmentId, input: { cwd, hash } }),
   );
-  const { width, handlers } = useResizableWidth({
-    storageKey: "t3code:git-page:detail-width:v1",
-    defaultWidth: 330,
-    minWidth: 220,
-    maxWidth: 560,
-    edge: "right",
-  });
+  const { width, handlers } = useResizableWidth(GIT_DETAIL_WIDTH_OPTIONS);
 
   // A new selection keeps the previous commit on screen, dimmed, until its detail arrives.
   const [shown, setShown] = useState<GitCommitDetailResult | null>(query.data);

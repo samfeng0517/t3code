@@ -1,4 +1,15 @@
+import type { UseResizableWidthOptions } from "~/hooks/useResizableWidth";
+
 import { GRAPH_COLOR_COUNT } from "./gitGraphLayout";
+
+/** Commit detail and the working tree panel share one remembered left-column width. */
+export const GIT_DETAIL_WIDTH_OPTIONS: UseResizableWidthOptions = {
+  storageKey: "t3code:git-page:detail-width:v1",
+  defaultWidth: 330,
+  minWidth: 220,
+  maxWidth: 560,
+  edge: "right",
+};
 
 /** Matches the row's `h-6.5`; the list needs it as a size estimate. */
 export const GRAPH_ROW_HEIGHT = 26;
