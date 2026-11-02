@@ -3091,11 +3091,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     <>
       <ThreadContextDragGhost />
       <SidebarChromeHeader isElectron={isElectron} />
-      <SidebarContent
-        ref={sidebarContentRef}
-        className="min-h-full"
-        fixedHeader={
-          <SidebarGroup className="z-[1]">
+      <SidebarContent ref={sidebarContentRef} className="min-h-full">
+        <SidebarBrowserSection />
+        {/* Sticks while the thread list scrolls; opaque and above draft and dragged rows (z-10, z-20)
+            so they pass under it. */}
+        <div className="sticky top-0 z-30 bg-sidebar surface-grain">
+          <SidebarGroup>
             <SidebarThreadHeader
               searchFieldRef={headerSearchRef}
               hasProjects={projectGroups.length > 0}
@@ -3316,9 +3317,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               onClearSearch={clearThreadSearch}
             />
           </SidebarGroup>
-        }
-      >
-        <SidebarBrowserSection />
+        </div>
         <SidebarGroup className="flex-1" role="presentation">
           {isSearchingThreads ? (
             threadSearchResults.length > 0 ? (
