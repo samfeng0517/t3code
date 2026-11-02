@@ -293,7 +293,12 @@ export function GitProjectView(props: {
                           commitBox: {
                             message: commitMessage,
                             onMessageChange: setCommitMessage,
-                            committing: writes.pending === "commit",
+                            running:
+                              writes.pending !== "commit"
+                                ? null
+                                : workingTreeActions.commitGeneratesMessage
+                                  ? "generating"
+                                  : "committing",
                             disabled: writes.pending !== null || !writes.isOnline,
                             submit: async (message) => {
                               if (await workingTreeActions.commit(message)) setCommitMessage("");

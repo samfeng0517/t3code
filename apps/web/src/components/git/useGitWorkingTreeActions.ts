@@ -48,12 +48,15 @@ export function useGitWorkingTreeActions(input: {
   const stashPushCommand = useAtomCommand(gitEnvironment.stashPush, commandOptions);
   const commitCommand = useAtomCommand(gitEnvironment.commitIndex, commandOptions);
   const [stashPrompt, setStashPrompt] = useState<GitStashPrompt | null>(null);
+  // Held here, not in the commit box, so the running label survives the box unmounting.
+  const [commitGeneratesMessage, setCommitGeneratesMessage] = useState(false);
 
   /** Commits what is staged (or everything when nothing is); an empty message is generated. Resolves true on success. */
   const commit = async (message: string): Promise<boolean> => {
     if (repoRoot === null) return false;
     const cwd = repoRoot;
     const trimmed = message.trim();
+    setCommitGeneratesMessage(trimmed.length === 0);
     const outcome = await writes.run(
       "commit",
       async (): Promise<AtomCommandResult<{ commitSha: string } | null, unknown>> => {
@@ -191,5 +194,15 @@ export function useGitWorkingTreeActions(input: {
     return discardAll();
   };
 
-  return { stage, unstage, discard, discardAll, stash, commit, stashPrompt, openPanelMenu };
+  return {
+    stage,
+    unstage,
+    discard,
+    discardAll,
+    stash,
+    commit,
+    commitGeneratesMessage,
+    stashPrompt,
+    openPanelMenu,
+  };
 }

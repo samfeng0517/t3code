@@ -1,5 +1,5 @@
 import { MinusIcon, PlusIcon, TriangleAlertIcon, Undo2Icon } from "lucide-react";
-import { type CSSProperties, type KeyboardEvent, type ReactNode, useId, useState } from "react";
+import { type CSSProperties, type KeyboardEvent, type ReactNode, useId } from "react";
 import { isMacPlatform } from "@t3tools/shared/keybindings";
 
 import { RESIZABLE_WIDTH_PROPERTY, useResizableWidth } from "~/hooks/useResizableWidth";
@@ -49,7 +49,8 @@ const unstagePaths = (rows: ReadonlyArray<WorkingTreeRow>) =>
 interface WorkingTreeCommitBox {
   readonly message: string;
   readonly onMessageChange: (message: string) => void;
-  readonly committing: boolean;
+  /** Which label the in-flight commit shows, decided at submit. */
+  readonly running: "generating" | "committing" | null;
   /** Offline, or another write holds the page's lock. */
   readonly disabled: boolean;
   readonly submit: (message: string) => Promise<void>;
@@ -62,25 +63,22 @@ function WorkingTreeCommitBox(props: {
 }) {
   const t = useT();
   const { box, stagedCount, fileCount } = props;
-  // Decided at submit so the label cannot flip while the run is in flight.
-  const [generating, setGenerating] = useState(false);
-  const submit = () => {
-    setGenerating(box.message.trim().length === 0);
-    void box.submit(box.message);
-  };
-  const label = box.committing
-    ? generating
+  const submit = () => void box.submit(box.message);
+  const label =
+    box.running === "generating"
       ? t("git.workingTree.generating")
-      : t("git.workingTree.committing")
-    : stagedCount > 0
-      ? t("git.workingTree.commitStaged", { count: stagedCount })
-      : t("git.workingTree.commitAll", { count: fileCount });
+      : box.running === "committing"
+        ? t("git.workingTree.committing")
+        : stagedCount > 0
+          ? t("git.workingTree.commitStaged", { count: stagedCount })
+          : t("git.workingTree.commitAll", { count: fileCount });
   const shortcut = isMacPlatform(navigator.platform) ? "⌘↵" : "Ctrl+↵";
   return (
     <div className="flex flex-col gap-2 border-b border-border px-3 py-2.5">
       <Textarea
         rows={2}
         value={box.message}
+        disabled={box.running !== null}
         placeholder={t("git.workingTree.messagePlaceholder")}
         onChange={(event) => box.onMessageChange(event.target.value)}
         onKeyDown={(event) => {
