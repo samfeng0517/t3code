@@ -31,6 +31,8 @@ import { GitRefsSidebar } from "./GitRefsSidebar";
 import type { GitMenuTarget } from "./gitContextMenus";
 import { jumpFeedbackKey, planRefJump } from "./gitHistoryState";
 import { GitToolbar } from "./GitToolbar";
+import { GitWorkingTreePanel } from "./GitWorkingTreePanel";
+import { resolveGraphSelection, UNCOMMITTED_ROW_ID } from "./gitWorkingTreeState";
 import { useGitHistory } from "./useGitHistory";
 import { useGitRefActions } from "./useGitRefActions";
 import { useGitWriteActions } from "./useGitWriteActions";
@@ -96,7 +98,7 @@ export function GitProjectView(props: {
   const t = useT();
   const { environmentId, projectId, workspaceRoot } = props;
   const controller = useGitHistory({ environmentId, projectId, cwd: workspaceRoot });
-  const { state, refs } = controller;
+  const { state, refs, workingTree } = controller;
   const commits = state.commits;
   const repoRoot = refs?.repoRoot ?? null;
   const writes = useGitWriteActions({
@@ -118,7 +120,7 @@ export function GitProjectView(props: {
       : vcsEnvironment.status({ environmentId, input: { cwd: repoRoot, includeRemote: false } }),
   ).data;
 
-  // `undefined` until the first page picks the initial selection, so later reloads keep it.
+  // A hash or `UNCOMMITTED_ROW_ID`; `undefined` until the first page picks the initial selection.
   const [selectedHash, setSelectedHash] = useState<string | null | undefined>(undefined);
   const [scrollTarget, setScrollTarget] = useState<GitGraphScrollTarget | null>(null);
   const latestJump = useRef(0);
@@ -130,24 +132,18 @@ export function GitProjectView(props: {
     minPx: SPLIT_MIN_PX,
   });
 
-  const hashExists = (hash: string) =>
-    commits.some((commit) => commit.hash === hash) ||
-    (refs?.stashes.some((stash) => stash.hash === hash) ?? false);
-
-  if (selectedHash === undefined && state.status === "ready") {
-    const headHash = refs?.head.hash ?? null;
-    const initial =
-      headHash !== null && commits.some((commit) => commit.hash === headHash)
-        ? headHash
-        : (commits[0]?.hash ?? null);
-    setSelectedHash(initial);
-    if (initial !== null) setScrollTarget({ hash: initial });
-  } else if (
-    typeof selectedHash === "string" &&
-    state.status !== "loading" &&
-    !hashExists(selectedHash)
-  ) {
-    setSelectedHash(null);
+  const resolved = resolveGraphSelection({
+    selected: selectedHash,
+    historyStatus: state.status,
+    headHash: refs?.head.hash ?? null,
+    commitHashes: commits.map((commit) => commit.hash),
+    stashHashes: refs?.stashes.map((stash) => stash.hash) ?? [],
+    hasUncommitted: (workingTree.status?.files.length ?? 0) > 0,
+    workingTreeLoaded: workingTree.status !== null,
+  });
+  if (resolved.selected !== selectedHash) {
+    setSelectedHash(resolved.selected);
+    if (resolved.scrollTo !== null) setScrollTarget({ hash: resolved.scrollTo });
   }
 
   const selectRow = (hash: string) => {
@@ -199,7 +195,7 @@ export function GitProjectView(props: {
         return (
           <GitGraphList
             controller={controller}
-            selectedHash={selectedHash ?? null}
+            selectedId={selectedHash ?? null}
             onSelect={selectRow}
             scrollTarget={scrollTarget}
             onOpenMenu={openMenu}
@@ -264,27 +260,31 @@ export function GitProjectView(props: {
                   minHeight: SPLIT_MIN_PX,
                 }}
               >
-                <GitCommitDetail
-                  environmentId={environmentId}
-                  cwd={workspaceRoot}
-                  hash={detailHash}
-                  headerAccessory={
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label={t("git.detail.moreActions")}
-                      onClick={(event) => {
-                        const rect = event.currentTarget.getBoundingClientRect();
-                        openMenu(
-                          { kind: "commit", hash: detailHash },
-                          { x: rect.left, y: rect.bottom },
-                        );
-                      }}
-                    >
-                      <EllipsisIcon />
-                    </Button>
-                  }
-                />
+                {detailHash === UNCOMMITTED_ROW_ID ? (
+                  <GitWorkingTreePanel controller={workingTree} />
+                ) : (
+                  <GitCommitDetail
+                    environmentId={environmentId}
+                    cwd={workspaceRoot}
+                    hash={detailHash}
+                    headerAccessory={
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={t("git.detail.moreActions")}
+                        onClick={(event) => {
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          openMenu(
+                            { kind: "commit", hash: detailHash },
+                            { x: rect.left, y: rect.bottom },
+                          );
+                        }}
+                      >
+                        <EllipsisIcon />
+                      </Button>
+                    }
+                  />
+                )}
               </div>
             </>
           ) : null}

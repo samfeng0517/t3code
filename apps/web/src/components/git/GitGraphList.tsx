@@ -6,9 +6,10 @@ import { useT } from "~/i18n";
 
 import { Button } from "../ui/button";
 import type { GitOpenMenu } from "./gitContextMenus";
-import { GitGraphRow } from "./GitGraphRow";
+import { GitGraphRow, GitUncommittedRow } from "./GitGraphRow";
 import { GRAPH_ROW_HEIGHT } from "./gitGraphStyle";
 import { nextSelectedHash } from "./gitHistoryState";
+import { graphRowIds, UNCOMMITTED_ROW_ID } from "./gitWorkingTreeState";
 import type { GitHistoryController } from "./useGitHistory";
 
 const NAVIGATION_KEYS = new Set(["ArrowUp", "ArrowDown", "Home", "End"]);
@@ -23,19 +24,22 @@ export interface GitGraphScrollTarget {
 
 export function GitGraphList(props: {
   readonly controller: GitHistoryController;
-  readonly selectedHash: string | null;
-  readonly onSelect: (hash: string) => void;
+  /** A commit or stash hash, or `UNCOMMITTED_ROW_ID`. */
+  readonly selectedId: string | null;
+  readonly onSelect: (id: string) => void;
   readonly scrollTarget: GitGraphScrollTarget | null;
   /** Must keep one identity: rows render only when their data changes. */
   readonly onOpenMenu: GitOpenMenu;
 }) {
   const t = useT();
-  const { controller, selectedHash, onSelect, scrollTarget, onOpenMenu } = props;
-  const { state, layout, labels, refs } = controller;
+  const { controller, selectedId, onSelect, scrollTarget, onOpenMenu } = props;
+  const { state, layout, labels, refs, workingTree } = controller;
   const commits = state.commits;
   const headHash = refs?.head.hash ?? null;
+  const workingTreeStatus = workingTree.status;
+  const hasUncommitted = (workingTreeStatus?.files.length ?? 0) > 0;
   const rowIdPrefix = useId();
-  const rowId = (hash: string) => `${rowIdPrefix}-${hash}`;
+  const rowId = (id: string) => `${rowIdPrefix}-${id}`;
   const listRef = useRef<LegendListRef | null>(null);
 
   // A jump can land before the list renders the pages it loaded, so the request waits here
@@ -54,20 +58,27 @@ export function GitGraphList(props: {
     if (!isNavigationKey(event.key)) return;
     event.preventDefault();
     const hashes = commits.map((commit) => commit.hash);
-    const next = nextSelectedHash(hashes, selectedHash, event.key);
+    const next = nextSelectedHash(graphRowIds(hashes, hasUncommitted), selectedId, event.key);
     if (next === null) return;
     onSelect(next);
-    void listRef.current?.scrollIndexIntoView({ index: hashes.indexOf(next), animated: false });
+    if (next === UNCOMMITTED_ROW_ID) {
+      void listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    } else {
+      void listRef.current?.scrollIndexIntoView({ index: hashes.indexOf(next), animated: false });
+    }
   };
 
-  const activeDescendant =
-    selectedHash !== null && commits.some((commit) => commit.hash === selectedHash)
-      ? rowId(selectedHash)
-      : undefined;
+  const selectedRendered =
+    selectedId === UNCOMMITTED_ROW_ID
+      ? hasUncommitted
+      : commits.some((commit) => commit.hash === selectedId);
+  const activeDescendant = selectedId !== null && selectedRendered ? rowId(selectedId) : undefined;
+
+  const headIndex = commits.findIndex((commit) => commit.hash === headHash);
 
   // Legend re-renders visible rows only when data or extraData changes, so everything the rows
   // read from outside their commit goes in here.
-  const rowInputs = { layout, labels, headHash, selectedHash };
+  const rowInputs = { layout, labels, headHash, selectedId, hasUncommitted };
 
   return (
     <div
@@ -91,7 +102,8 @@ export function GitGraphList(props: {
             maxLanes={layout.maxLanes}
             labels={labels.get(commit.hash) ?? []}
             isHead={commit.hash === headHash}
-            selected={commit.hash === selectedHash}
+            connectAbove={hasUncommitted && index === 0 && commit.hash === headHash}
+            selected={commit.hash === selectedId}
             onSelect={onSelect}
             onOpenMenu={onOpenMenu}
           />
@@ -100,6 +112,21 @@ export function GitGraphList(props: {
         drawDistance={GRAPH_ROW_HEIGHT * 20}
         maintainVisibleContentPosition
         onEndReached={controller.loadMore}
+        ListHeaderComponent={
+          workingTreeStatus === null || !hasUncommitted ? null : (
+            <GitUncommittedRow
+              id={rowId(UNCOMMITTED_ROW_ID)}
+              fileCount={workingTreeStatus.files.length}
+              insertions={workingTreeStatus.insertions}
+              deletions={workingTreeStatus.deletions}
+              lane={layout.rows[headIndex]?.lane ?? 0}
+              maxLanes={layout.maxLanes}
+              connectBelow={headIndex === 0}
+              selected={selectedId === UNCOMMITTED_ROW_ID}
+              onSelect={onSelect}
+            />
+          )
+        }
         ListFooterComponent={
           state.loadMoreError === null ? null : (
             <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground">
