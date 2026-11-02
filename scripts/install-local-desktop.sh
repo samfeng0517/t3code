@@ -72,6 +72,9 @@ cat >"$installer" <<'INSTALLER'
 #!/usr/bin/env bash
 set -euo pipefail
 new_app="$1" bundle_id="$2" work_dir="$3"
+# open hands the caller's environment to the app. Inherited from T3 Code's shell,
+# ELECTRON_RUN_AS_NODE makes the new app start as plain Node and exit without a window.
+unset ELECTRON_RUN_AS_NODE T3CODE_THREAD_ID T3CODE_CLI_PATH
 target="/Applications/$(basename "$new_app")"
 backup="$work_dir/previous/$(basename "$new_app")"
 echo "$(date '+%F %T') installing $new_app"
@@ -104,8 +107,7 @@ for _ in $(seq 1 60); do
   pgrep -qf "$executable" || break
   sleep 0.5
 done
-# A launch that loses the single-instance lock to a still-exiting copy quits within a second,
-# so count the app as reopened only once it has stayed up for a few seconds.
+# A launch that dies at startup still shows up briefly, so it only counts once it stays up.
 stays_up() {
   local up=0
   for _ in $(seq 1 30); do
@@ -116,7 +118,7 @@ stays_up() {
   return 1
 }
 # open -b may pick the build copy with the same bundle id; 1Password only trusts /Applications.
-for attempt in 1 2 3 4 5; do
+for attempt in 1 2 3; do
   sleep 2
   open "$target" || echo "$(date '+%F %T') open attempt $attempt failed"
   stays_up && break
