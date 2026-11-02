@@ -5279,16 +5279,26 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
   // "Stage all" can name tens of thousands of paths; argv would overflow ARG_MAX.
   const pathspecStdinArgs = ["--pathspec-from-file=-", "--pathspec-file-nul"];
-  const pathspecStdin = (paths: readonly string[]) => `${pathspecs(paths).join("\0")}\0`;
+  // A NUL inside a path would split it into a second pathspec without `:(top,literal)`.
+  const pathspecStdin = (operation: string, cwd: string, paths: readonly string[]) =>
+    paths.some((path) => path.includes("\0"))
+      ? Effect.fail(
+          new GitCommandError({
+            ...gitCommandContext({ operation, cwd, args: pathspecStdinArgs }),
+            detail: "File paths cannot contain NUL characters.",
+          }),
+        )
+      : Effect.succeed(`${pathspecs(paths).join("\0")}\0`);
 
   const stagePaths: GitVcsDriver.GitVcsDriver["Service"]["stagePaths"] = Effect.fn("stagePaths")(
     function* (input) {
+      const operation = "GitVcsDriver.stagePaths";
       yield* executeGitWithStableDiagnostics(
-        "GitVcsDriver.stagePaths",
+        operation,
         input.cwd,
         ["add", "-A", ...pathspecStdinArgs],
         {
-          stdin: pathspecStdin(input.paths),
+          stdin: yield* pathspecStdin(operation, input.cwd, input.paths),
           timeoutMs: 10_000,
           fallbackErrorDetail: "Could not stage the selected files.",
         },
@@ -5310,12 +5320,13 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   )(function* (input) {
     // Path-limited reset also works on an unborn HEAD, where `git rm --cached` refuses
     // entries that differ from both the file and HEAD and takes no pathspec file.
+    const operation = "GitVcsDriver.unstagePaths";
     yield* executeGitWithStableDiagnostics(
-      "GitVcsDriver.unstagePaths",
+      operation,
       input.cwd,
       ["reset", "-q", ...pathspecStdinArgs],
       {
-        stdin: pathspecStdin(input.paths),
+        stdin: yield* pathspecStdin(operation, input.cwd, input.paths),
         timeoutMs: 10_000,
         fallbackErrorDetail: "Could not unstage the selected files.",
       },
@@ -5379,14 +5390,17 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         options,
       );
       yield* executeGitWithStableDiagnostics(operation, input.cwd, ["clean", "-fd", "-q"], options);
-      // `clean -fd` leaves untracked nested repositories, so the changes row would stay.
+      // `clean -fd` leaves untracked nested repositories (listed as `dir/`), so their row stays.
+      // Other leftovers, such as files a discarded .gitignore used to ignore, are not errors.
       const leftover = yield* executeGitWithStableDiagnostics(
         operation,
         input.cwd,
         ["ls-files", "-z", "--others", "--exclude-standard"],
-        options,
+        { ...options, maxOutputBytes: 1_000_000, appendTruncationMarker: true },
       );
-      if (leftover.stdout.length > 0) {
+      const leftoverPaths = leftover.stdout.split("\0");
+      if (leftover.stdoutTruncated) leftoverPaths.pop();
+      if (leftoverPaths.some((path) => path.endsWith("/"))) {
         return yield* new GitCommandError({
           ...gitCommandContext({ operation, cwd: input.cwd, args: ["clean", "-fd"] }),
           detail: "Nested Git repositories were left in place.",
@@ -5433,29 +5447,45 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         drop: "Could not delete the stash.",
       }[input.action];
       const action = input.action;
-      // Without renames every NUL-separated record is one entry, so `u ` marks an unmerged one.
-      const readWorktreeState = executeGit(
-        operation,
-        input.cwd,
-        ["status", "--porcelain=v2", "-z", "--untracked-files=all", "--no-renames"],
-        { allowNonZeroExit: true, env: { GIT_OPTIONAL_LOCKS: "0" } },
-      ).pipe(Effect.map((result) => result.stdout));
-      const hasUnmerged = (state: string) =>
-        state.split("\0").some((record) => record.startsWith("u "));
-      const stateBefore = action === "drop" ? "" : yield* readWorktreeState;
+      const readState = (args: readonly string[]) =>
+        executeGit(operation, input.cwd, args, {
+          allowNonZeroExit: true,
+          maxOutputBytes: 1_000_000,
+          appendTruncationMarker: true,
+          env: { GIT_OPTIONAL_LOCKS: "0" },
+        }).pipe(Effect.map((result) => result.stdout));
+      // Bounded fingerprint: tracked edits plus untracked entries with whole new directories
+      // collapsed, so a large generated folder cannot overflow it. A failed read skips detection.
+      const readWorktreeState = Effect.all(
+        [
+          readState(["ls-files", "-u", "-z"]),
+          readState(["diff", "--raw", "-z"]),
+          readState(["diff", "--cached", "--raw", "-z"]),
+          readState(["ls-files", "-z", "--others", "--exclude-standard", "--directory"]),
+        ],
+        { concurrency: "unbounded" },
+      ).pipe(
+        Effect.map(([unmerged, ...rest]) => ({
+          unmerged: unmerged.length > 0,
+          fingerprint: rest.join("\0\0"),
+        })),
+        Effect.orElseSucceed(() => null),
+      );
+      const stateBefore = action === "drop" ? null : yield* readWorktreeState;
       yield* executeGitWithStableDiagnostics(operation, input.cwd, args, {
         timeoutMs: 10_000,
         fallbackErrorDetail,
       }).pipe(
         Effect.catchTags({
           GitCommandError: Effect.fnUntraced(function* (error) {
-            if (action === "drop") return yield* error;
+            if (action === "drop" || stateBefore === null) return yield* error;
             const stateAfter = yield* readWorktreeState;
-            if (!hasUnmerged(stateBefore) && hasUnmerged(stateAfter)) {
+            if (stateAfter === null) return yield* error;
+            if (!stateBefore.unmerged && stateAfter.unmerged) {
               return yield* new GitStashConflictError({ cwd: input.cwd, action });
             }
             // e.g. a stashed new file already exists: git applies tracked edits, then stops.
-            if (stateAfter !== stateBefore) {
+            if (stateAfter.fingerprint !== stateBefore.fingerprint) {
               return yield* new GitStashPartiallyAppliedError({ cwd: input.cwd, action });
             }
             return yield* error;

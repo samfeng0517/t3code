@@ -403,6 +403,21 @@ it.layer(NodeServices.layer)("GitWorkflowService", (it) => {
         assert.equal(yield* readFile(cwd, "a.txt"), "a2");
       }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-unstage-unborn-am-"))),
   );
+  it.effect("stage should fail and stage nothing when a path contains a NUL character", () =>
+    Effect.gen(function* () {
+      const workflow = yield* GitWorkflowService.GitWorkflowService;
+      const cwd = yield* makeEmptyRepo("t3-stage-nul-");
+      yield* writeFile(cwd, "a.txt", "v1");
+      yield* commitAll(cwd, "first");
+      yield* writeFile(cwd, "a.txt", "v2");
+      yield* writeFile(cwd, "c.txt", "new");
+
+      const error = yield* workflow.stage({ cwd, paths: ["c.txt\0*"] }).pipe(Effect.flip);
+
+      assert.equal(error.detail, "File paths cannot contain NUL characters.");
+      assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "M a.txt\n?? c.txt");
+    }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-stage-nul-"))),
+  );
   it.effect(
     "stage and unstage should succeed when the path list is larger than the process argument limit",
     () =>
@@ -515,6 +530,22 @@ it.layer(NodeServices.layer)("GitWorkflowService", (it) => {
         assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "?? nested/");
       }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-discard-all-nested-"))),
   );
+  it.effect(
+    "discardAll should succeed when the only leftover is a file a discarded gitignore used to ignore",
+    () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const cwd = yield* makeEmptyRepo("t3-discard-all-gitignore-");
+        yield* writeFile(cwd, "a.txt", "v1");
+        yield* commitAll(cwd, "first");
+        yield* writeFile(cwd, ".gitignore", "*.log\n");
+        yield* writeFile(cwd, "debug.log", "log");
+
+        yield* workflow.discardAll({ cwd });
+
+        assert.equal(yield* runGit(cwd, ["status", "--porcelain"]), "?? debug.log");
+      }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-discard-all-gitignore-"))),
+  );
   it.effect("stashPush should include untracked files when a message is given", () =>
     Effect.gen(function* () {
       const workflow = yield* GitWorkflowService.GitWorkflowService;
@@ -625,6 +656,33 @@ it.layer(NodeServices.layer)("GitWorkflowService", (it) => {
         assert.equal(yield* readFile(cwd, "u.txt"), "mine");
         assert.equal(yield* stashHash(cwd, 0), hash);
       }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-stash-partial-"))),
+  );
+  it.effect(
+    "stashAction should pop the stash when untracked files produce more status output than the output cap",
+    () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const cwd = yield* makeEmptyRepo("t3-stash-many-untracked-");
+        yield* writeFile(cwd, "f.txt", "v1");
+        yield* commitAll(cwd, "first");
+        yield* writeFile(cwd, "f.txt", "stashed");
+        yield* workflow.stashPush({ cwd });
+        const hash = yield* stashHash(cwd, 0);
+        // ~5000 records of ~240 bytes put a full untracked listing past the 1 MB output cap.
+        yield* fileSystem.makeDirectory(`${cwd}/build`);
+        const stem = "g".repeat(225);
+        yield* Effect.forEach(
+          Array.from({ length: 5000 }, (_, index) => index),
+          (index) => fileSystem.writeFileString(`${cwd}/build/${stem}-${index}.js`, ""),
+          { concurrency: 32, discard: true },
+        );
+
+        yield* workflow.stashAction({ cwd, action: "pop", index: 0, hash });
+
+        assert.equal(yield* readFile(cwd, "f.txt"), "stashed");
+        assert.equal(yield* runGit(cwd, ["stash", "list"]), "");
+      }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-stash-many-untracked-"))),
   );
   it.effect("stashAction should apply by hash and keep the stash when action is apply", () =>
     Effect.gen(function* () {
