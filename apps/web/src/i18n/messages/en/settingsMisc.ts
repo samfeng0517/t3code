@@ -584,7 +584,7 @@ export const settingsMiscEn = {
   "settingsMisc.tasks.webhook.invalidAge.title": "Invalid age limit",
   "settingsMisc.tasks.webhook.invalidAge.description":
     "Enter whole minutes from 1 to {max}, or leave it blank.",
-  "settingsMisc.tasks.webhook.replayKey": "Replay key",
+  "settingsMisc.tasks.webhook.replayKey": "Duplicate request key",
   "settingsMisc.tasks.webhook.coalesceKey": "Coalesce key",
   "settingsMisc.tasks.webhook.invalidSettings": "Invalid webhook settings",
   "settingsMisc.tasks.webhook.keyPlaceholder": "{label} must contain a valid request placeholder.",
@@ -621,8 +621,6 @@ export const settingsMiscEn = {
     "These permissions apply to this client’s current connection.",
   "settingsMisc.session.allowed": "Allowed",
   "settingsMisc.session.notGranted": "Not granted",
-  "settingsMisc.session.notChecked":
-    "Permissions not checked. Connect to this environment to view this session’s permissions.",
   "settingsMisc.appearance.devArtwork": "Dev artwork",
   "settingsMisc.appearance.nightlyArtwork": "Nightly artwork",
   "settingsMisc.environmentRow.thisMachine": "This machine",

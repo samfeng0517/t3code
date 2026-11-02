@@ -123,7 +123,9 @@ export function platformSetupStatus(
     ready: true,
     message:
       remoteHost?.kind === "eas"
-        ? t("device.setup.easCloud", { host: remoteHost.label })
+        ? platform === "ios"
+          ? t("device.setup.easCloud", { host: remoteHost.label })
+          : `${remoteHost.label} starts Android emulators in the cloud with EAS Simulator.`
         : platform === "ios"
           ? remoteHost
             ? t("device.setup.iosAvailableOn", { host: remoteHost.label })

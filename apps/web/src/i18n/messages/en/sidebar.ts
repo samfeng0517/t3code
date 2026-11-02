@@ -1,6 +1,6 @@
 export const sidebarEn = {
   "sidebar.chrome.toggleSidebar": "Toggle main sidebar",
-  "sidebar.chrome.goToThreads": "Go to threads",
+  "sidebar.chrome.home": "T3 Code home",
   "sidebar.chrome.back": "Back",
   "sidebar.chrome.settings": "Settings",
   "sidebar.chrome.pullRequests": "{Plural}",
@@ -260,7 +260,6 @@ export const sidebarEn = {
   "sidebar.updateSkip.manualUpdate": "needs a manual update",
   "sidebar.updateSkip.newerDesktopApp": "needs a newer desktop app",
   "sidebar.updateSkip.channel": "on the {channel} channel",
-  "sidebar.updateSkip.notOnNpm": "t3@{version} is not on npm yet",
 
   "sidebar.updateSummary.update": "Update {items}",
   "sidebar.updateSummary.updated": "Updated {items}",

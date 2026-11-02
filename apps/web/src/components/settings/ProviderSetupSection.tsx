@@ -139,30 +139,32 @@ function ProviderSetupActions({
   const queryError = authQuery.error ?? installQuery.error;
   const actionsDisabled = pendingLabel !== null || queryError !== null;
   const installationStatusMessage =
-    installation?.phase === "downloading"
-      ? installation.totalBytes === null
-        ? t("settingsProviders.setup.status.downloading", {
-            downloaded: (installation.downloadedBytes / 1_000_000).toFixed(1),
-          })
-        : t("settingsProviders.setup.status.downloadingOf", {
-            downloaded: (installation.downloadedBytes / 1_000_000).toFixed(1),
-            total: (installation.totalBytes / 1_000_000).toFixed(1),
-          })
-      : installation?.phase === "extracting"
-        ? t("settingsProviders.setup.status.extracting")
-        : installation?.phase === "verifying"
-          ? t("settingsProviders.setup.status.verifying")
-          : installed
-            ? t("settingsProviders.setup.status.installed")
-            : usesCustomBinary
-              ? enabled
-                ? t("settingsProviders.setup.status.customUnavailable")
-                : t("settingsProviders.setup.status.customUnchecked")
-              : installation?.totalBytes
-                ? t("settingsProviders.setup.status.downloadSize", {
-                    size: Math.ceil(installation.totalBytes / 1_000_000),
-                  })
-                : t("settingsProviders.setup.status.notInstalled");
+    installation === null
+      ? "Checking the Antigravity runtime."
+      : installation?.phase === "downloading"
+        ? installation.totalBytes === null
+          ? t("settingsProviders.setup.status.downloading", {
+              downloaded: (installation.downloadedBytes / 1_000_000).toFixed(1),
+            })
+          : t("settingsProviders.setup.status.downloadingOf", {
+              downloaded: (installation.downloadedBytes / 1_000_000).toFixed(1),
+              total: (installation.totalBytes / 1_000_000).toFixed(1),
+            })
+        : installation?.phase === "extracting"
+          ? t("settingsProviders.setup.status.extracting")
+          : installation?.phase === "verifying"
+            ? t("settingsProviders.setup.status.verifying")
+            : installed
+              ? t("settingsProviders.setup.status.installed")
+              : usesCustomBinary
+                ? enabled
+                  ? t("settingsProviders.setup.status.customUnavailable")
+                  : t("settingsProviders.setup.status.customUnchecked")
+                : installation?.totalBytes
+                  ? t("settingsProviders.setup.status.downloadSize", {
+                      size: Math.ceil(installation.totalBytes / 1_000_000),
+                    })
+                  : t("settingsProviders.setup.status.notInstalled");
 
   async function runCommand<A, E>(
     label: string,
@@ -275,7 +277,7 @@ function ProviderSetupActions({
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={actionsDisabled || installation === null || authActive}
+                    disabled={actionsDisabled || authActive}
                     onClick={() =>
                       void runCommand(t("settingsProviders.setup.pending.starting"), () =>
                         startInstall(target),

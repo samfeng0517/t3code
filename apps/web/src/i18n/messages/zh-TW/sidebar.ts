@@ -2,7 +2,7 @@ import type { sidebarEn } from "../en/sidebar";
 
 export const sidebarZhTW: Readonly<Record<keyof typeof sidebarEn, string>> = {
   "sidebar.chrome.toggleSidebar": "切換主側邊欄",
-  "sidebar.chrome.goToThreads": "前往對話串",
+  "sidebar.chrome.home": "T3 Code 首頁",
   "sidebar.chrome.back": "返回",
   "sidebar.chrome.settings": "設定",
   "sidebar.chrome.pullRequests": "{title}",
@@ -257,7 +257,6 @@ export const sidebarZhTW: Readonly<Record<keyof typeof sidebarEn, string>> = {
   "sidebar.updateSkip.manualUpdate": "需要手動更新",
   "sidebar.updateSkip.newerDesktopApp": "需要較新版本的桌面應用程式",
   "sidebar.updateSkip.channel": "位於 {channel} 頻道",
-  "sidebar.updateSkip.notOnNpm": "t3@{version} 尚未發布到 npm",
 
   "sidebar.updateSummary.update": "更新：{items}",
   "sidebar.updateSummary.updated": "已更新：{items}",

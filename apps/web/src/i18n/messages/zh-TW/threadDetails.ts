@@ -65,7 +65,6 @@ export const threadDetailsZhTW: Readonly<Record<keyof typeof threadDetailsEn, st
   "threadDetails.relationships.titleRunning": "對話關聯 · {count} 個執行中",
   "threadDetails.relationships.moreActions": "更多對話串動作",
   "threadDetails.relationships.disconnectSession": "中斷代理連線",
-  "threadDetails.relationships.threadUnavailable": "此相關對話串無法使用",
   "threadDetails.relationships.openInChat": "在這個對話串中開啟 {relationship}",
   "threadDetails.relationships.mergeBackTo": "merge 回 {title}",
   "threadDetails.relationships.mergeBackToSource": "merge 回來源對話",

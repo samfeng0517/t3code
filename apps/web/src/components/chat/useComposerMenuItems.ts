@@ -65,11 +65,14 @@ export function useComposerMenuItems({
   pullRequestRepository,
   threadPullRequests,
   planModeUiEnabled,
+  sideChatAvailable,
+  sideChatDisabledReason,
   compactSlashCommandAvailable,
   selectedProvider,
   selectedProviderSkills,
   selectedProviderSlashCommands,
   showSkillsInSlashMenu,
+  workspaceSkillsScanning,
   questionAttachmentTarget,
 }: {
   readonly composerTrigger: ComposerTrigger | null;
@@ -81,11 +84,14 @@ export function useComposerMenuItems({
   readonly pullRequestRepository: string | null;
   readonly threadPullRequests: ReadonlyArray<ThreadPullRequestLink> | undefined;
   readonly planModeUiEnabled: boolean;
+  readonly sideChatAvailable: boolean;
+  readonly sideChatDisabledReason: string | null;
   readonly compactSlashCommandAvailable: boolean;
   readonly selectedProvider: ProviderDriverKind;
   readonly selectedProviderSkills: ServerProvider["skills"];
   readonly selectedProviderSlashCommands: ServerProvider["slashCommands"];
   readonly showSkillsInSlashMenu: boolean;
+  readonly workspaceSkillsScanning: boolean;
   readonly questionAttachmentTarget: DraftId | null;
 }) {
   const t = useT();
@@ -238,6 +244,24 @@ export function useComposerMenuItems({
               },
             ] as const)
           : []),
+        ...(sideChatAvailable
+          ? ([
+              {
+                id: "slash:side",
+                type: "slash-command",
+                command: "side",
+                label: "/side",
+                description: sideChatDisabledReason ?? "Ask a side question in a new side chat",
+              },
+              {
+                id: "slash:btw",
+                type: "slash-command",
+                command: "btw",
+                label: "/btw",
+                description: sideChatDisabledReason ?? "Same as /side",
+              },
+            ] as const)
+          : []),
       ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "slash-command" }>>;
       const slashMenuSkills = getProviderSkillsForSlashMenu(
         selectedProviderSkills,
@@ -358,6 +382,8 @@ export function useComposerMenuItems({
   })();
   const isLoading =
     (composerTriggerKind === "path" && pathTriggerQuery.length > 0 && workspaceEntries.isPending) ||
+    ((composerTriggerKind === "skill" || composerTriggerKind === "slash-command") &&
+      workspaceSkillsScanning) ||
     (composerTriggerKind === "pull-request" &&
       pullRequestProjectId !== null &&
       pullRequestRepository !== null &&

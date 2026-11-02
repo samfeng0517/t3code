@@ -182,6 +182,7 @@ describe("planNextReopen", () => {
     environmentKnown: true,
     catalogReady: true,
     ownerExists: true,
+    sideChatExists: true,
     shellLive: true,
     panel: { isOpen: false, activeSurfaceId: null, surfaces: [] },
   };
@@ -210,6 +211,18 @@ describe("planNextReopen", () => {
       [{ ...known, ownerExists: false }, known],
       [],
       "b",
+    ],
+    [
+      "skips but keeps a side chat deleted from a live shell",
+      [{ ...known, sideChatExists: false }, known],
+      [],
+      "b",
+    ],
+    [
+      "waits when a cached shell lacks the side chat",
+      [{ ...known, sideChatExists: false, shellLive: false }, known],
+      [],
+      null,
     ],
     [
       "waits when a cached shell lacks the thread",
@@ -247,6 +260,7 @@ describe("planNextReopen for git tabs", () => {
     catalogReady: true,
     ownerExists: true,
     shellLive: true,
+    sideChatExists: true,
     panel: { isOpen: false, activeSurfaceId: null, surfaces: [] },
   };
 

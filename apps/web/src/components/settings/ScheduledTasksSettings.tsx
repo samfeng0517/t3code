@@ -60,24 +60,34 @@ import {
   useEnvironmentHttpBaseUrl,
   type EnvironmentPresentation,
 } from "../../state/environments";
-import { useProjects } from "../../state/entities";
+import { useProjects, useThreadShell } from "../../state/entities";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { environmentAtomList, environmentIdsKey } from "../../state/environmentAtomList";
 import { formatEnvironmentQueryError, useEnvironmentQuery } from "../../state/query";
 import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "../../state/server";
+import { threadFamilies } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { WorktreeBaseBranchPicker } from "../WorktreeBaseBranchPicker";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { ConnectionStatusDot, connectionPhaseDotClassName } from "../ConnectionStatusDot";
-import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  clampManagedRuntimeMode,
+  managedCapabilityDenial,
+} from "@t3tools/contracts";
+import { useManagedPolicy } from "~/state/managedPolicy";
+import { ManagedNotice } from "../ManagedPolicy";
 import { readEnvironmentScope } from "~/state/session";
 import { useSettingsScope } from "./SettingsScopeContext";
-import { EnvironmentRow, environmentTransportLabel } from "./EnvironmentRow";
+import { EnvironmentRow, useEnvironmentTransportLabel } from "./EnvironmentRow";
 import { SettingsGroup } from "./SettingsGroup";
 import { settingsScopeEnvironmentLabel, settingsScopeEnvironmentLabels } from "./settingsScopeAxis";
 import {
   WEBHOOK_SIGNATURE_DEFAULTS,
-  webhookDraftErrors,
+  scheduleDraftErrors,
+  toDateTimeLocalValue,
   webhookDeliveryLabel,
+  defaultScheduledTaskProjectId,
   matchesScheduledTaskScope,
   scheduleFromDraft,
   scheduledTaskDefaultModel,
@@ -144,6 +154,8 @@ const EMPTY_DRAFT: DraftState = {
   scheduleMode: "fixed",
   intervalMinutes: "15",
   timeOfDay: "09:00",
+  runAt: "",
+  savedRunAt: "",
   weekdays: new Set([1, 2, 3, 4, 5]),
   projectId: "",
   threadId: "",
@@ -295,8 +307,14 @@ function splitModelKey(value: string): ModelSelection | null {
   };
 }
 
+const ONCE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
 export function scheduleLabel(schedule: ScheduledTaskSchedule, t: Translate = translate): string {
   if (schedule.type === "webhook") return t("settingsPages.scheduledTasks.schedule.webhook");
+  if (schedule.type === "once") return `Once, ${ONCE_FORMATTER.format(new Date(schedule.runAt))}`;
   if (schedule.type === "interval") {
     const minutes = schedule.everyMs / 60_000;
     return Number.isInteger(minutes)
@@ -576,19 +594,13 @@ function ScheduledTaskEnvironmentList({
     <SettingsGroup>
       {populated.map(({ environment, tasks }) => {
         const { primary, secondary } = settingsScopeEnvironmentLabels(environment, environments);
-        const transport = environmentTransportLabel(environment, null, t);
         return (
           <div key={environment.environmentId} className="divide-y divide-border/50">
             <EnvironmentRow
               kind={resolveEnvironmentMachineKind(environment.serverConfig)}
               label={primary}
               subtitle={
-                <>
-                  {secondary && secondary !== transport ? (
-                    <span className="block truncate">{secondary}</span>
-                  ) : null}
-                  <span className="block truncate">{transport}</span>
-                </>
+                <ScheduledTaskEnvironmentSubtitle environment={environment} secondary={secondary} />
               }
             >
               <ConnectionStatusDot
@@ -646,6 +658,24 @@ function ScheduledTaskEnvironmentList({
         );
       })}
     </SettingsGroup>
+  );
+}
+
+function ScheduledTaskEnvironmentSubtitle({
+  environment,
+  secondary,
+}: {
+  readonly environment: EnvironmentPresentation;
+  readonly secondary: string;
+}) {
+  const transport = useEnvironmentTransportLabel(environment);
+  return (
+    <>
+      {secondary && secondary !== transport ? (
+        <span className="block truncate">{secondary}</span>
+      ) : null}
+      <span className="block truncate">{transport}</span>
+    </>
   );
 }
 
@@ -782,7 +812,9 @@ function ScheduledTaskRow({
         <div className="flex flex-wrap items-center gap-2">
           <span>
             {scheduleLabel(task.schedule, t)} ·{" "}
-            {!task.enabled ? (
+            {task.blockedByPolicy !== undefined ? (
+              task.blockedByPolicy
+            ) : !task.enabled ? (
               t("settingsPages.scheduledTasks.paused")
             ) : isWebhook ? (
               t("settingsPages.scheduledTasks.listening")
@@ -1193,6 +1225,38 @@ function ScheduledTaskEditorDialog({
   );
 }
 
+function ScheduledTaskDestination({
+  environmentId,
+  threadId,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId | null;
+}) {
+  const ref = threadId === null ? null : scopeThreadRef(environmentId, threadId);
+  const shell = useThreadShell(ref);
+  // The shell can omit older settled threads; their family read still carries the title.
+  const family = useEnvironmentQuery(
+    ref !== null && shell === null ? threadFamilies.familyAtom(environmentId, ref.threadId) : null,
+  );
+  const thread = shell ?? family.data?.threads.find((row) => row.id === threadId);
+  return (
+    <Field label="Destination">
+      {ref === null ? (
+        <p className="text-sm text-muted-foreground">
+          Each run starts a new thread with the workspace and model below.
+        </p>
+      ) : (
+        <div className="space-y-1 text-sm">
+          <p className="wrap-anywhere">{thread?.title.trim() || `Thread ${ref.threadId}`}</p>
+          <p className="text-muted-foreground">
+            Each run continues this conversation, in its workspace and with its current model.
+          </p>
+        </div>
+      )}
+    </Field>
+  );
+}
+
 function ScheduledTaskEditorForm({
   initialEnvironmentId,
   task,
@@ -1210,17 +1274,21 @@ function ScheduledTaskEditorForm({
   const { scope, connectedEnvironments } = useSettingsScope();
   const [environmentId, setEnvironmentId] = useState(initialEnvironmentId);
   const environment = useEnvironment(environmentId);
+  // Older servers reject one-time schedules, so offer Once only where it can save.
+  const offersOnce =
+    environment?.serverConfig?.environment.capabilities.oneTimeSchedules === true ||
+    task?.schedule.type === "once";
   const connected =
     environment?.connection.phase === "connected" && environment.serverConfig !== null;
   const tasksQuery = useEnvironmentQuery(
     connected ? serverEnvironment.scheduledTasksLive({ environmentId, input: {} }) : null,
   );
   const allProjects = useProjects();
-  const projects = allProjects.filter(
-    (project) =>
-      project.environmentId === environmentId &&
-      matchesScheduledTaskScope(scope, environmentId, project.id),
-  );
+  const projectsOn = (id: EnvironmentId) =>
+    allProjects.filter(
+      (project) => project.environmentId === id && matchesScheduledTaskScope(scope, id, project.id),
+    );
+  const scopedProjects = projectsOn(environmentId);
   const settings = useEnvironmentSettings(environmentId);
   const providers =
     useAtomValue(serverEnvironment.providersValueAtom(environmentId)) ?? EMPTY_SERVER_PROVIDERS;
@@ -1230,9 +1298,24 @@ function ScheduledTaskEditorForm({
   const upsertTask = useAtomCommand(serverEnvironment.upsertScheduledTask, {
     label: "scheduled task upsert",
   });
+  const webhookDenial = managedCapabilityDenial(useManagedPolicy(environmentId), "webhookTasks");
   const [draft, setDraft] = useState<DraftState>(() =>
-    task ? taskToDraft(task) : { ...EMPTY_DRAFT, projectId: projects[0]?.id ?? "" },
+    task
+      ? taskToDraft(task)
+      : {
+          ...EMPTY_DRAFT,
+          projectId: defaultScheduledTaskProjectId(scopedProjects, scope),
+        },
   );
+  // Pinned first. The chosen project stays listed after it is archived.
+  const projects = scopedProjects
+    .filter(
+      (project) =>
+        project.archivedAt == null ||
+        project.id === draft.projectId ||
+        project.id === task?.projectId,
+    )
+    .sort((left, right) => Number(right.pinnedAt != null) - Number(left.pinnedAt != null));
   const submissionPending = useRef(false);
   const editingTaskMissing =
     draft.editingId !== null &&
@@ -1306,7 +1389,7 @@ function ScheduledTaskEditorForm({
     }
     const schedule = scheduleFromDraft(draft);
     if (schedule === null) {
-      for (const error of webhookDraftErrors(draft, t)) {
+      for (const error of scheduleDraftErrors(draft, t)) {
         reportFailure(error.title, error.description);
       }
       return;
@@ -1331,6 +1414,13 @@ function ScheduledTaskEditorForm({
       reportFailure(
         t("settingsPages.scheduledTasks.error.invalidInterval"),
         t("settingsPages.scheduledTasks.error.invalidIntervalDescription"),
+      );
+      return;
+    }
+    if (schedule.type === "once" && !offersOnce) {
+      reportFailure(
+        "Once is not available here",
+        "This environment runs an older T3 Code. Update it to schedule a one-time task, or pick another schedule.",
       );
       return;
     }
@@ -1367,7 +1457,10 @@ function ScheduledTaskEditorForm({
       threadId: draft.threadId ? (draft.threadId as ThreadId) : null,
       workspaceStrategy,
       modelSelection,
-      runtimeMode: draft.runtimeMode,
+      // Tasks have no mode picker; a mode above the administrator's ceiling would fail every run.
+      runtimeMode:
+        clampManagedRuntimeMode(environment?.serverConfig?.managedPolicy, draft.runtimeMode) ??
+        draft.runtimeMode,
       interactionMode: draft.interactionMode,
       creationSource: "web",
     };
@@ -1423,7 +1516,7 @@ function ScheduledTaskEditorForm({
                 setEnvironmentId(next.environmentId);
                 setDraft((current) => ({
                   ...current,
-                  projectId: "",
+                  projectId: defaultScheduledTaskProjectId(projectsOn(next.environmentId), scope),
                   modelKey: "",
                   baseModelSelection: null,
                   baseRef: "main",
@@ -1499,6 +1592,11 @@ function ScheduledTaskEditorForm({
               }
             />
           </Field>
+
+          <ScheduledTaskDestination
+            environmentId={environmentId}
+            threadId={draft.threadId ? (draft.threadId as ThreadId) : null}
+          />
 
           <div className="grid gap-3 sm:grid-cols-2">
             <Field
@@ -1654,28 +1752,62 @@ function ScheduledTaskEditorForm({
                 value={[draft.scheduleMode]}
                 onValueChange={(values) => {
                   const mode = values[0] as ScheduleMode | undefined;
-                  if (mode === "fixed" || mode === "interval" || mode === "webhook")
-                    setDraft((current) => ({
-                      ...current,
-                      scheduleMode: mode,
-                      prompt:
-                        mode === "webhook" && !current.prompt.trim()
-                          ? DEFAULT_WEBHOOK_PROMPT
-                          : current.prompt,
-                    }));
+                  if (
+                    mode === "fixed" ||
+                    mode === "once" ||
+                    mode === "interval" ||
+                    mode === "webhook"
+                  )
+                    setDraft((current) => {
+                      const suggested =
+                        mode === "once" && !current.runAt
+                          ? new Date(Math.ceil(Date.now() / 3_600_000) * 3_600_000)
+                          : null;
+                      return {
+                        ...current,
+                        scheduleMode: mode,
+                        // Keep the instant too, so an hour that repeats when clocks go back stays exact.
+                        ...(suggested === null
+                          ? {}
+                          : {
+                              runAt: toDateTimeLocalValue(suggested),
+                              savedRunAt: suggested.toISOString(),
+                            }),
+                        prompt:
+                          mode === "webhook" && !current.prompt.trim()
+                            ? DEFAULT_WEBHOOK_PROMPT
+                            : current.prompt,
+                      };
+                    });
                 }}
               >
                 <Toggle value="fixed">{t("settingsPages.scheduledTasks.editor.atTime")}</Toggle>
+                {offersOnce || draft.scheduleMode === "once" ? (
+                  <Toggle value="once">Once</Toggle>
+                ) : null}
                 <Toggle value="interval">
                   {t("settingsPages.scheduledTasks.editor.everyInterval")}
                 </Toggle>
-                <Toggle value="webhook">
+                <Toggle
+                  value="webhook"
+                  disabled={webhookDenial !== undefined && draft.scheduleMode !== "webhook"}
+                >
                   {t("settingsPages.scheduledTasks.editor.onWebhook")}
                 </Toggle>
               </ToggleGroup>
             </div>
 
-            {draft.scheduleMode === "webhook" ? (
+            {webhookDenial !== undefined ? (
+              <ManagedNotice>
+                {draft.scheduleMode === "webhook"
+                  ? `${webhookDenial} Switch this task to a time or an interval, or turn it off, to save it.`
+                  : webhookDenial}
+              </ManagedNotice>
+            ) : null}
+            {/* A disabled task still saves, so keep its fields reachable for fixing. */}
+            {draft.scheduleMode === "webhook" &&
+            webhookDenial !== undefined &&
+            draft.enabled ? null : draft.scheduleMode === "webhook" ? (
               <div className="space-y-4">
                 <WebhookEndpointField environmentId={environmentId} task={liveTask} />
                 <p className="text-xs text-muted-foreground">
@@ -1720,6 +1852,9 @@ function ScheduledTaskEditorForm({
                     }
                   />
                 </Field>
+                <p className="text-xs text-muted-foreground">
+                  Requests with the same key run only once within 7 days.
+                </p>
                 <Field
                   label={t("settingsPages.scheduledTasks.editor.coalesceKey")}
                   hint={t("settingsPages.scheduledTasks.editor.templateHint")}
@@ -1855,6 +1990,20 @@ function ScheduledTaskEditorForm({
                   </div>
                 ) : null}
               </div>
+            ) : draft.scheduleMode === "once" ? (
+              <div className="flex items-center gap-2">
+                <Label htmlFor="scheduled-task-run-at">Run on</Label>
+                <Input
+                  type="datetime-local"
+                  id="scheduled-task-run-at"
+                  nativeInput
+                  className="w-56"
+                  value={draft.runAt}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, runAt: event.target.value }))
+                  }
+                />
+              </div>
             ) : draft.scheduleMode === "fixed" ? (
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
@@ -1945,7 +2094,14 @@ function ScheduledTaskEditorForm({
         </DialogClose>
         <Button
           size="sm"
-          disabled={!canOperate || saving || editingTaskMissing || !connected || !tasksQuery.data}
+          disabled={
+            !canOperate ||
+            saving ||
+            editingTaskMissing ||
+            !connected ||
+            !tasksQuery.data ||
+            (draft.enabled && draft.scheduleMode === "webhook" && webhookDenial !== undefined)
+          }
           onClick={() => void submit()}
         >
           {draft.editingId

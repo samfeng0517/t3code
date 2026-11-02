@@ -3,6 +3,7 @@ import {
   deriveLatestThreadRun,
   deriveThreadRuntime,
 } from "@t3tools/client-runtime/state/thread-execution";
+import { checkpointFileTotals } from "@t3tools/client-runtime/state/thread-checkpoints";
 import { derivePendingBackgroundWork } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import {
   latestUnheldRun,
@@ -220,7 +221,7 @@ export function shouldOpenProactiveTurnDiff(input: {
 }
 
 export function resolveProactiveTurnDiffAction(input: {
-  checkpoint: Pick<TurnDiffSummary, "status" | "files"> | undefined;
+  checkpoint: Pick<TurnDiffSummary, "status" | "files" | "filesTotal"> | undefined;
   isGitRepo: boolean | undefined;
 }): "defer" | "ignore" | "open" {
   if (input.checkpoint === undefined || input.checkpoint.status === "missing") return "defer";
@@ -232,11 +233,8 @@ export function resolveProactiveTurnDiffAction(input: {
   ) {
     return "ignore";
   }
-  const changedLines = input.checkpoint.files.reduce(
-    (total, file) => total + file.additions + file.deletions,
-    0,
-  );
-  return input.checkpoint.files.length >= 3 || changedLines >= 50 ? "open" : "ignore";
+  const totals = checkpointFileTotals(input.checkpoint);
+  return totals.count >= 3 || totals.additions + totals.deletions >= 50 ? "open" : "ignore";
 }
 
 /** Mark reactivated Diff tabs to preserve review scope. Already-active tabs must not leave a marker for
@@ -535,6 +533,7 @@ export function resolveComposerProviderSelection(input: {
       : requestedInstanceId;
   return {
     selectedProviderEntry,
+    requestedInstanceId,
     requestedDriverKind,
     lockedContinuationGroupKey,
     unavailableProviderInstanceId,
@@ -751,6 +750,7 @@ export function cloneComposerImageForRetry(
 export function deriveComposerSendState(options: {
   prompt: string;
   imageCount: number;
+  existingAttachmentCount?: number;
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   elementContextCount?: number;
 }): {
@@ -771,6 +771,7 @@ export function deriveComposerSendState(options: {
     hasSendableContent:
       trimmedPrompt.length > 0 ||
       options.imageCount > 0 ||
+      (options.existingAttachmentCount ?? 0) > 0 ||
       sendableTerminalContexts.length > 0 ||
       elementContextCount > 0,
   };
@@ -788,7 +789,11 @@ export function buildExpiredTerminalContextToastCopy(
           ? "chatView.expiredTerminal.emptyTitleOne"
           : "chatView.expiredTerminal.emptyTitleMany",
       ),
-      description: globalT("chatView.expiredTerminal.emptyDescription"),
+      description: globalT(
+        count === 1
+          ? "chatView.expiredTerminal.emptyDescriptionOne"
+          : "chatView.expiredTerminal.emptyDescriptionMany",
+      ),
     };
   }
   return {
@@ -797,7 +802,11 @@ export function buildExpiredTerminalContextToastCopy(
         ? "chatView.expiredTerminal.omittedTitleOne"
         : "chatView.expiredTerminal.omittedTitleMany",
     ),
-    description: globalT("chatView.expiredTerminal.omittedDescription"),
+    description: globalT(
+      count === 1
+        ? "chatView.expiredTerminal.omittedDescriptionOne"
+        : "chatView.expiredTerminal.omittedDescriptionMany",
+    ),
   };
 }
 
@@ -1110,14 +1119,15 @@ export function hasServerAcknowledgedLocalDispatch(input: {
   if (input.hasPendingApproval || input.hasPendingUserInput || Boolean(input.threadError)) {
     return true;
   }
+  const latestUserMessageChanged =
+    input.localDispatch.latestUserMessageId !== (input.latestUserMessageId ?? null);
   if (input.phase === "connecting" || derivePhase(input.runtime ?? null) === "connecting") {
-    return false;
+    // A message queued behind other work, such as an idle compaction the shell hides, has landed.
+    return input.runtime?.status === "queued" && latestUserMessageChanged;
   }
 
   const latestRun = input.latestRun ?? null;
   const runtime = input.runtime ?? null;
-  const latestUserMessageChanged =
-    input.localDispatch.latestUserMessageId !== (input.latestUserMessageId ?? null);
   const latestRunChanged =
     input.localDispatch.latestRunId !== (latestRun?.runId ?? null) ||
     input.localDispatch.latestRunRequestedAt !== (latestRun?.requestedAt ?? null) ||

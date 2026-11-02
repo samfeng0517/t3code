@@ -230,8 +230,6 @@ export const providerSetupZhTW: Readonly<Record<keyof typeof providerSetupEn, st
   "providerSetup.models.addCustom": "新增自訂模型",
   "providerSetup.models.cancel": "取消",
   "providerSetup.models.cap.fastMode": "快速模式",
-  "providerSetup.models.cap.reasoning": "推理",
-  "providerSetup.models.cap.thinking": "思考",
   "providerSetup.models.count.one": "{count} 個模型",
   "providerSetup.models.count.other": "{count} 個模型",
   "providerSetup.models.customBadge": "自訂",

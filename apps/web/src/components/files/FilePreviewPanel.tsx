@@ -225,7 +225,7 @@ function WorkspaceImagePreview(props: {
   );
 }
 
-function WorkspaceBrowserPreview(props: {
+export function WorkspaceBrowserPreview(props: {
   readonly environmentId: EnvironmentId;
   readonly threadRef: ScopedThreadRef;
   readonly draft: boolean;
@@ -239,18 +239,25 @@ function WorkspaceBrowserPreview(props: {
     props.absolutePath,
     props.workspaceRoot,
   ).relativePath;
+  const pdf = isPdfPreviewFile(props.absolutePath);
   const resource = workspaceAssetResource({
-    kind: "workspace-file",
+    kind: pdf ? "media-file" : "workspace-file",
     threadRef: props.threadRef,
     draft: props.draft,
     workspaceRoot: props.workspaceRoot,
     absolutePath: props.absolutePath,
   });
-  const assetUrl = useAssetUrlState(props.environmentId, resource);
+  const assetUrl = useAssetUrlState(
+    props.environmentId,
+    resource,
+    pdf ? props.workspaceMutationId : undefined,
+  );
+  const fileRevision = pdf && assetUrl._tag === "Success" ? assetUrl.fileRevision : undefined;
+  const revision = fileRevision ?? props.workspaceMutationId;
   const revisionSuffix =
-    props.workspaceMutationId === null
+    revision === null
       ? ""
-      : `${assetUrl._tag === "Success" && assetUrl.url.includes("?") ? "&" : "?"}workspace-revision=${encodeURIComponent(props.workspaceMutationId)}`;
+      : `${assetUrl._tag === "Success" && assetUrl.url.includes("?") ? "&" : "?"}${fileRevision !== undefined ? "file" : "workspace"}-revision=${encodeURIComponent(revision)}`;
 
   if (assetUrl._tag === "Failure") {
     return (
@@ -259,7 +266,10 @@ function WorkspaceBrowserPreview(props: {
       </div>
     );
   }
-  if (assetUrl._tag !== "Success") {
+  if (
+    assetUrl._tag !== "Success" ||
+    (pdf && assetUrl.fileRevision === undefined && assetUrl.waiting)
+  ) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
         <Spinner size="lg" />
@@ -269,9 +279,10 @@ function WorkspaceBrowserPreview(props: {
   return (
     <BrowserDocumentFrame
       src={`${assetUrl.url}${revisionSuffix}`}
-      documentKey={`${props.environmentId}:${resource._tag}:${props.threadRef.threadId}:${props.absolutePath}:${props.workspaceMutationId}`}
+      documentKey={`${props.environmentId}:${resource._tag}:${props.threadRef.threadId}:${props.absolutePath}:${revision}`}
+      documentId={`${props.environmentId}:${resource._tag}:${props.threadRef.threadId}:${props.absolutePath}`}
       title={props.title}
-      pdf={isPdfPreviewFile(props.absolutePath)}
+      pdf={pdf}
       threadRef={props.threadRef}
       commentTarget={
         workspaceRelativePath === undefined
@@ -329,6 +340,7 @@ function WorkspaceVideoPreview(props: {
         revision={revision}
         preload="metadata"
         className="flex h-full min-h-0 w-full max-w-5xl items-center justify-center"
+        videoClassName="aspect-auto max-h-full w-auto max-w-full"
         onRetry={refreshAssetUrl}
         actionsSource={{
           kind: "video",
@@ -1513,7 +1525,7 @@ export default function FilePreviewPanel({
                 threadRef={threadRef}
                 contents={file.data.contents}
                 workspaceMutationId={workspaceMutationId}
-                readOnly={isHostFile || !canWriteFiles}
+                readOnly={file.data.truncated || isHostFile || !canWriteFiles}
                 onPendingChange={onPendingChange}
               />
             ) : tableDelimiter && renderTable ? (

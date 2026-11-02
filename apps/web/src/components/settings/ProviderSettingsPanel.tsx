@@ -97,8 +97,10 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
+import { useManagedPolicy } from "~/state/managedPolicy";
 import { ExpandableText } from "./ExpandableText";
 import { ProviderInstanceCard } from "./ProviderInstanceCard";
+import { useSecretSources } from "./SecretSourceInput";
 import { UsageProviderSettings } from "./UsageProviderSettings";
 import { ProviderSetupSection, readAntigravityAuthMethod } from "./ProviderSetupSection";
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
@@ -571,6 +573,10 @@ export function EnvironmentProviderSettings({
 }) {
   const t = useT();
   const settings = useEnvironmentSettings(environmentId);
+  const managedPolicy = useManagedPolicy(environmentId);
+  // A policy that allows no provider leaves nothing to add.
+  const canAddProvider =
+    !readOnly && managedPolicy?.limits?.providers?.allowedDrivers?.length !== 0;
   const canWriteSettings = useEnvironmentScope(environmentId, AuthSettingsWriteScope);
   const canRefreshProviders = useEnvironmentScope(environmentId, AuthOrchestrationReadScope);
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
@@ -665,7 +671,7 @@ export function EnvironmentProviderSettings({
     void (async () => {
       const result = await refreshServerProviders({
         environmentId,
-        input: { refreshModels: true },
+        input: { refreshModels: true, reloadSecrets: true },
       });
       refreshingRef.current = false;
       setIsRefreshingProviders(false);
@@ -1029,7 +1035,7 @@ export function EnvironmentProviderSettings({
         title={t("settings.section.providers")}
         variant="plain"
         titleAction={
-          !readOnly ? (
+          canAddProvider ? (
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -1106,7 +1112,7 @@ export function EnvironmentProviderSettings({
             >
               <div className="divide-y divide-border/50">
                 {orderedRows.map((row) => renderProviderInstance(row, "list"))}
-                {!readOnly ? (
+                {canAddProvider ? (
                   <button
                     type="button"
                     className="flex w-full cursor-pointer items-center gap-3 px-3 py-3 text-left text-sm text-muted-foreground transition-colors outline-none hover:bg-muted/25 hover:text-foreground focus-visible:bg-muted/25 focus-visible:text-foreground sm:px-4"
@@ -1318,6 +1324,7 @@ function ProviderInstanceRow({
 }) {
   const t = useT();
   const allProjects = useProjects();
+  const secretSources = useSecretSources(environmentId);
   const acpProjects =
     mode === "editor" && liveProvider?.driver === "acpRegistry"
       ? allProjects.filter((project) => project.environmentId === environmentId)
@@ -1356,6 +1363,7 @@ function ProviderInstanceRow({
   return (
     <ProviderInstanceCard
       environmentId={environmentId}
+      secretSources={secretSources}
       acpProjects={acpProjects}
       projectOverride={projectOverride}
       onAcceptUrlAuth={

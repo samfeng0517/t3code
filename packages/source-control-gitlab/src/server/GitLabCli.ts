@@ -271,7 +271,7 @@ export class GitLabCli extends Context.Service<
       readonly cwd: string;
       /**
        * The server the command is for, where the caller knows it. A token saved in Settings for
-       * that server is handed to glab; without it glab picks its server and login itself.
+       * that server is handed to glab; without one glab is still pointed at that server.
        */
       readonly host?: string | undefined;
       readonly args: ReadonlyArray<string>;
@@ -463,11 +463,18 @@ function withSavedRepoAuthority(
   });
 }
 
-// glab prints a missing project or merge request as a bare 404.
+// glab prints a missing project or merge request as a bare 404, and an expired
+// OAuth login as an `invalid_grant` refresh failure without suggesting `glab auth login`.
 const classifyGlabFailure = (stderr: string): VcsProcessExitFailureKind | null => {
   const normalized = stderr.toLowerCase();
-  if (normalized.includes("glab auth login")) return "authentication";
-  if (normalized.includes("not found") || normalized.includes("404")) return "not-found";
+  if (normalized.includes("glab auth login") || normalized.includes("invalid_grant")) {
+    return "authentication";
+  }
+
+  if (normalized.includes("not found") || normalized.includes("404")) {
+    return "not-found";
+  }
+
   return null;
 };
 
@@ -514,7 +521,10 @@ export const make = Effect.gen(function* () {
           // GITLAB_TOKEN outranks every stored login whichever server glab ends up asking, so it
           // is only ever set beside the server it was saved for.
           ...(credential === null
-            ? {}
+            ? // glab may otherwise prefer a different checkout remote.
+              input.host === undefined
+              ? {}
+              : { env: { GITLAB_HOST: input.host } }
             : {
                 env: {
                   GITLAB_TOKEN: credential.token,

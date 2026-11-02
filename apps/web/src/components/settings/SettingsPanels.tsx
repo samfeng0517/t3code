@@ -12,6 +12,8 @@ import {
   IDLE_COMPACTION_MODES,
   type IdleCompactionMode,
   globalIdleCompaction,
+  managedUpdatesDenial,
+  managedUpdatesMessage,
   ProviderDriverKind,
   type ProviderInstanceId,
   type SidebarProjectGroupingMode,
@@ -31,6 +33,7 @@ import { createModelSelection } from "@t3tools/shared/model";
 import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
 import { APP_VERSION, HOSTED_APP_CHANNEL, HOSTED_APP_CHANNEL_LABEL } from "../../branding";
+import { AboutVersionTitle } from "./AboutVersionTitle";
 import { CliCommandSettingsRow } from "./CliCommandSettingsRow";
 import { MobileAppSettingsRow } from "./MobileAppSettingsRow";
 import {
@@ -64,6 +67,7 @@ import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { ThreadTitleInstructionsSettings } from "./ThreadTitleInstructionsSettings";
 import { SnoozePresetsRow } from "./SnoozePresetsSettings";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
+import { managedTelemetryOffMessage, usePrimaryManagedPolicy } from "../../state/managedPolicy";
 import {
   getCustomModelOptionsByInstance,
   resolveAppModelSelectionState,
@@ -120,16 +124,6 @@ const QUIT_CONFIRMATION_MODES = [
 ] as const satisfies ReadonlyArray<QuitConfirmationMode>;
 
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
-function AboutVersionTitle() {
-  const t = useT();
-  return (
-    <span className="inline-flex items-baseline gap-2">
-      <span>{t("settings.general.version.title")}</span>
-      <code className="text-2xs font-medium text-muted-foreground">{APP_VERSION}</code>
-    </span>
-  );
-}
-
 function AboutVersionSection() {
   const t = useT();
   const updateState = useDesktopUpdateState();
@@ -146,6 +140,13 @@ function AboutVersionSection() {
 
   const hasDesktopBridge = typeof window !== "undefined" && Boolean(window.desktopBridge);
   const selectedUpdateChannel = updateState?.channel ?? "latest";
+  // The desktop updates this machine, whose policy the primary environment reports.
+  const primaryPolicy = usePrimaryManagedPolicy();
+  const updatesDenial = hasDesktopBridge ? managedUpdatesDenial(primaryPolicy) : undefined;
+  const nightlyDeniedBy =
+    hasDesktopBridge && primaryPolicy?.limits?.updates?.allowNightly === false
+      ? primaryPolicy.organization
+      : undefined;
   const selectedHostedAppChannel = hasDesktopBridge ? null : HOSTED_APP_CHANNEL;
   // A switch that failed part way leaves this app or a server on the other track.
   // With its updater off, a switch cannot move this app, so it is not counted.
@@ -244,7 +245,9 @@ function AboutVersionSection() {
               type: "error",
               title: t("settings.general.update.checkFailed.title"),
               description:
-                result.state.message ?? t("settings.general.update.checkFailed.unavailable"),
+                updatesDenial ??
+                result.state.message ??
+                t("settings.general.update.checkFailed.unavailable"),
             }),
           );
         }
@@ -287,7 +290,8 @@ function AboutVersionSection() {
   const description =
     action === "download" || action === "install"
       ? t("settings.general.version.updateAvailable")
-      : (getDesktopUpdateDisabledReason(updateState) ?? t("settings.general.version.description"));
+      : (getDesktopUpdateDisabledReason(updateState, updatesDenial) ??
+        t("settings.general.version.description"));
 
   // A desktop build without an update feed keeps only the version and CLI rows.
   if (hasDesktopBridge && !isDesktopAppUpdateEnabled(updateState)) {
@@ -309,6 +313,7 @@ function AboutVersionSection() {
         id={searchableSetting("app-version").id}
         title={<AboutVersionTitle />}
         description={description}
+        managed={updatesDenial}
         control={
           <Tooltip>
             <TooltipTrigger
@@ -332,7 +337,13 @@ function AboutVersionSection() {
           {...searchableSetting("update-track")}
           title={t("settings.general.updateTrack.title")}
           description={
-            unswitchedMachines > 0 ? (
+            nightlyDeniedBy !== undefined ? (
+              `${managedUpdatesMessage(nightlyDeniedBy)} Nightly builds are not available${
+                selectedUpdateChannel === "nightly"
+                  ? "; switch to Stable to keep getting updates."
+                  : "."
+              }`
+            ) : unswitchedMachines > 0 ? (
               <>
                 {unswitchedMachines === 1
                   ? "1 machine still runs"
@@ -352,6 +363,7 @@ function AboutVersionSection() {
               "Switches this app and every connected machine whose database the target release supports."
             )
           }
+          managed={updatesDenial}
           control={
             <Select
               value={selectedUpdateChannel}
@@ -377,7 +389,11 @@ function AboutVersionSection() {
                 <SelectItem hideIndicator value="latest">
                   {t("settings.general.updateTrack.option.stable")}
                 </SelectItem>
-                <SelectItem hideIndicator value="nightly">
+                <SelectItem
+                  hideIndicator
+                  value="nightly"
+                  disabled={nightlyDeniedBy !== undefined && selectedUpdateChannel !== "nightly"}
+                >
                   {t("settings.general.updateTrack.option.nightly")}
                 </SelectItem>
               </SelectPopup>
@@ -2307,9 +2323,30 @@ export function MaintenanceSettingsPanel() {
 
 export function AboutSettingsPanel() {
   const t = useT();
+  const primaryPolicy = usePrimaryManagedPolicy();
+  const telemetryOff = managedTelemetryOffMessage(primaryPolicy);
   return (
     <SettingsPageContainer>
       <SettingsSection id="about" title={t("settings.about.section.app")}>
+        {primaryPolicy ? (
+          <SettingsRow
+            title="Organization"
+            description={`This environment is managed by ${primaryPolicy.organization}. Some settings and features follow its policy.`}
+            control={
+              primaryPolicy.supportUrl ? (
+                <Button
+                  render={
+                    <a href={primaryPolicy.supportUrl} target="_blank" rel="noreferrer noopener" />
+                  }
+                  size="sm"
+                  variant="outline"
+                >
+                  Get help
+                </Button>
+              ) : null
+            }
+          />
+        ) : null}
         {isElectron || HOSTED_APP_CHANNEL ? (
           <AboutVersionSection />
         ) : (
@@ -2328,7 +2365,11 @@ export function AboutSettingsPanel() {
         <SettingsRow
           {...searchableSetting("privacy-policy")}
           title={t("settings.general.privacyPolicy.title")}
-          description={t("settings.general.privacyPolicy.description")}
+          description={
+            telemetryOff === undefined
+              ? t("settings.general.privacyPolicy.description")
+              : `How we handle your data. ${telemetryOff}`
+          }
           control={
             <Button
               render={<a href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer noopener" />}

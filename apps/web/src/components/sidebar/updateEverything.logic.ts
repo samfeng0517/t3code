@@ -1,9 +1,11 @@
 import type { ServerUpdateState } from "@t3tools/client-runtime/state/server";
-import type {
-  DesktopUpdateChannel,
-  EnvironmentId,
-  ServerConfig,
-  ServerSelfUpdateCapability,
+import {
+  type DesktopUpdateChannel,
+  type EnvironmentId,
+  managedNightlyDeniedMessage,
+  managedUpdatesDenial,
+  type ServerConfig,
+  type ServerSelfUpdateCapability,
 } from "@t3tools/contracts";
 import { APP_SELF_UPDATE_ENABLED } from "@t3tools/shared/appSelfUpdate";
 import { cliReleaseChannelOf, desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";
@@ -28,6 +30,7 @@ export interface UpdateEverythingMachine {
   readonly serverConfig: {
     readonly environment: ServerConfig["environment"];
     readonly settings: Pick<ServerConfig["settings"], "continueThreadsAfterServerUpdate">;
+    readonly managedPolicy?: ServerConfig["managedPolicy"];
   } | null;
   readonly connected: boolean;
   readonly hostedByThisApp: boolean;
@@ -70,28 +73,22 @@ export interface SkippedMachine {
   readonly reason: string;
 }
 
-/** Boot services before this build installed the server from npm, not from release archives. */
-const RELEASE_ARCHIVE_SELF_UPDATE_SINCE = "0.0.41-nightly.20260914.1700";
-
 /** Skip current and app-hosted servers; the latter update with the app and would relaunch mid-run.
  * Desktop-managed servers use their own feed. A fork build updates no server, since each one would
- * install an upstream release. `waitForNpm` lists targets that need `t3@<targetVersion>` on npm
- * first; `releaseArchivesPublished` means the version came from the desktop feed. */
+ * install an upstream release. Each server's updater checks that it can install the release before
+ * it restarts, so no registry precheck runs here. */
 export function collectServerUpdateTargets(
   machines: ReadonlyArray<UpdateEverythingMachine>,
   targetVersion: string,
-  releaseArchivesPublished: boolean,
   t: Translate = translateEnglish,
   appSelfUpdateEnabled: boolean = APP_SELF_UPDATE_ENABLED,
 ): {
   readonly targets: ServerUpdateTarget[];
   readonly skipped: SkippedMachine[];
-  readonly waitForNpm: ServerUpdateTarget[];
 } {
   const targets: ServerUpdateTarget[] = [];
   const skipped: SkippedMachine[] = [];
-  const waitForNpm: ServerUpdateTarget[] = [];
-  if (!appSelfUpdateEnabled) return { targets, skipped, waitForNpm };
+  if (!appSelfUpdateEnabled) return { targets, skipped };
   for (const machine of machines) {
     const config = machine.serverConfig;
     if (machine.hostedByThisApp) continue;
@@ -109,6 +106,14 @@ export function collectServerUpdateTargets(
       continue;
     }
     const selfUpdate = resolveServerSelfUpdateCapability(config);
+    const managedDenial = managedMachineUpdateDenial(
+      config,
+      selfUpdate === "desktop-managed" ? undefined : targetVersion,
+    );
+    if (managedDenial !== undefined) {
+      skip(managedDenial);
+      continue;
+    }
     const desktopAppUpdate = supportsDesktopAppUpdate(config);
     if (selfUpdate === null) {
       skip(t("sidebar.updateSkip.manualUpdate"));
@@ -135,16 +140,8 @@ export function collectServerUpdateTargets(
       targetVersion,
     };
     targets.push(target);
-    if (
-      selfUpdate !== "desktop-managed" &&
-      (!releaseArchivesPublished ||
-        selfUpdate === "respawn" ||
-        compareSemverVersions(serverVersion, RELEASE_ARCHIVE_SELF_UPDATE_SINCE) < 0)
-    ) {
-      waitForNpm.push(target);
-    }
   }
-  return { targets, skipped, waitForNpm };
+  return { targets, skipped };
 }
 
 function unavailableReason(
@@ -220,6 +217,26 @@ export function localSwitchBlockReason(
   );
 }
 
+/**
+ * The server refuses these with the same message; say so before the run instead of after.
+ * `targetVersion` is undefined when the server picks its own version, as desktop apps do.
+ */
+function managedMachineUpdateDenial(
+  config: NonNullable<UpdateEverythingMachine["serverConfig"]>,
+  targetVersion: string | undefined,
+): string | undefined {
+  const policy = config.managedPolicy;
+  return (
+    managedUpdatesDenial(policy) ??
+    (policy !== undefined &&
+    policy.limits?.updates?.allowNightly === false &&
+    targetVersion !== undefined &&
+    cliReleaseChannelOf(targetVersion) !== "stable"
+      ? managedNightlyDeniedMessage(policy.organization)
+      : undefined)
+  );
+}
+
 /** Servers move to the release; desktop-managed hosts reinstall their app on its track. A desktop
  * host already current gets a track-only request, since its saved track may still differ. */
 export function collectChannelSwitchTargets(
@@ -261,7 +278,8 @@ export function collectChannelSwitchTargets(
       if (
         !("skip" in move) &&
         move.selfUpdate === "desktop-managed" &&
-        unavailableReason(machine) === null
+        unavailableReason(machine) === null &&
+        managedMachineUpdateDenial(config, release.version) === undefined
       ) {
         targets.push({ ...target(move.selfUpdate, serverVersion), trackOnly: true });
       }
@@ -270,6 +288,11 @@ export function collectChannelSwitchTargets(
     const unavailable = unavailableReason(machine);
     if (config === null || serverVersion === undefined || unavailable !== null) {
       skip(unavailable ?? "not connected");
+      continue;
+    }
+    const managedDenial = managedMachineUpdateDenial(config, release.version);
+    if (managedDenial !== undefined) {
+      skip(managedDenial);
       continue;
     }
     const move = trackSwitchMove(config, sameTrack);

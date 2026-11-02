@@ -257,7 +257,7 @@ export const settingsZhTW: Readonly<Record<keyof typeof settingsEn, string>> = {
   "settings.general.diffLayout.resetLabel": "差異版面",
   "settings.general.diffLayout.option.stacked": "堆疊",
   "settings.general.diffLayout.option.split": "並排",
-  "settings.general.proactivePanels.title": "主動開啟面板",
+  "settings.general.proactivePanels.title": "主動開啟 Pull Request 與變更面板",
   "settings.general.proactivePanels.description":
     "優先開啟已連結的 Pull Request；否則在修改至少 3 個檔案或 50 行時開啟「變更」。",
   "settings.general.proactivePanels.resetLabel": "主動開啟面板",

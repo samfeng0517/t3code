@@ -240,8 +240,6 @@ export const providerSetupEn = {
   "providerSetup.models.addCustom": "Add custom model",
   "providerSetup.models.cancel": "Cancel",
   "providerSetup.models.cap.fastMode": "Fast mode",
-  "providerSetup.models.cap.reasoning": "Reasoning",
-  "providerSetup.models.cap.thinking": "Thinking",
   "providerSetup.models.count.one": "{count} model",
   "providerSetup.models.count.other": "{count} models",
   "providerSetup.models.customBadge": "custom",

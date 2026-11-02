@@ -120,7 +120,7 @@ export const settingsPagesZhTW: Readonly<Record<keyof typeof settingsPagesEn, st
   "settingsPages.sourceControlWriting.writerModel.toggleAriaLabel": "使用獨立的版本控制撰寫模型",
   "settingsPages.sourceControlWriting.reviewGuides.title": "審查導覽（測試版）",
   "settingsPages.sourceControlWriting.reviewGuides.description":
-    "為 Pull Request 加入「導覽」分頁：由代理逐站導覽這次變更，並列出維護者應做的判斷。",
+    "為 Pull Request 加入「導覽」分頁。由代理說明變更內容，並指出需要審查的決策。",
   "settingsPages.sourceControlWriting.reviewGuides.ariaLabel": "審查導覽",
   "settingsPages.sourceControlWriting.reviewGuideModel.title": "審查導覽模型",
   "settingsPages.sourceControlWriting.reviewGuideModel.description":
@@ -668,7 +668,7 @@ export const settingsPagesZhTW: Readonly<Record<keyof typeof settingsPagesEn, st
   "settingsPages.scheduledTasks.summary.separator": "、",
   "settingsPages.scheduledTasks.taskUnavailable.title": "無法使用此任務",
   "settingsPages.scheduledTasks.taskUnavailable.description":
-    "此任務已不存在，或不在選取的專案範圍內。",
+    "此任務已刪除或屬於其他專案。請檢查專案篩選條件。",
   "settingsPages.scheduledTasks.noTasks.title": "沒有排程任務",
   "settingsPages.scheduledTasks.noTasks.description": "沒有符合此環境與專案選取範圍的任務。",
   "settingsPages.scheduledTasks.disconnected.title": "環境已中斷連線",
@@ -732,7 +732,7 @@ export const settingsPagesZhTW: Readonly<Record<keyof typeof settingsPagesEn, st
   "settingsPages.scheduledTasks.error.saveFailed": "無法儲存排程任務",
   "settingsPages.scheduledTasks.editor.editTitle": "編輯任務",
   "settingsPages.scheduledTasks.editor.description":
-    "依間隔、在固定時間，或在 Webhook 被呼叫時自動執行提示詞。",
+    "依間隔、在固定時間、在指定日期執行一次，或在 Webhook 被呼叫時自動執行提示詞。",
   "settingsPages.scheduledTasks.editor.reconnect": "儲存前請重新連線此環境。",
   "settingsPages.scheduledTasks.editor.runsOn": "執行於",
   "settingsPages.scheduledTasks.editor.unavailableEnvironment": "無法使用的環境",
@@ -759,13 +759,13 @@ export const settingsPagesZhTW: Readonly<Record<keyof typeof settingsPagesEn, st
   "settingsPages.scheduledTasks.editor.maxAge": "略過早於此時間的請求",
   "settingsPages.scheduledTasks.editor.maxAgeHint": "分鐘，選填",
   "settingsPages.scheduledTasks.editor.maxAgePlaceholder": "執行每個請求",
-  "settingsPages.scheduledTasks.editor.replayKey": "重播鍵",
+  "settingsPages.scheduledTasks.editor.replayKey": "重複請求鍵",
   "settingsPages.scheduledTasks.editor.templateHint": "範本，選填",
   "settingsPages.scheduledTasks.editor.coalesceKey": "合併鍵",
   "settingsPages.scheduledTasks.editor.coalesceWindow": "合併時間窗",
   "settingsPages.scheduledTasks.editor.coalesceWindowHint": "秒，10–3600",
   "settingsPages.scheduledTasks.editor.keysHelp":
-    "重播鍵會在 7 天內抑制重複傳送。合併會在第一次傳送起算的時間窗結束時，以最新的內容執行一次。空白的鍵則正常執行。",
+    "合併會在第一次傳送起算的時間窗結束時，以最新的內容執行一次。空白的鍵則正常執行。",
   "settingsPages.scheduledTasks.editor.requireSignature": "要求簽章",
   "settingsPages.scheduledTasks.editor.requireSignatureDescription":
     "拒絕沒有有效內文 HMAC-SHA256 簽章的請求。",
