@@ -33,7 +33,11 @@ import {
 
 import * as ServerConfig from "../config.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
-import { parseReviewNumstat, REVIEW_DIFF_ARGS } from "../vcs/GitVcsDriverCore.ts";
+import {
+  parsePorcelainPath,
+  parseReviewNumstat,
+  REVIEW_DIFF_ARGS,
+} from "../vcs/GitVcsDriverCore.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as KnownWorkspaces from "../workspace/KnownWorkspaces.ts";
 import { assertWorkspaceBoundCwd } from "../workspace/workspaceBoundary.ts";
@@ -221,7 +225,6 @@ function parseNameStatus(stdout: string): Map<string, GitCommitFileStat["status"
   return statuses;
 }
 
-const PORCELAIN_FIELDS_BEFORE_PATH = { "1": 8, "2": 9, u: 10 } as const;
 const WORKING_TREE_DIFF_FLAGS = [
   "--no-color",
   "--no-ext-diff",
@@ -247,17 +250,23 @@ function porcelainStatus(letter: string | undefined): GitWorkingTreeFileStatus |
   }
 }
 
-/** Parses `status --porcelain=v2 -z`, keeping git's order. */
-function parseWorkingTreeStatus(stdout: string): GitWorkingTreeFile[] {
+/**
+ * Parses `status --porcelain=v2 -z`, keeping git's order. When the output was cut at the byte
+ * limit, the trailing partial record is dropped rather than shown as a wrong path.
+ */
+function parseWorkingTreeStatus(stdout: string, truncated: boolean): GitWorkingTreeFile[] {
   const fields = stdout.split("\0");
+  if (truncated) fields.pop();
   const files: GitWorkingTreeFile[] = [];
   for (let index = 0; index < fields.length; index++) {
     const record = fields[index]!;
     const kind = record[0];
-    if (record.length < 3) continue;
+    if (kind !== "1" && kind !== "2" && kind !== "u" && kind !== "?") continue;
+    const path = parsePorcelainPath(record);
+    if (path === null) continue;
     if (kind === "?") {
       files.push({
-        path: record.slice(2),
+        path,
         previousPath: null,
         indexStatus: null,
         worktreeStatus: "untracked",
@@ -265,14 +274,6 @@ function parseWorkingTreeStatus(stdout: string): GitWorkingTreeFile[] {
       });
       continue;
     }
-    if (kind !== "1" && kind !== "2" && kind !== "u") continue;
-    // The path may contain spaces, so it is everything after the fixed fields.
-    let offset = 0;
-    for (let seen = 0; seen < PORCELAIN_FIELDS_BEFORE_PATH[kind]; seen++) {
-      offset = record.indexOf(" ", offset) + 1;
-    }
-    const path = record.slice(offset);
-    const xy = record.slice(2, 4);
     if (kind === "u") {
       files.push({
         path,
@@ -283,11 +284,13 @@ function parseWorkingTreeStatus(stdout: string): GitWorkingTreeFile[] {
       });
       continue;
     }
+    const previousPath = kind === "2" ? fields[++index] : null;
+    if (previousPath === undefined) continue;
     files.push({
       path,
-      previousPath: kind === "2" ? (fields[++index] ?? null) : null,
-      indexStatus: porcelainStatus(xy[0]),
-      worktreeStatus: porcelainStatus(xy[1]),
+      previousPath,
+      indexStatus: porcelainStatus(record[2]),
+      worktreeStatus: porcelainStatus(record[3]),
       conflicted: false,
     });
   }
@@ -802,7 +805,7 @@ export const make = Effect.gen(function* () {
       "index",
     ])).stdout.trim();
     const lockError = new GitCommandError({
-      operation: `${operation}.indexPath`,
+      operation: `${operation}.indexLock`,
       command: "git",
       cwd: repoRoot,
       detail: "Git index is locked. Status will resume when the index lock is removed.",
@@ -819,7 +822,6 @@ export const make = Effect.gen(function* () {
     );
     if (locked) return yield* lockError;
 
-    const base = yield* resolveWorkingTreeBase(operation, repoRoot);
     const options = { maxOutputBytes: LARGE_OUTPUT_MAX_BYTES };
     const [status, staged, unstaged] = yield* Effect.all(
       [
@@ -829,11 +831,15 @@ export const make = Effect.gen(function* () {
           ["status", "--porcelain=v2", "-z", "--untracked-files=all", "--renames"],
           options,
         ),
-        run(
-          `${operation}.staged`,
-          repoRoot,
-          ["diff-index", "--cached", "--numstat", "-z", "-M", base, "--"],
-          options,
+        resolveWorkingTreeBase(operation, repoRoot).pipe(
+          Effect.flatMap((base) =>
+            run(
+              `${operation}.staged`,
+              repoRoot,
+              ["diff-index", "--cached", "--numstat", "-z", "-M", base, "--"],
+              options,
+            ),
+          ),
         ),
         run(`${operation}.unstaged`, repoRoot, ["diff-files", "--numstat", "-z"], options),
       ],
@@ -851,7 +857,7 @@ export const make = Effect.gen(function* () {
     }
     return {
       isRepo: true,
-      files: parseWorkingTreeStatus(status.stdout),
+      files: parseWorkingTreeStatus(status.stdout, status.stdoutTruncated),
       insertions,
       deletions,
     };
@@ -892,6 +898,21 @@ export const make = Effect.gen(function* () {
         ...limits,
       });
     } else {
+      // `diff --no-index` reads any filesystem path, unlike the pathspecs above.
+      const relative = path.relative(repoRoot, path.resolve(repoRoot, input.path));
+      if (
+        relative === "" ||
+        relative === ".." ||
+        relative.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(relative)
+      ) {
+        return yield* new GitCommandError({
+          operation: `${operation}.untracked`,
+          command: "git",
+          cwd: repoRoot,
+          detail: "The untracked file is outside the repository.",
+        });
+      }
       result = yield* git.execute({
         operation: `${operation}.untracked`,
         cwd: repoRoot,
@@ -905,7 +926,7 @@ export const make = Effect.gen(function* () {
           operation: `${operation}.untracked`,
           command: "git",
           cwd: repoRoot,
-          detail: result.stderr.trim() || "git diff --no-index failed.",
+          detail: "Failed to read the untracked file diff.",
         });
       }
     }

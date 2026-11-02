@@ -845,4 +845,29 @@ describe("GitHistoryService", () => {
       }),
     ),
   );
+
+  it.effect(
+    "workingTreeFileDiff should fail without reading the file when an untracked path escapes the repository",
+    () =>
+      inWorkspace((workspace) =>
+        Effect.gen(function* () {
+          const repo = yield* makeRepo(workspace);
+          yield* commit(repo, "root");
+          yield* writeFile(repo, "../outside.txt", "secret\n");
+
+          const history = yield* GitHistoryService.GitHistoryService;
+          const error = yield* history
+            .workingTreeFileDiff({
+              cwd: repo,
+              path: "../outside.txt",
+              previousPath: null,
+              area: "untracked",
+            })
+            .pipe(Effect.flip);
+
+          assert.equal(error._tag, "GitCommandError");
+          assert.notInclude(error.message, "secret");
+        }),
+      ),
+  );
 });

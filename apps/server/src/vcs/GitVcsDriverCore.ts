@@ -239,7 +239,7 @@ const PORCELAIN_V2_FIELDS_BEFORE_PATH: Record<string, number> = {
   "!": 1,
 };
 
-function parsePorcelainPath(record: string): string | null {
+export function parsePorcelainPath(record: string): string | null {
   const fieldsBeforePath = PORCELAIN_V2_FIELDS_BEFORE_PATH[record[0] ?? ""];
   if (fieldsBeforePath === undefined) return null;
   const filePath = record.split(" ").slice(fieldsBeforePath).join(" ");
