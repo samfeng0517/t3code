@@ -237,9 +237,10 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
         for (const [resolve, granted] of results) resolve(granted);
       });
 
+    // Options are built inside the fiber so a throw there still frees the slot via `ensuring`.
     runFork(
-      electronDialog
-        .showMessageBox(
+      Effect.suspend(() =>
+        electronDialog.showMessageBox(
           {
             type: "question",
             buttons: ["Allow", "Block", "Not now"],
@@ -250,24 +251,24 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
             detail: promptDetail(unknownDevices, persistent),
           },
           previewHostWindow(requester),
-        )
-        .pipe(
-          Effect.map(({ response }): BrowserMediaDecision | null =>
-            response === 0 ? "allow" : response === 1 ? "block" : null,
-          ),
-          Effect.orElseSucceed(() => null),
-          Effect.tap((decision) =>
-            decision === null
-              ? Effect.void
-              : Effect.forEach(
-                  unknownDevices,
-                  (device) => remember(origin, device, persistent, decision),
-                  { discard: true },
-                ),
-          ),
-          Effect.flatMap((decision) => settle(decision !== null)),
-          Effect.onInterrupt(() => settle(false)),
         ),
+      ).pipe(
+        Effect.map(({ response }): BrowserMediaDecision | null =>
+          response === 0 ? "allow" : response === 1 ? "block" : null,
+        ),
+        Effect.orElseSucceed(() => null),
+        Effect.tap((decision) =>
+          decision === null
+            ? Effect.void
+            : Effect.forEach(
+                unknownDevices,
+                (device) => remember(origin, device, persistent, decision),
+                { discard: true },
+              ),
+        ),
+        Effect.flatMap((decision) => settle(decision !== null)),
+        Effect.ensuring(settle(false)),
+      ),
     );
   };
 

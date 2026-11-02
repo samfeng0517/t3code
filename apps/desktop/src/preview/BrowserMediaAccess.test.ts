@@ -443,6 +443,31 @@ describe("BrowserMediaAccess", () => {
   );
 
   it.effect(
+    "requestMedia should deny and free the prompt slot when building the dialog throws",
+    () =>
+      Effect.gen(function* () {
+        const request = requestWith(yield* BrowserMediaAccess.BrowserMediaAccess);
+        getMediaAccessStatus.mockImplementationOnce(() => {
+          throw new Error("media access status unavailable");
+        });
+
+        const failed = makeRequester(`${MEET}/abc`);
+        assert.isFalse(
+          yield* Effect.promise(() => request(failed.webContents, camAndMic(`${MEET}/abc`))),
+        );
+        assert.strictEqual(showMessageBox.mock.calls.length, 0);
+
+        showMessageBox.mockReturnValue(0);
+        const next = makeRequester(`${MEET}/xyz`);
+        assert.isTrue(
+          yield* Effect.promise(() => request(next.webContents, camAndMic(`${MEET}/xyz`))),
+        );
+        assert.strictEqual(showMessageBox.mock.calls.length, 1);
+        assert.strictEqual(repeatedCallbacks.count, 0);
+      }).pipe(Effect.provide(layer), Effect.provideService(HostProcess.Platform, "darwin")),
+  );
+
+  it.effect(
     "checkMedia should allow only remembered devices for main frames when the source matches the partition",
     () =>
       Effect.gen(function* () {
