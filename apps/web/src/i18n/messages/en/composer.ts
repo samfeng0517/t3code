@@ -240,6 +240,7 @@ export const composerEn = {
     "Context for {model} compacts automatically when needed.",
   "composer.contextWindow.compactsWhenNeeded": "Context compacts automatically when needed.",
   "composer.contextWindow.panelLabel": "Context",
+  "composer.contextWindow.autoCompactSoon": "Context will compact automatically soon",
   "composer.header.projectSettings": "Project settings",
   "composer.header.breadcrumb": "Thread breadcrumb",
   "composer.header.newThreadIn": "New thread in {project}",

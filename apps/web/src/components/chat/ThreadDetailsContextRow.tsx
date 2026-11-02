@@ -25,7 +25,9 @@ export function ThreadDetailsContextRow(props: {
   const maxTokens = usage.maxTokens ?? null;
   const percent = maxTokens !== null ? formatContextWindowPercentage(usage.usedPercentage) : null;
   const usedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
-  const color = BAR_COLOR[contextWindowTone(usage)];
+  const tone = contextWindowTone(usage);
+  const color = BAR_COLOR[tone];
+  const showCompactionHint = tone !== "normal" && usage.compactsAutomatically === true;
   const tokens =
     maxTokens !== null
       ? `${formatContextWindowTokens(usage.usedTokens)} / ${formatContextWindowTokens(maxTokens)}`
@@ -63,6 +65,16 @@ export function ThreadDetailsContextRow(props: {
               className="absolute inset-y-0 left-0 rounded-full opacity-60"
               style={{ width: `${usedPercentage}%`, backgroundColor: color }}
             />
+          </span>
+        ) : null}
+        {showCompactionHint ? (
+          <span
+            className={cn(
+              "w-full text-left text-2xs font-medium",
+              tone === "critical" ? "text-destructive" : "text-warning",
+            )}
+          >
+            {t("composer.contextWindow.autoCompactSoon")}
           </span>
         ) : null}
       </PopoverTrigger>

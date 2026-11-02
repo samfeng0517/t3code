@@ -232,6 +232,7 @@ export const composerZhTW: Readonly<Record<keyof typeof composerEn, string>> = {
   "composer.contextWindow.compactsForModel": "{model} 的上下文會在需要時自動壓縮。",
   "composer.contextWindow.compactsWhenNeeded": "上下文會在需要時自動壓縮。",
   "composer.contextWindow.panelLabel": "上下文",
+  "composer.contextWindow.autoCompactSoon": "即將自動壓縮上下文",
   "composer.header.projectSettings": "專案設定",
   "composer.header.breadcrumb": "對話串路徑",
   "composer.header.newThreadIn": "在 {project} 中建立新對話串",
