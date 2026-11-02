@@ -6,8 +6,6 @@ export const sidebarEn = {
   "sidebar.chrome.pullRequests": "{Plural}",
   "sidebar.chrome.git": "Git",
   "sidebar.chrome.usage": "Usage",
-  "sidebar.chrome.showSettled": "Show settled threads",
-  "sidebar.chrome.hideSettled": "Hide settled threads",
 
   "sidebar.usage.title": "Claude usage",
   "sidebar.usage.session": "5-hour",

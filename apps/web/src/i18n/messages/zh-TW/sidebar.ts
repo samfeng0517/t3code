@@ -8,8 +8,6 @@ export const sidebarZhTW: Readonly<Record<keyof typeof sidebarEn, string>> = {
   "sidebar.chrome.pullRequests": "{title}",
   "sidebar.chrome.git": "Git",
   "sidebar.chrome.usage": "用量",
-  "sidebar.chrome.showSettled": "顯示已結案的對話串",
-  "sidebar.chrome.hideSettled": "隱藏已結案的對話串",
 
   "sidebar.usage.title": "Claude 用量",
   "sidebar.usage.session": "5 小時",

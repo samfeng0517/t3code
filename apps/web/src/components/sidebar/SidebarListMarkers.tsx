@@ -13,7 +13,6 @@ import { SIDEBAR_SORTABLE_DRAG_DISABLED } from "./SidebarThreadRow";
 function SortableSidebarMarker(props: {
   marker: SidebarListMarker;
   className?: string;
-  inert?: boolean;
   children?: ReactNode;
   revealOverflow?: boolean;
   "data-testid"?: string;
@@ -35,7 +34,6 @@ function SortableSidebarMarker(props: {
       data-thread-selection-safe
       data-testid={props["data-testid"]}
       className={cn("list-none", props.className)}
-      inert={props.inert}
       style={{
         transform: CSS.Translate.toString(transform),
         transition: props.marker.endsWith("-placeholder") ? "none" : transition,
@@ -117,7 +115,6 @@ export function SidebarSectionHeader(props: {
   className?: string;
   dragging?: boolean;
   isDropTarget?: boolean;
-  concealed?: boolean;
   toggle: { expanded: boolean; onToggle: () => void };
 }) {
   const shelf =
@@ -130,8 +127,7 @@ export function SidebarSectionHeader(props: {
     <SortableSidebarMarker
       marker={props.marker}
       data-testid={`sidebar-${props.marker}`}
-      className={cn("relative mx-0.5 h-8", props.className, props.concealed && "invisible")}
-      inert={props.concealed === true}
+      className={cn("relative mx-0.5 h-8", props.className)}
     >
       <CollapsibleSectionHeader
         role="treeitem"

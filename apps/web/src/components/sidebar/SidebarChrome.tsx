@@ -1,5 +1,4 @@
 import {
-  ArchiveIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
   ChartNoAxesColumnIcon,
@@ -22,10 +21,8 @@ import {
 } from "../../navigationHistory";
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import { cn } from "../../lib/utils";
-import { useDesktopUpdateState } from "../../state/desktopUpdate";
 import { usePullRequestsSupported } from "../../state/environments";
 import { AppMark } from "../AppMark";
-import { isDesktopAppUpdateEnabled } from "../desktopUpdate.logic";
 import {
   resolveEnvironmentIdentificationPillLabel,
   resolveSidebarStageBackdropVariant,
@@ -49,7 +46,6 @@ import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarClaudeUsage } from "./SidebarClaudeUsage";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
-import { settledShelfToggleProps, useSettledShelfExpanded } from "./settledShelf";
 import { useThreadRouteRef } from "~/hooks/useThreadRouteTarget";
 import {
   changeRequestTermParams,
@@ -333,39 +329,9 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
       )}
       <SidebarThreadUndoNotice />
       <SidebarUpdatePill />
-      {isOnUtilityPage ? null : <SidebarSettledToggle />}
     </SidebarMenu>
   );
 });
-
-function SidebarSettledToggle() {
-  const t = useT();
-  const [expanded, setExpanded] = useSettledShelfExpanded();
-  // The update control already takes the free space with its own auto margin.
-  const updateControlShown = isDesktopAppUpdateEnabled(useDesktopUpdateState());
-  const label = expanded ? t("sidebar.chrome.hideSettled") : t("sidebar.chrome.showSettled");
-  return (
-    <SidebarMenuItem className={cn("shrink-0", !updateControlShown && "ml-auto")}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <SidebarMenuButton
-              aria-label={label}
-              aria-pressed={expanded}
-              {...settledShelfToggleProps}
-              isActive={expanded}
-              onClick={() => setExpanded((value) => !value)}
-              size="icon"
-            >
-              <ArchiveIcon />
-            </SidebarMenuButton>
-          }
-        />
-        <TooltipPopup side="top">{label}</TooltipPopup>
-      </Tooltip>
-    </SidebarMenuItem>
-  );
-}
 
 export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   return (
