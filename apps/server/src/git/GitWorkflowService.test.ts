@@ -480,6 +480,33 @@ it.layer(NodeServices.layer)("GitWorkflowService", (it) => {
         assert.equal((yield* runGit(cwd, ["stash", "list"])).split("\n").length, 2);
       }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-stash-moved-"))),
   );
+  it.effect(
+    "stashAction should drop exactly that stash and refuse a stale hash when action is drop",
+    () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const cwd = yield* makeEmptyRepo("t3-stash-drop-");
+        yield* writeFile(cwd, "a.txt", "v1");
+        yield* commitAll(cwd, "first");
+        yield* writeFile(cwd, "a.txt", "v2");
+        yield* workflow.stashPush({ cwd, message: "one" });
+        const staleHash = yield* stashHash(cwd, 0);
+        yield* writeFile(cwd, "a.txt", "v3");
+        yield* workflow.stashPush({ cwd, message: "two" });
+        const topHash = yield* stashHash(cwd, 0);
+
+        const error = yield* workflow
+          .stashAction({ cwd, action: "drop", index: 0, hash: staleHash })
+          .pipe(Effect.flip);
+        assert.equal(error._tag, "GitStashMovedError");
+        assert.equal((yield* runGit(cwd, ["stash", "list"])).split("\n").length, 2);
+
+        yield* workflow.stashAction({ cwd, action: "drop", index: 0, hash: topHash });
+        const remaining = yield* runGit(cwd, ["stash", "list"]);
+        assert.include(remaining, "one");
+        assert.notInclude(remaining, "two");
+      }).pipe(Effect.scoped, Effect.provide(workflowLayer("t3-stash-drop-"))),
+  );
   it.effect("stashAction should report a conflict and keep the stash when pop conflicts", () =>
     Effect.gen(function* () {
       const workflow = yield* GitWorkflowService.GitWorkflowService;

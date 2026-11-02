@@ -5389,6 +5389,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         drop: "Could not delete the stash.",
       }[input.action];
       const action = input.action;
+      const listUnmerged = executeGit(operation, input.cwd, ["ls-files", "-u", "-z"], {
+        allowNonZeroExit: true,
+      }).pipe(Effect.map((result) => result.stdout));
+      const unmergedBefore = action === "drop" ? "" : yield* listUnmerged;
       yield* executeGitWithStableDiagnostics(operation, input.cwd, args, {
         timeoutMs: 10_000,
         fallbackErrorDetail,
@@ -5396,10 +5400,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         Effect.catchTags({
           GitCommandError: Effect.fnUntraced(function* (error) {
             if (action === "drop") return yield* error;
-            const unmerged = yield* executeGit(operation, input.cwd, ["ls-files", "-u", "-z"], {
-              allowNonZeroExit: true,
-            });
-            if (unmerged.stdout.length > 0) {
+            const unmergedAfter = yield* listUnmerged;
+            if (unmergedBefore.length === 0 && unmergedAfter.length > 0) {
               return yield* new GitStashConflictError({ cwd: input.cwd, action });
             }
             return yield* error;
