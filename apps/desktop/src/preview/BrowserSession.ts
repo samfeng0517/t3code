@@ -1,5 +1,5 @@
 import type { Session, WebContents } from "electron";
-import { BrowserWindow, session } from "electron";
+import { session } from "electron";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
@@ -13,6 +13,7 @@ import * as SynchronizedRef from "effect/SynchronizedRef";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import * as BrowserNotificationPermissions from "./BrowserNotificationPermissions.ts";
 import { attachChromeExtensions } from "./ChromeExtensions.ts";
+import { previewHostWindow } from "./PreviewHostWindow.ts";
 
 const PREVIEW_PARTITION_PREFIX = "persist:t3code-preview-";
 /** Ephemeral partitions omit persist: but retain a product prefix so the webview gate recognizes them. */
@@ -199,14 +200,6 @@ const encodeScopeForDigest = (scope: string): Uint8Array =>
         (unit) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, "0")}`,
       ),
   );
-
-// Webview guests have no window; use their embedding page.
-const previewHostWindow = (guest: WebContents | null): BrowserWindow | undefined => {
-  if (guest === null || guest.isDestroyed()) return undefined;
-  const host = guest.hostWebContents ?? guest;
-  if (host.isDestroyed()) return undefined;
-  return BrowserWindow.fromWebContents(host) ?? undefined;
-};
 
 /** @public */
 export const make = Effect.gen(function* BrowserSessionMake() {

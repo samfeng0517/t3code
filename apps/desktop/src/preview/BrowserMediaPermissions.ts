@@ -10,7 +10,6 @@ import * as Layer from "effect/Layer";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { makePermissionStore } from "./BrowserPermissionStore.ts";
 
-/** @public */
 export class BrowserMediaPermissions extends Context.Service<
   BrowserMediaPermissions,
   {
