@@ -1,5 +1,6 @@
 import { MinusIcon, PlusIcon, TriangleAlertIcon, Undo2Icon } from "lucide-react";
-import { type CSSProperties, type KeyboardEvent, type ReactNode, useId } from "react";
+import { type CSSProperties, type KeyboardEvent, type ReactNode, useId, useState } from "react";
+import { isMacPlatform } from "@t3tools/shared/keybindings";
 
 import { RESIZABLE_WIDTH_PROPERTY, useResizableWidth } from "~/hooks/useResizableWidth";
 import { useT } from "~/i18n";
@@ -10,6 +11,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { Skeleton } from "../ui/skeleton";
+import { Textarea } from "../ui/textarea";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { GIT_DETAIL_WIDTH_OPTIONS } from "./gitGraphStyle";
 import { GitWorkingTreeDiff } from "./GitWorkingTreeDiff";
@@ -42,6 +44,69 @@ interface WorkingTreeRowActions {
 // A staged rename also stages its old path's deletion, so unstaging restores both.
 const unstagePaths = (rows: ReadonlyArray<WorkingTreeRow>) =>
   rows.flatMap((row) => (row.previousPath === null ? [row.path] : [row.path, row.previousPath]));
+
+/** Commit controls; absent when the connection cannot write. */
+interface WorkingTreeCommitBox {
+  readonly message: string;
+  readonly onMessageChange: (message: string) => void;
+  readonly committing: boolean;
+  /** Offline, or another write holds the page's lock. */
+  readonly disabled: boolean;
+  readonly submit: (message: string) => Promise<void>;
+}
+
+function WorkingTreeCommitBox(props: {
+  readonly box: WorkingTreeCommitBox;
+  readonly stagedCount: number;
+  readonly fileCount: number;
+}) {
+  const t = useT();
+  const { box, stagedCount, fileCount } = props;
+  // Decided at submit so the label cannot flip while the run is in flight.
+  const [generating, setGenerating] = useState(false);
+  const submit = () => {
+    setGenerating(box.message.trim().length === 0);
+    void box.submit(box.message);
+  };
+  const label = box.committing
+    ? generating
+      ? t("git.workingTree.generating")
+      : t("git.workingTree.committing")
+    : stagedCount > 0
+      ? t("git.workingTree.commitStaged", { count: stagedCount })
+      : t("git.workingTree.commitAll", { count: fileCount });
+  const shortcut = isMacPlatform(navigator.platform) ? "⌘↵" : "Ctrl+↵";
+  return (
+    <div className="flex flex-col gap-2 border-b border-border px-3 py-2.5">
+      <Textarea
+        rows={2}
+        value={box.message}
+        placeholder={t("git.workingTree.messagePlaceholder")}
+        onChange={(event) => box.onMessageChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (
+            event.key !== "Enter" ||
+            !(isMacPlatform(navigator.platform) ? event.metaKey : event.ctrlKey)
+          )
+            return;
+          event.preventDefault();
+          if (!box.disabled && fileCount > 0) submit();
+        }}
+      />
+      <Button
+        size="sm"
+        className="w-full"
+        disabled={box.disabled || fileCount === 0}
+        onClick={submit}
+      >
+        {label}
+      </Button>
+      <span className="text-right text-2xs text-muted-foreground">
+        {t("git.workingTree.shortcutHint", { shortcut })}
+      </span>
+    </div>
+  );
+}
 
 function RowActionButton(props: {
   readonly label: string;
@@ -185,9 +250,10 @@ export function GitWorkingTreePanel(props: {
   /** Shown between the header and the file sections. */
   readonly actions?: ReactNode;
   readonly rowActions?: WorkingTreeRowActions;
+  readonly commitBox?: WorkingTreeCommitBox;
 }) {
   const t = useT();
-  const { controller, rowActions } = props;
+  const { controller, rowActions, commitBox } = props;
   const { sections, selection } = controller;
   const rowIdPrefix = useId();
   // Paths can hold whitespace, which ids cannot, so rows are named by position.
@@ -259,6 +325,13 @@ export function GitWorkingTreePanel(props: {
           {props.headerAccessory}
         </div>
         {props.actions}
+        {commitBox === undefined ? null : (
+          <WorkingTreeCommitBox
+            box={commitBox}
+            stagedCount={sections.staged.length}
+            fileCount={controller.status.files.length}
+          />
+        )}
         <div
           role="listbox"
           tabIndex={0}

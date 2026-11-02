@@ -1,5 +1,11 @@
-import { settlePromise } from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId } from "@t3tools/contracts";
+import {
+  type AtomCommandResult,
+  settlePromise,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
+import { type EnvironmentId, GitCommitHookRejectedError, type ProjectId } from "@t3tools/contracts";
+import { AsyncResult } from "effect/reactivity";
+import * as Schema from "effect/Schema";
 import { useState } from "react";
 
 import { useT } from "~/i18n";
@@ -7,10 +13,14 @@ import { readLocalApi } from "~/localApi";
 import { gitEnvironment } from "~/state/git";
 import { useAtomCommand } from "~/state/use-atom-command";
 
+import { toastManager } from "../ui/toast";
+import { SHORT_HASH_LENGTH } from "./gitHistoryState";
 import { buildWorkingTreeMenu } from "./gitContextMenus";
 import type { WorkingTreeRow } from "./gitWorkingTreeState";
 import type { useGitConfirm } from "./useGitConfirm";
 import type { GitWriteActions } from "./useGitWriteActions";
+
+const isCommitHookRejected = Schema.is(GitCommitHookRejectedError);
 
 interface GitStashPrompt {
   /** `null` cancels; an empty message lets git write its default one. */
@@ -20,6 +30,7 @@ interface GitStashPrompt {
 /** Stage, unstage, discard and stash for the uncommitted changes panel, on the page's write lock. */
 export function useGitWorkingTreeActions(input: {
   readonly environmentId: EnvironmentId;
+  readonly projectId: ProjectId;
   readonly repoRoot: string | null;
   readonly writes: GitWriteActions;
   readonly confirm: ReturnType<typeof useGitConfirm>;
@@ -27,7 +38,7 @@ export function useGitWorkingTreeActions(input: {
   readonly onHeadChanged: () => void;
 }) {
   const t = useT();
-  const { environmentId, repoRoot, writes, onHeadChanged } = input;
+  const { environmentId, projectId, repoRoot, writes, onHeadChanged } = input;
   const { confirm, confirmAgentWork } = input.confirm;
   const commandOptions = { reportFailure: false };
   const stageCommand = useAtomCommand(gitEnvironment.stage, commandOptions);
@@ -35,7 +46,38 @@ export function useGitWorkingTreeActions(input: {
   const discardCommand = useAtomCommand(gitEnvironment.discard, commandOptions);
   const discardAllCommand = useAtomCommand(gitEnvironment.discardAll, commandOptions);
   const stashPushCommand = useAtomCommand(gitEnvironment.stashPush, commandOptions);
+  const commitCommand = useAtomCommand(gitEnvironment.commitIndex, commandOptions);
   const [stashPrompt, setStashPrompt] = useState<GitStashPrompt | null>(null);
+
+  /** Commits what is staged (or everything when nothing is); an empty message is generated. Resolves true on success. */
+  const commit = async (message: string): Promise<boolean> => {
+    if (repoRoot === null) return false;
+    const cwd = repoRoot;
+    const trimmed = message.trim();
+    const outcome = await writes.run(
+      "commit",
+      async (): Promise<AtomCommandResult<{ commitSha: string } | null, unknown>> => {
+        const result = await commitCommand({
+          environmentId,
+          input: trimmed.length === 0 ? { cwd, projectId } : { cwd, projectId, message: trimmed },
+        });
+        if (result._tag === "Success") return AsyncResult.success(result.value);
+        if (!isCommitHookRejected(squashAtomCommandFailure(result))) {
+          return AsyncResult.failure(result.cause);
+        }
+        toastManager.add({ type: "error", title: t("git.toast.commitHookRejected") });
+        return AsyncResult.success(null);
+      },
+      (value) =>
+        value === null
+          ? null
+          : t("git.toast.committed", { hash: value.commitSha.slice(0, SHORT_HASH_LENGTH) }),
+      { awaitRefresh: true },
+    );
+    if (outcome === null) return false;
+    onHeadChanged();
+    return true;
+  };
 
   const askStashMessage = () =>
     new Promise<string | null>((resolve) => {
@@ -149,5 +191,5 @@ export function useGitWorkingTreeActions(input: {
     return discardAll();
   };
 
-  return { stage, unstage, discard, discardAll, stash, stashPrompt, openPanelMenu };
+  return { stage, unstage, discard, discardAll, stash, commit, stashPrompt, openPanelMenu };
 }

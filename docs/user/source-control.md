@@ -35,8 +35,15 @@ Use the toolbar to **Fetch**, **Pull** (fast-forward only), **Push** the current
 upstream), or **Refresh**. Right-click a commit, branch, tag, or sidebar item, or use **⋯** on the
 selected commit, to check out, create a branch or tag at a commit, rename or delete a branch, push or
 delete a tag, or copy a commit hash. The page refreshes when the window regains focus, when a thread's
-turn in the same project ends, and after its own actions. For changes made elsewhere while the window
-stays focused, choose **Refresh**.
+turn in the same project ends, and after its own actions. The **Uncommitted changes** row updates at
+the same moments. For changes made elsewhere while the window stays focused, choose **Refresh**.
+
+When the working tree has changes, an **Uncommitted changes** row sits above the newest commit. Select
+it to see staged and unstaged files, stage, unstage, or discard them per file, and commit from the
+box above the file list. Commit includes only staged changes, or everything when nothing is staged,
+and writes a message for you when you leave it empty. Create, apply, pop, and delete stashes from the
+sidebar or **⋯**. Discarding, stashing, and applying a stash warn you while an agent is running in the
+project root.
 
 - Git commands run at the project's repository root, so checking out here changes the branch for
   threads working in local mode. You get a warning while an agent is running there.

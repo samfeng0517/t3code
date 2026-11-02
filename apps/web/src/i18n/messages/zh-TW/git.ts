@@ -123,4 +123,12 @@ export const gitZhTW: Readonly<Record<keyof typeof gitEn, string>> = {
   "git.toast.copiedHash": "已複製 commit hash",
   "git.toast.discarded": "已捨棄變更",
   "git.toast.stashed": "已 stash 變更",
+  "git.workingTree.messagePlaceholder": "Commit 訊息（留空自動產生）",
+  "git.workingTree.commitStaged": "Commit 已 stage（{count}）",
+  "git.workingTree.commitAll": "Commit 全部（{count}）",
+  "git.workingTree.generating": "產生訊息中…",
+  "git.workingTree.committing": "Commit 中…",
+  "git.workingTree.shortcutHint": "{shortcut} Commit",
+  "git.toast.committed": "已 commit {hash}",
+  "git.toast.commitHookRejected": "git hook 拒絕了這次 commit",
 };

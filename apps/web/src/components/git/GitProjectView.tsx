@@ -133,12 +133,14 @@ export function GitProjectView(props: {
   const [selectedHash, setSelectedHash] = useState<string | null | undefined>(undefined);
   const workingTreeActions = useGitWorkingTreeActions({
     environmentId,
+    projectId,
     repoRoot,
     writes,
     confirm,
     // `undefined` makes the next render pick HEAD and scroll to it.
     onHeadChanged: () => setSelectedHash(undefined),
   });
+  const [commitMessage, setCommitMessage] = useState("");
   const [scrollTarget, setScrollTarget] = useState<GitGraphScrollTarget | null>(null);
   const latestJump = useRef(0);
   const narrow = useMediaQuery("(max-width: 999px)");
@@ -287,6 +289,15 @@ export function GitProjectView(props: {
                             stage: (paths) => void workingTreeActions.stage(paths),
                             unstage: (paths) => void workingTreeActions.unstage(paths),
                             discard: (row) => void workingTreeActions.discard(row),
+                          },
+                          commitBox: {
+                            message: commitMessage,
+                            onMessageChange: setCommitMessage,
+                            committing: writes.pending === "commit",
+                            disabled: writes.pending !== null || !writes.isOnline,
+                            submit: async (message) => {
+                              if (await workingTreeActions.commit(message)) setCommitMessage("");
+                            },
                           },
                           headerAccessory: (
                             <Button

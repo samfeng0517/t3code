@@ -122,4 +122,12 @@ export const gitEn = {
   "git.toast.copiedHash": "Copied commit hash",
   "git.toast.discarded": "Discarded changes",
   "git.toast.stashed": "Stashed changes",
+  "git.workingTree.messagePlaceholder": "Commit message (leave empty to generate)",
+  "git.workingTree.commitStaged": "Commit staged ({count})",
+  "git.workingTree.commitAll": "Commit all ({count})",
+  "git.workingTree.generating": "Generating message…",
+  "git.workingTree.committing": "Committing…",
+  "git.workingTree.shortcutHint": "{shortcut} Commit",
+  "git.toast.committed": "Committed {hash}",
+  "git.toast.commitHookRejected": "A Git hook rejected this commit",
 } as const;
