@@ -683,16 +683,21 @@ export function PullRequestSummaryTab({
       ids: new Set(current.url === url ? current.ids : NO_THREAD_IDS).add(thread.id),
     }));
   };
-  const threadActionsFor = (thread: ResolvableThread) => (
-    <PullRequestThreadActions
-      canReply={canReply}
-      onReply={replyTo(thread.id)}
-      canResolve={detail.capabilities.review.resolve && canResolvePullRequestThread(detail, thread)}
-      resolved={thread.isResolved}
-      resolving={resolving}
-      onToggleResolved={() => void toggleThreadResolved(thread)}
-    />
-  );
+  const threadActionsFor = (thread: ResolvableThread) => {
+    const canResolve =
+      detail.capabilities.review.resolve && canResolvePullRequestThread(detail, thread);
+    if (!canReply && !canResolve) return null;
+    return (
+      <PullRequestThreadActions
+        canReply={canReply}
+        onReply={replyTo(thread.id)}
+        canResolve={canResolve}
+        resolved={thread.isResolved}
+        resolving={resolving}
+        onToggleResolved={() => void toggleThreadResolved(thread)}
+      />
+    );
+  };
 
   const reactionBarFor = (comment: PullRequestComment) => (
     <PullRequestReactionBar
@@ -709,7 +714,17 @@ export function PullRequestSummaryTab({
   const renderCommentCard = (
     comment: PullRequestComment,
     thread: PullRequestReviewThread | undefined,
-    { reply = false, discussionResolved }: { reply?: boolean; discussionResolved?: boolean } = {},
+    {
+      reply = false,
+      discussionResolved,
+      replies = null,
+      footer = null,
+    }: {
+      reply?: boolean;
+      discussionResolved?: boolean;
+      replies?: ReactNode;
+      footer?: ReactNode;
+    } = {},
   ) => {
     const body = visibleBody(comment.body);
     const outcome = pullRequestReviewOutcome(comment.reviewState);
@@ -770,6 +785,12 @@ export function PullRequestSummaryTab({
         {body === null && !commentEditing.canEdit(comment) ? null : (
           <CommentBody className="px-3 py-3" comment={comment} editing={commentEditing} />
         )}
+        {replies ? <div className="space-y-2 px-3 pb-3">{replies}</div> : null}
+        {footer ? (
+          <div className="rounded-b-lg border-t border-border/60 bg-muted/15 px-3 pb-2">
+            {footer}
+          </div>
+        ) : null}
       </article>
     );
   };
@@ -821,22 +842,27 @@ export function PullRequestSummaryTab({
       return (
         <div
           key={`${detail.url}:discussion:${discussion.id}`}
-          className={cn("space-y-2", keptResolved && "opacity-60")}
+          className={cn(keptResolved && "opacity-60")}
         >
-          {renderCommentCard(comment, undefined, { discussionResolved: discussion.isResolved })}
-          {threadActionsFor(discussion)}
+          {renderCommentCard(comment, undefined, {
+            discussionResolved: discussion.isResolved,
+            footer: threadActionsFor(discussion),
+          })}
         </div>
       );
     }
     return (
-      <div
-        key={`${detail.url}:thread:${item.id}`}
-        className={cn("space-y-2", keptResolved && "opacity-60")}
-      >
-        {renderCommentCard(comment, item.thread)}
-        {replies}
-        {moreReplies}
-        {threadActionsFor(item.thread)}
+      <div key={`${detail.url}:thread:${item.id}`} className={cn(keptResolved && "opacity-60")}>
+        {renderCommentCard(comment, item.thread, {
+          replies:
+            replies || moreReplies ? (
+              <>
+                {replies}
+                {moreReplies}
+              </>
+            ) : null,
+          footer: threadActionsFor(item.thread),
+        })}
       </div>
     );
   };
