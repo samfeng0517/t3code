@@ -2813,6 +2813,123 @@ it.layer(layerGitManagerTest)("GitManager", (it) => {
     }),
   );
 
+  it.effect("commitIndex should commit only the staged hunk when a file is partially staged", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      yield* initRepo(repoDir);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "hello\nstaged\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "hello\nstaged\nunstaged\n");
+
+      const { manager } = yield* makeManager();
+      const result = yield* manager.commitIndex({ cwd: repoDir, message: "Commit staged hunk" });
+
+      expect(result.subject).toBe("Commit staged hunk");
+      const committed = yield* runGit(repoDir, ["show", `${result.commitSha}:README.md`]);
+      expect(committed.stdout).toBe("hello\nstaged\n");
+      expect(NodeFS.readFileSync(NodePath.join(repoDir, "README.md"), "utf8")).toBe(
+        "hello\nstaged\nunstaged\n",
+      );
+    }),
+  );
+
+  it.effect(
+    "commitIndex should generate the message from the staged content only when the message is empty",
+    () =>
+      Effect.gen(function* () {
+        const repoDir = yield* makeTempDir("t3code-git-manager-");
+        yield* initRepo(repoDir);
+        NodeFS.writeFileSync(NodePath.join(repoDir, "a.txt"), "file a\n");
+        NodeFS.writeFileSync(NodePath.join(repoDir, "b.txt"), "file b\n");
+        yield* runGit(repoDir, ["add", "a.txt"]);
+        let stagedSummary: string | undefined;
+
+        const { manager } = yield* makeManager({
+          textGeneration: {
+            generateCommitMessage: (input) => {
+              stagedSummary = input.stagedSummary;
+              return Effect.succeed({ subject: "Add file a", body: "" });
+            },
+          },
+        });
+        const result = yield* manager.commitIndex({ cwd: repoDir });
+
+        expect(result.subject).toBe("Add file a");
+        expect(stagedSummary).toContain("a.txt");
+        expect(stagedSummary).not.toContain("b.txt");
+      }),
+  );
+
+  it.effect(
+    "commitIndex should stage and commit every change including new files when nothing is staged",
+    () =>
+      Effect.gen(function* () {
+        const repoDir = yield* makeTempDir("t3code-git-manager-");
+        yield* initRepo(repoDir);
+        NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "hello\nworld\n");
+        NodeFS.writeFileSync(NodePath.join(repoDir, "new.txt"), "new\n");
+
+        const { manager } = yield* makeManager();
+        const result = yield* manager.commitIndex({ cwd: repoDir, message: "Commit everything" });
+
+        const tree = yield* runGit(repoDir, ["ls-tree", "--name-only", result.commitSha]);
+        expect(tree.stdout).toContain("new.txt");
+        const status = yield* runGit(repoDir, ["status", "--porcelain"]);
+        expect(status.stdout).toBe("");
+      }),
+  );
+
+  it.effect(
+    "commitIndex should use the given message without generating when a message is provided",
+    () =>
+      Effect.gen(function* () {
+        const repoDir = yield* makeTempDir("t3code-git-manager-");
+        yield* initRepo(repoDir);
+        NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "hello\nworld\n");
+        let generatorCalls = 0;
+
+        const { manager } = yield* makeManager({
+          textGeneration: {
+            generateCommitMessage: () => {
+              generatorCalls += 1;
+              return Effect.succeed({ subject: "Generated", body: "" });
+            },
+          },
+        });
+        const result = yield* manager.commitIndex({
+          cwd: repoDir,
+          message: "Hand-written subject",
+        });
+
+        expect(generatorCalls).toBe(0);
+        expect(result.subject).toBe("Hand-written subject");
+        const subject = yield* runGit(repoDir, ["log", "-1", "--pretty=%s"]);
+        expect(subject.stdout.trim()).toBe("Hand-written subject");
+      }),
+  );
+
+  it.effect(
+    "commitIndex should fail with GitCommitHookRejectedError when a pre-commit hook exits non-zero",
+    () =>
+      Effect.gen(function* () {
+        const repoDir = yield* makeTempDir("t3code-git-manager-");
+        yield* initRepo(repoDir);
+        const hookPath = NodePath.join(repoDir, ".git", "hooks", "pre-commit");
+        NodeFS.writeFileSync(hookPath, "#!/bin/sh\nexit 1\n");
+        NodeFS.chmodSync(hookPath, 0o755);
+        NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "hello\nworld\n");
+
+        const { manager } = yield* makeManager();
+        const error = yield* manager
+          .commitIndex({ cwd: repoDir, message: "Rejected commit" })
+          .pipe(Effect.flip);
+
+        expect(error).toMatchObject({ _tag: "GitCommitHookRejectedError", hookName: "pre-commit" });
+        const staged = yield* runGit(repoDir, ["diff", "--cached", "--name-only"]);
+        expect(staged.stdout.trim()).toBe("README.md");
+      }),
+  );
+
   it.effect("creates feature branch, commits, and pushes with featureBranch option", () =>
     Effect.gen(function* () {
       const repoDir = yield* makeTempDir("t3code-git-manager-");

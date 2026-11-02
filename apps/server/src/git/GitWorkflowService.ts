@@ -7,6 +7,9 @@ import {
   GitBranchNotFullyMergedError,
   GitManagerError,
   GitCommandError,
+  type GitCommitHookRejectedError,
+  type GitCommitIndexInput,
+  type GitCommitIndexResult,
   GitStashConflictError,
   GitStashMovedError,
   type GitCreateTagInput,
@@ -84,6 +87,9 @@ export class GitWorkflowService extends Context.Service<
       input: GitRunStackedActionInput,
       options?: GitManager.GitRunStackedActionOptions,
     ) => Effect.Effect<GitRunStackedActionResult, GitManagerServiceError>;
+    readonly commitIndex: (
+      input: GitCommitIndexInput,
+    ) => Effect.Effect<GitCommitIndexResult, GitManagerServiceError | GitCommitHookRejectedError>;
     readonly resolvePullRequest: (
       input: GitPullRequestRefInput,
     ) => Effect.Effect<GitResolvePullRequestResult, GitManagerServiceError>;
@@ -432,6 +438,13 @@ export const make = Effect.gen(function* () {
             handle.repository.rootPath,
             gitManager.runStackedAction(input, options),
           ),
+        ),
+      );
+    }),
+    commitIndex: Effect.fn("GitWorkflowService.commitIndex")(function (input) {
+      return ensureGit("GitWorkflowService.commitIndex", input.cwd).pipe(
+        Effect.flatMap((handle) =>
+          withCheckoutLease(handle.repository.rootPath, gitManager.commitIndex(input)),
         ),
       );
     }),

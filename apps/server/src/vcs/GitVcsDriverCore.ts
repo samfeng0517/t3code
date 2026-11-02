@@ -2509,8 +2509,47 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     }
   });
 
+  const readStagedCommitContext = Effect.fnUntraced(function* (
+    cwd: string,
+    env: NodeJS.ProcessEnv | undefined,
+    includePatch: boolean,
+  ) {
+    const stagedSummary = yield* runGitStdoutWithOptions(
+      "GitVcsDriver.prepareCommitContext.stagedSummary",
+      cwd,
+      ["diff", "--cached", "--name-status"],
+      { ...(env ? { env } : {}), maxOutputBytes: REVIEW_METADATA_MAX_OUTPUT_BYTES },
+    ).pipe(Effect.map((stdout) => stdout.trim()));
+    if (stagedSummary.length === 0) {
+      return null;
+    }
+
+    // A user-supplied message needs change detection, but no patch for generation.
+    if (!includePatch) return { stagedSummary, stagedPatch: "" };
+
+    const stagedPatch = yield* runGitStdoutWithOptions(
+      "GitVcsDriver.prepareCommitContext.stagedPatch",
+      cwd,
+      ["diff", "--no-ext-diff", "--no-textconv", "--cached", "--patch", "--minimal"],
+      {
+        ...(env ? { env } : {}),
+        maxOutputBytes: PREPARED_COMMIT_PATCH_MAX_OUTPUT_BYTES,
+        appendTruncationMarker: true,
+      },
+    );
+
+    return {
+      stagedSummary,
+      stagedPatch,
+    };
+  });
+
   const prepareCommitContext: GitVcsDriver.GitVcsDriver["Service"]["prepareCommitContext"] =
     Effect.fn("prepareCommitContext")(function* (cwd, filePaths, options) {
+      const includePatch = options?.includePatch !== false;
+      if (options?.fromIndex === true) {
+        return yield* readStagedCommitContext(cwd, undefined, includePatch);
+      }
       return yield* Effect.scoped(
         Effect.gen(function* () {
           const indexValue = yield* runGitStdout(
@@ -2552,35 +2591,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
             );
           }
           yield* stageCommitChanges(cwd, filePaths, env);
-
-          const stagedSummary = yield* runGitStdoutWithOptions(
-            "GitVcsDriver.prepareCommitContext.stagedSummary",
-            cwd,
-            ["diff", "--cached", "--name-status"],
-            { env, maxOutputBytes: REVIEW_METADATA_MAX_OUTPUT_BYTES },
-          ).pipe(Effect.map((stdout) => stdout.trim()));
-          if (stagedSummary.length === 0) {
-            return null;
-          }
-
-          // A user-supplied message needs change detection, but no patch for generation.
-          if (options?.includePatch === false) return { stagedSummary, stagedPatch: "" };
-
-          const stagedPatch = yield* runGitStdoutWithOptions(
-            "GitVcsDriver.prepareCommitContext.stagedPatch",
-            cwd,
-            ["diff", "--no-ext-diff", "--no-textconv", "--cached", "--patch", "--minimal"],
-            {
-              env,
-              maxOutputBytes: PREPARED_COMMIT_PATCH_MAX_OUTPUT_BYTES,
-              appendTruncationMarker: true,
-            },
-          );
-
-          return {
-            stagedSummary,
-            stagedPatch,
-          };
+          return yield* readStagedCommitContext(cwd, env, includePatch);
         }),
       ).pipe(
         Effect.catchTags({

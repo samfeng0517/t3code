@@ -245,6 +245,19 @@ export const GitStashActionInput = Schema.Struct({
 });
 export type GitStashActionInput = typeof GitStashActionInput.Type;
 
+export const GitCommitIndexInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  message: Schema.optional(TrimmedNonEmptyStringSchema.check(Schema.isMaxLength(10_000))),
+  projectId: Schema.optional(ProjectId),
+});
+export type GitCommitIndexInput = typeof GitCommitIndexInput.Type;
+
+export const GitCommitIndexResult = Schema.Struct({
+  commitSha: GitObjectHash,
+  subject: Schema.String,
+});
+export type GitCommitIndexResult = typeof GitCommitIndexResult.Type;
+
 export const GitCreateTagInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
   tagName: TrimmedNonEmptyStringSchema,
@@ -508,6 +521,18 @@ export class GitStashConflictError extends Schema.TaggedError<GitStashConflictEr
 ) {
   override get message(): string {
     return "Applying the stash left merge conflicts; the stash was kept.";
+  }
+}
+
+export class GitCommitHookRejectedError extends Schema.TaggedError<GitCommitHookRejectedError>()(
+  "GitCommitHookRejectedError",
+  {
+    cwd: Schema.String,
+    hookName: Schema.String,
+  },
+) {
+  override get message(): string {
+    return "A Git hook rejected the commit.";
   }
 }
 
