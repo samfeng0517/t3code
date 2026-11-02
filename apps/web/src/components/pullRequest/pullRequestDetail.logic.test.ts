@@ -29,6 +29,7 @@ import {
   buildFixFindingsHandoff,
   groupPullRequestTimelineConversations,
   filterPullRequestConversationItems,
+  pullRequestDiscussionRootIds,
   pagePullRequestConversationItems,
   pullRequestConversationItemComments,
   pullRequestConversationItems,
@@ -505,6 +506,25 @@ describe("review thread conversations", () => {
         new Set(["other-thread"]),
       ).map((item) => item.id),
     ).toEqual(["c1"]);
+  });
+
+  it("filterPullRequestConversationItems should hide a resolved unpositioned discussion unless its id is in the keep set", () => {
+    const resolved = { id: "disc-1", isResolved: true };
+    const items = pullRequestConversationItems(
+      [
+        { ...comment("root", 7), discussion: resolved },
+        { ...comment("answer", 8), discussion: resolved },
+        { ...comment("open", 9), discussion: { id: "disc-2", isResolved: false } },
+      ],
+      [],
+    );
+    const shown = (keep?: ReadonlySet<string>) =>
+      filterPullRequestConversationItems(items, { bots: true, resolved: false }, keep).map(
+        (item) => item.id,
+      );
+    expect(shown()).toEqual(["open"]);
+    expect(shown(new Set(["disc-1"]))).toEqual(["root", "answer", "open"]);
+    expect([...pullRequestDiscussionRootIds(items)]).toEqual(["root", "open"]);
   });
 
   it("keeps bot review verdicts when bot comments are hidden", () => {

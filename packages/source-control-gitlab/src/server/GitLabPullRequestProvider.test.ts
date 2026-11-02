@@ -517,7 +517,8 @@ describe("optional activity reads", () => {
   const reads = {
     listNotes: () => Effect.succeed({ comments: [comment], truncated: false }),
     listCommits: () => Effect.succeed([commit]),
-    listDiscussions: () => Effect.succeed({ threads: [], truncated: false }),
+    listDiscussions: () =>
+      Effect.succeed({ threads: [], generalDiscussions: [], truncated: false }),
     listReactions: () => Effect.succeed({ reactions: [], reactionsByNoteId: new Map() }),
   };
   const context = {
@@ -594,6 +595,31 @@ describe("optional activity reads", () => {
         commits: [commit],
       });
     }),
+  );
+
+  it.effect(
+    "should mark a comment with its discussion when the note belongs to an unpositioned resolvable discussion",
+    () =>
+      Effect.gen(function* () {
+        const provider = yield* make.pipe(
+          Effect.provide(
+            Layer.mock(GitLabPullRequestCli.GitLabPullRequestCli)({
+              ...reads,
+              listDiscussions: () =>
+                Effect.succeed({
+                  threads: [],
+                  generalDiscussions: [{ id: "disc-1", isResolved: true, noteIds: ["42"] }],
+                  truncated: false,
+                }),
+            }),
+          ),
+        );
+
+        const activity = yield* provider.getChangeRequestActivity(reference);
+        expect(activity.comments).toEqual([
+          { ...comment, reactions: [], discussion: { id: "disc-1", isResolved: true } },
+        ]);
+      }),
   );
 });
 

@@ -679,6 +679,11 @@ export function createPullRequestEnvironmentAtoms<R, E>(
             reviewThreads: value.reviewThreads.map((thread) =>
               thread.id === threadId ? { ...thread, isResolved: resolved } : thread,
             ),
+            comments: value.comments.map((comment) =>
+              comment.discussion?.id === threadId
+                ? { ...comment, discussion: { ...comment.discussion, isResolved: resolved } }
+                : comment,
+            ),
           }));
         }),
     }),

@@ -68,6 +68,7 @@ import {
   orderPullRequestComments,
   pagePullRequestConversationItems,
   pullRequestConversationItemComments,
+  pullRequestDiscussionRootIds,
   pullRequestConversationItems,
   pullRequestFindingKey,
   visibleBody,
@@ -257,6 +258,7 @@ function CollapsedComment({
   replies = null,
   moreReplies = null,
   footer = null,
+  resolved: discussionResolved,
 }: {
   comment: PullRequestComment;
   editing: CommentEditing;
@@ -269,8 +271,10 @@ function CollapsedComment({
   replies?: ReactNode;
   moreReplies?: ReactNode;
   footer?: ReactNode;
+  resolved?: boolean | undefined;
 }) {
   const t = useT();
+  const resolved = thread?.isResolved ?? discussionResolved;
   const [open, setOpen] = useState(false);
   const statusTriggerRef = useRef<HTMLButtonElement>(null);
   return (
@@ -278,12 +282,12 @@ function CollapsedComment({
       <article
         className={cn(
           "group rounded-lg border border-border/60 [contain-intrinsic-block-size:44px] [content-visibility:auto]",
-          thread?.isResolved && "opacity-60",
+          resolved && "opacity-60",
         )}
       >
         <div className="p-3">
           <div className="flex flex-wrap items-baseline gap-2">
-            {thread ? <ThreadStatusIcon resolved={thread.isResolved} /> : null}
+            {resolved !== undefined ? <ThreadStatusIcon resolved={resolved} /> : null}
             <CommentIdentity comment={comment} detail={detail} />
             {replyCount > 0 ? (
               <span className="shrink-0 py-1 text-xs text-muted-foreground">
@@ -312,7 +316,7 @@ function CollapsedComment({
             <CollapsibleTrigger
               className={cn(
                 "mt-2 block w-full truncate text-left text-xs hover:text-foreground",
-                thread?.isResolved ? "text-muted-foreground" : "text-foreground/80",
+                resolved ? "text-muted-foreground" : "text-foreground/80",
               )}
               onClick={() => statusTriggerRef.current?.focus({ preventScroll: true })}
             >
@@ -434,6 +438,8 @@ const CommentFilterSchema = Schema.Struct({ bots: Schema.Boolean, resolved: Sche
 const DEFAULT_COMMENT_FILTER: typeof CommentFilterSchema.Type = { bots: false, resolved: false };
 const NO_THREAD_IDS: ReadonlySet<string> = new Set();
 
+type ResolvableThread = Pick<PullRequestReviewThread, "id" | "isResolved" | "canResolve">;
+
 export function PullRequestSummaryTab({
   scrollerRef,
   environmentId,
@@ -499,6 +505,7 @@ export function PullRequestSummaryTab({
     active && justResolved.url === detail.url ? justResolved.ids : NO_THREAD_IDS;
   const items = pullRequestConversationItems(detail.comments, detail.reviewThreads);
   const filteredItems = filterPullRequestConversationItems(items, commentFilter, keptThreadIds);
+  const discussionRootIds = pullRequestDiscussionRootIds(items);
   const commentCount = items.reduce(
     (count, item) => count + pullRequestConversationItemComments(item).length,
     0,
@@ -668,7 +675,7 @@ export function PullRequestSummaryTab({
     onRefresh,
   );
   const canReply = detail.capabilities.review.reply && detail.viewerPermissions.comment;
-  const toggleThreadResolved = async (thread: PullRequestReviewThread) => {
+  const toggleThreadResolved = async (thread: ResolvableThread) => {
     const url = detail.url;
     if (!(await toggleResolved(thread)) || thread.isResolved) return;
     setJustResolved((current) => ({
@@ -676,7 +683,7 @@ export function PullRequestSummaryTab({
       ids: new Set(current.url === url ? current.ids : NO_THREAD_IDS).add(thread.id),
     }));
   };
-  const threadActionsFor = (thread: PullRequestReviewThread) => (
+  const threadActionsFor = (thread: ResolvableThread) => (
     <PullRequestThreadActions
       canReply={canReply}
       onReply={replyTo(thread.id)}
@@ -702,7 +709,7 @@ export function PullRequestSummaryTab({
   const renderCommentCard = (
     comment: PullRequestComment,
     thread: PullRequestReviewThread | undefined,
-    { reply = false }: { reply?: boolean } = {},
+    { reply = false, discussionResolved }: { reply?: boolean; discussionResolved?: boolean } = {},
   ) => {
     const body = visibleBody(comment.body);
     const outcome = pullRequestReviewOutcome(comment.reviewState);
@@ -723,7 +730,11 @@ export function PullRequestSummaryTab({
       >
         <div className="flex flex-wrap items-baseline gap-2 rounded-t-lg bg-muted/25 px-3 py-2.5">
           <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2 text-xs text-muted-foreground">
-            {thread && !reply ? <ThreadStatusIcon resolved={thread.isResolved} /> : null}
+            {thread && !reply ? (
+              <ThreadStatusIcon resolved={thread.isResolved} />
+            ) : discussionResolved !== undefined ? (
+              <ThreadStatusIcon resolved={discussionResolved} />
+            ) : null}
             <CommentIdentity comment={comment} detail={detail} />
             {outcome ? (
               <PullRequestReviewOutcomeBadge outcome={outcome} />
@@ -774,7 +785,12 @@ export function PullRequestSummaryTab({
       ) : null;
     const moreReplies =
       item.kind === "thread" && item.hasMoreReplies ? <PullRequestMoreReplies {...item} /> : null;
-    const keptResolved = thread?.isResolved === true && keptThreadIds.has(thread.id);
+    // An unpositioned discussion's status and actions sit on its first comment only.
+    const discussion =
+      item.kind === "comment" && discussionRootIds.has(comment.id) ? comment.discussion : undefined;
+    const keptResolved =
+      (thread?.isResolved === true && keptThreadIds.has(thread.id)) ||
+      (comment.discussion?.isResolved === true && keptThreadIds.has(comment.discussion.id));
     if (!keptResolved && isPullRequestCommentFinished(comment, thread)) {
       return (
         <CollapsedComment
@@ -784,20 +800,34 @@ export function PullRequestSummaryTab({
           detail={detail}
           thread={thread}
           label={
-            thread?.isResolved
+            thread?.isResolved || comment.discussion?.isResolved
               ? t("pullRequests.summary.resolved")
               : t("pullRequests.reviewOutcome.dismissed")
           }
+          resolved={discussion?.isResolved}
           body={visibleBody(comment.body)}
           replyCount={item.kind === "thread" ? item.replies.length + item.moreReplies : 0}
           replies={replies}
           moreReplies={moreReplies}
-          footer={thread ? threadActionsFor(thread) : null}
+          footer={
+            thread ? threadActionsFor(thread) : discussion ? threadActionsFor(discussion) : null
+          }
           reactionBar={reactionBarFor(comment)}
         />
       );
     }
-    if (item.kind === "comment") return renderCommentCard(comment, undefined);
+    if (item.kind === "comment") {
+      if (discussion === undefined) return renderCommentCard(comment, undefined);
+      return (
+        <div
+          key={`${detail.url}:discussion:${discussion.id}`}
+          className={cn("space-y-2", keptResolved && "opacity-60")}
+        >
+          {renderCommentCard(comment, undefined, { discussionResolved: discussion.isResolved })}
+          {threadActionsFor(discussion)}
+        </div>
+      );
+    }
     return (
       <div
         key={`${detail.url}:thread:${item.id}`}

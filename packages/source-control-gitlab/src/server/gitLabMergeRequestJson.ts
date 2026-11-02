@@ -562,8 +562,16 @@ export interface GitLabDiffRefs {
   readonly startSha: string;
 }
 
+/** A resolvable discussion with no diff position, keyed by the notes it holds. */
+export interface GitLabGeneralDiscussion {
+  readonly id: string;
+  readonly isResolved: boolean;
+  readonly noteIds: ReadonlyArray<string>;
+}
+
 export interface GitLabDiscussions {
   readonly threads: ReadonlyArray<PullRequestReviewThread>;
+  readonly generalDiscussions: ReadonlyArray<GitLabGeneralDiscussion>;
   readonly rawCount: number;
 }
 
@@ -575,13 +583,25 @@ export function decodeDiscussionsJson(
     return Result.fail(decoded.failure);
   }
   const threads: PullRequestReviewThread[] = [];
+  const generalDiscussions: GitLabGeneralDiscussion[] = [];
   for (const entry of decoded.success) {
     const discussion = decodeDiscussionEntry(entry);
     if (!Exit.isSuccess(discussion)) continue;
     const notes = (discussion.value.notes ?? []).filter((note) => note.system !== true);
     const root = notes[0];
-    const position = root?.position;
-    if (root === undefined || !position || position.position_type !== "text") continue;
+    if (root === undefined) continue;
+    const position = root.position;
+    if (!position) {
+      if (root.resolvable === true) {
+        generalDiscussions.push({
+          id: discussion.value.id,
+          isResolved: root.resolved === true,
+          noteIds: notes.map((note) => String(note.id)),
+        });
+      }
+      continue;
+    }
+    if (position.position_type !== "text") continue;
     const side = position.new_line === null || position.new_line === undefined ? "left" : "right";
     const path = trimmed(side === "left" ? position.old_path : position.new_path);
     const line = side === "left" ? position.old_line : position.new_line;
@@ -602,7 +622,7 @@ export function decodeDiscussionsJson(
       })),
     });
   }
-  return Result.succeed({ threads, rawCount: decoded.success.length });
+  return Result.succeed({ threads, generalDiscussions, rawCount: decoded.success.length });
 }
 
 export function decodeDiffRefsJson(

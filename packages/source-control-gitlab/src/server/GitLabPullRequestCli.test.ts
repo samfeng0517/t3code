@@ -865,18 +865,35 @@ layer("GitLabPullRequestCli.layer", (it) => {
                 ],
               },
               { id: "def456", notes: [{ id: 3, body: "ship it", created_at: "2026-07-01Z" }] },
+              {
+                id: "ghi789",
+                notes: [
+                  {
+                    id: 4,
+                    body: "please add tests",
+                    created_at: "2026-07-01T02:00:00Z",
+                    resolvable: true,
+                    resolved: false,
+                  },
+                  { id: 5, body: "added", created_at: "2026-07-01T03:00:00Z", resolvable: true },
+                ],
+              },
             ]),
           ),
         ),
       );
       const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
 
-      const { threads } = yield* cli.listDiscussions({
+      const { threads, generalDiscussions } = yield* cli.listDiscussions({
         cwd: "/w",
         repository: "acme/web",
         number: 7,
       });
 
+      // A resolvable discussion without a position stays resolvable; a plain note does not.
+      expect(generalDiscussions).toEqual([
+        { id: "ghi789", isResolved: false, noteIds: ["4", "5"] },
+      ]);
       assert.strictEqual(threads.length, 1);
       expect(threads[0]).toMatchObject({
         id: "abc123",

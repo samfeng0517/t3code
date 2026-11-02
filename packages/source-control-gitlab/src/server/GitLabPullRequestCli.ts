@@ -38,6 +38,7 @@ import {
   decodeCommitsJson,
   decodeDiffRefsJson,
   decodeDiscussionsJson,
+  type GitLabGeneralDiscussion,
   decodeMergeRequestDetailJson,
   decodeMergeRequestDiffsJson,
   decodeMergeRequestBranchJson,
@@ -520,7 +521,11 @@ export class GitLabPullRequestCli extends Context.Service<
       readonly repository: string;
       readonly number: number;
     }) => Effect.Effect<
-      { readonly threads: ReadonlyArray<PullRequestReviewThread>; readonly truncated: boolean },
+      {
+        readonly threads: ReadonlyArray<PullRequestReviewThread>;
+        readonly generalDiscussions: ReadonlyArray<GitLabGeneralDiscussion>;
+        readonly truncated: boolean;
+      },
       GitLabPullRequestCliError
     >;
 
@@ -1108,8 +1113,13 @@ export const make = Effect.gen(function* () {
     readonly number: number;
     readonly page: number;
     readonly collected: ReadonlyArray<PullRequestReviewThread>;
+    readonly collectedGeneral: ReadonlyArray<GitLabGeneralDiscussion>;
   }): Effect.Effect<
-    { readonly threads: ReadonlyArray<PullRequestReviewThread>; readonly truncated: boolean },
+    {
+      readonly threads: ReadonlyArray<PullRequestReviewThread>;
+      readonly generalDiscussions: ReadonlyArray<GitLabGeneralDiscussion>;
+      readonly truncated: boolean;
+    },
     GitLabPullRequestCliError
   > =>
     api({
@@ -1135,13 +1145,15 @@ export const make = Effect.gen(function* () {
           );
         }
         const collected = [...input.collected, ...decoded.success.threads];
+        const collectedGeneral = [...input.collectedGeneral, ...decoded.success.generalDiscussions];
+        const page = { threads: collected, generalDiscussions: collectedGeneral };
         // Plain notes count toward the page size even when no positioned threads survive decoding.
         if (decoded.success.rawCount < MAX_PAGE_SIZE) {
-          return Effect.succeed({ threads: collected, truncated: false });
+          return Effect.succeed({ ...page, truncated: false });
         }
         return input.page >= CONVERSATION_PAGES
-          ? Effect.succeed({ threads: collected, truncated: true })
-          : discussionsPage({ ...input, page: input.page + 1, collected });
+          ? Effect.succeed({ ...page, truncated: true })
+          : discussionsPage({ ...input, page: input.page + 1, collected, collectedGeneral });
       }),
     );
 
@@ -2031,7 +2043,7 @@ export const make = Effect.gen(function* () {
     }),
 
     listDiscussions: Effect.fn("GitLabPullRequestCli.listDiscussions")(function (input) {
-      return discussionsPage({ ...input, page: 1, collected: [] });
+      return discussionsPage({ ...input, page: 1, collected: [], collectedGeneral: [] });
     }),
 
     submitReview: Effect.fn("GitLabPullRequestCli.submitReview")(function* (input) {

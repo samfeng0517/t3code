@@ -462,7 +462,11 @@ export const make = Effect.gen(function* () {
         [
           recoverRead(cli.listNotes(input), { comments: [], truncated: true }),
           recoverRead(cli.listCommits(input), []),
-          recoverRead(cli.listDiscussions(input), { threads: [], truncated: true }),
+          recoverRead(cli.listDiscussions(input), {
+            threads: [],
+            generalDiscussions: [],
+            truncated: true,
+          }),
           recoverRead(cli.listReactions(input), {
             reactions: [] as ReadonlyArray<PullRequestReaction>,
             reactionsByNoteId: new Map<string, ReadonlyArray<PullRequestReaction>>(),
@@ -471,23 +475,37 @@ export const make = Effect.gen(function* () {
         { concurrency: 4 },
       ).pipe(
         Effect.mapError(fail("getChangeRequestActivity")),
-        Effect.map(([notes, commits, discussions, awards]): ProviderChangeRequestActivity => ({
-          reactions: awards.reactions,
-          comments: notes.comments.map((comment) => ({
-            ...comment,
-            reactions: awards.reactionsByNoteId.get(comment.id) ?? [],
-          })),
-          commentCount: notes.comments.length,
-          commentsTruncated: notes.truncated || discussions.truncated,
-          reviewThreads: discussions.threads.map((thread) => ({
-            ...thread,
-            comments: thread.comments.map((comment) => ({
-              ...comment,
-              reactions: awards.reactionsByNoteId.get(comment.id) ?? [],
+        Effect.map(([notes, commits, discussions, awards]): ProviderChangeRequestActivity => {
+          const discussionByNoteId = new Map(
+            discussions.generalDiscussions.flatMap((discussion) =>
+              discussion.noteIds.map(
+                (noteId) =>
+                  [noteId, { id: discussion.id, isResolved: discussion.isResolved }] as const,
+              ),
+            ),
+          );
+          return {
+            reactions: awards.reactions,
+            comments: notes.comments.map((comment) => {
+              const discussion = discussionByNoteId.get(comment.id);
+              return {
+                ...comment,
+                reactions: awards.reactionsByNoteId.get(comment.id) ?? [],
+                ...(discussion === undefined ? {} : { discussion }),
+              };
+            }),
+            commentCount: notes.comments.length,
+            commentsTruncated: notes.truncated || discussions.truncated,
+            reviewThreads: discussions.threads.map((thread) => ({
+              ...thread,
+              comments: thread.comments.map((comment) => ({
+                ...comment,
+                reactions: awards.reactionsByNoteId.get(comment.id) ?? [],
+              })),
             })),
-          })),
-          commits,
-        })),
+            commits,
+          };
+        }),
       ),
 
     // Straight from the host, never the shared read: this is what a write is refused or let

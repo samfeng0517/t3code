@@ -142,6 +142,12 @@ export const PullRequestCommentKind = Schema.Literals([
 ]);
 export type PullRequestCommentKind = typeof PullRequestCommentKind.Type;
 
+export const PullRequestCommentDiscussion = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  isResolved: Schema.Boolean,
+});
+export type PullRequestCommentDiscussion = typeof PullRequestCommentDiscussion.Type;
+
 export const PullRequestComment = Schema.Struct({
   id: TrimmedNonEmptyString,
   kind: PullRequestCommentKind,
@@ -154,6 +160,11 @@ export const PullRequestComment = Schema.Struct({
   reviewState: Schema.NullOr(Schema.String),
   reactions: Schema.optional(Schema.Array(PullRequestReaction)),
   canEdit: Schema.optional(Schema.Boolean),
+  /**
+   * A resolvable discussion with no diff position (GitLab), which `reviewThreads` cannot carry
+   * because threads need a path. Optional so older clients keep decoding the comment.
+   */
+  discussion: Schema.optional(PullRequestCommentDiscussion),
 });
 export type PullRequestComment = typeof PullRequestComment.Type;
 

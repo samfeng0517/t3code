@@ -570,8 +570,26 @@ export function isPullRequestCommentFinished(
   thread?: PullRequestReviewThread,
 ): boolean {
   return (
-    thread?.isResolved === true || pullRequestReviewOutcome(comment.reviewState) === "dismissed"
+    thread?.isResolved === true ||
+    comment.discussion?.isResolved === true ||
+    pullRequestReviewOutcome(comment.reviewState) === "dismissed"
   );
+}
+
+/** The first comment of each unpositioned discussion, which carries its status and actions. */
+export function pullRequestDiscussionRootIds(
+  items: ReadonlyArray<PullRequestConversationItem>,
+): ReadonlySet<string> {
+  const seen = new Set<string>();
+  const roots = new Set<string>();
+  for (const item of items) {
+    if (item.kind !== "comment") continue;
+    const discussionId = item.comment.discussion?.id;
+    if (discussionId === undefined || seen.has(discussionId)) continue;
+    seen.add(discussionId);
+    roots.add(item.comment.id);
+  }
+  return roots;
 }
 
 function isPullRequestVerdict(reviewState: string | null): boolean {
@@ -586,7 +604,7 @@ export function filterPullRequestConversationItems(
 ): ReadonlyArray<PullRequestConversationItem> {
   return items.filter(
     (item) =>
-      (item.kind === "thread" && keep?.has(item.id) === true) ||
+      keep?.has(item.kind === "thread" ? item.id : (item.comment.discussion?.id ?? "")) === true ||
       // Matching any member keeps the finding beside a human reply to a bot.
       pullRequestConversationItemComments(item).some(
         (comment) =>
