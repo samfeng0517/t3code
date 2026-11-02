@@ -27,7 +27,7 @@ export const timelineEn = {
   "timeline.nowItem.goalClearFailed": "Failed to clear goal.",
   "timeline.nowItem.goalResume": "Resume",
   "timeline.nowItem.goalClear": "Clear",
-  "timeline.nowItem.waitingOn": "Waiting on",
+  "timeline.nowItem.waiting": "Waiting",
   "timeline.nowItem.running": "Running",
   "timeline.nowItem.open": "Open",
   "timeline.nowItem.stop": "Stop",

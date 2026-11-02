@@ -1190,8 +1190,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         {...(fileDropHandlers ?? {})}
         className={cn(
           // Focus scrolls the row's controls into view; the margin keeps them clear of the sticky header.
-          "list-none [content-visibility:auto] [contain-intrinsic-size:auto_36px] **:scroll-mt-24",
-          metaLine !== null && multiline && "[contain-intrinsic-size:auto_54px]",
+          "list-none [content-visibility:auto] [contain-intrinsic-size:auto_--spacing(9)] **:scroll-mt-24",
+          metaLine !== null && multiline && "[contain-intrinsic-size:auto_--spacing(13.5)]",
           sortable?.isDragging && "relative z-20",
         )}
       >

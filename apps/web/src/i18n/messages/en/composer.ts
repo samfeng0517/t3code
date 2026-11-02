@@ -321,7 +321,7 @@ export const composerEn = {
   "composer.toast.pasteTooLargeToAttach.description":
     "Reduce the clipboard contents or save a smaller excerpt as a file.",
   "composer.toast.foldersLocalOnly":
-    "Folders can only be referenced in the local desktop environment",
+    "Folders can only be referenced on a server running on this computer",
   "composer.toast.folderPathFailed.title": 'Couldn\'t get the path of "{name}"',
   "composer.toast.folderPathFailed.description": "Type the folder path with @ instead.",
   "composer.toast.addFolderFailed": "Unable to add folder",

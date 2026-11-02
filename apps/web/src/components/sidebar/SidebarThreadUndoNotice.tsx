@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { Undo2Icon } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -27,8 +28,11 @@ export function SidebarThreadUndoNotice() {
   if (!text) return null;
 
   return (
-    // No min-w-0: the undo button sets this item's minimum, so a shared row squeezes its neighbour.
-    <SidebarMenuItem className="flex flex-1" aria-hidden={!summary} inert={!summary}>
+    <SidebarMenuItem
+      className="@container flex min-w-0 flex-1"
+      aria-hidden={!summary}
+      inert={!summary}
+    >
       <div
         onTransitionEnd={(event) => {
           if (!summary && event.target === event.currentTarget) setShownSummary(null);
@@ -41,8 +45,13 @@ export function SidebarThreadUndoNotice() {
           !summary && "opacity-0",
         )}
       >
-        <InlineButton onClick={undoLatestThreadAction}>
-          {threadUndoLabel(keybindings, t)}
+        <InlineButton className="min-w-0 shrink" onClick={undoLatestThreadAction}>
+          {/* The icon's negative margin cancels its width, so beside the label it sits in
+              clipped space; once the label is too wide it wraps away and the icon shows. */}
+          <span className="flex h-6 min-w-0 flex-wrap justify-end overflow-hidden">
+            <Undo2Icon className="-ml-4 h-6 w-4 @max-[1rem]:invisible" />
+            <span>{threadUndoLabel(keybindings, t)}</span>
+          </span>
         </InlineButton>
         <span>
           {text}

@@ -75,11 +75,16 @@ export function ProviderAuthenticationSection({
     !signedIn &&
     (provider.setup?.canAuthenticate === false ||
       (provider.driver === "acpRegistry" && auth?.methods?.length === 0));
+  const usesCredentials =
+    provider.driver === "antigravity" &&
+    (provider.auth.type === "gemini-api-key" || provider.auth.type === "agent-platform");
   const accountDescription = active
     ? auth?.phase === "starting"
-      ? (auth.message ?? t("providerSetup.auth.starting"))
+      ? (auth.message ?? (usesCredentials ? "Connecting…" : t("providerSetup.auth.starting")))
       : auth?.phase === "verifying"
-        ? t("providerSetup.auth.verifying")
+        ? usesCredentials
+          ? "Checking credentials and loading models…"
+          : t("providerSetup.auth.verifying")
         : interaction?.type === "terminal"
           ? t("providerSetup.auth.terminalPrompt")
           : interaction?.type === "credentials"
@@ -91,7 +96,9 @@ export function ProviderAuthenticationSection({
         ? t("providerSetup.auth.discovering")
         : needsExternalSetup
           ? t("providerSetup.auth.noInAppSignIn")
-          : t("providerSetup.auth.signInOn", { environment: environmentLabel });
+          : usesCredentials
+            ? `Connect on ${environmentLabel} to load models.`
+            : t("providerSetup.auth.signInOn", { environment: environmentLabel });
   const statusMessage = auth?.phase === "failed" ? auth.message : null;
   const disabled = readOnly || pending || query.error !== null || isDiscovering;
   const draftId = `${auth?.flowId ?? ""}:${interaction?.id ?? ""}`;
@@ -291,8 +298,12 @@ export function ProviderAuthenticationSection({
                 {signedIn
                   ? t("providerSetup.auth.changeAccount")
                   : auth?.phase === "failed" || auth?.phase === "cancelled"
-                    ? t("providerSetup.auth.retry")
-                    : t("providerSetup.auth.signIn")}
+                    ? usesCredentials
+                      ? "Retry connection"
+                      : t("providerSetup.auth.retry")
+                    : usesCredentials
+                      ? "Connect"
+                      : t("providerSetup.auth.signIn")}
               </Button>
             ) : null}
             {!active && signedIn && (provider.auth.canLogout ?? provider.setup?.canAuthenticate) ? (

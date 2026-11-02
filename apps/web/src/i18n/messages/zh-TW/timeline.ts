@@ -28,7 +28,7 @@ export const timelineZhTW: Readonly<Record<keyof typeof timelineEn, string>> = {
   "timeline.nowItem.goalClearFailed": "無法清除目標。",
   "timeline.nowItem.goalResume": "繼續",
   "timeline.nowItem.goalClear": "清除",
-  "timeline.nowItem.waitingOn": "等待",
+  "timeline.nowItem.waiting": "等待中",
   "timeline.nowItem.running": "執行中",
   "timeline.nowItem.open": "開啟",
   "timeline.nowItem.stop": "停止",

@@ -306,7 +306,7 @@ export const composerZhTW: Readonly<Record<keyof typeof composerEn, string>> = {
   "composer.toast.pasteTooLargeToAttach.title": "貼上的文字太大，無法附加",
   "composer.toast.pasteTooLargeToAttach.description":
     "請減少剪貼簿內容，或將較小的節錄另存為檔案。",
-  "composer.toast.foldersLocalOnly": "只能在本機桌面環境中參照資料夾",
+  "composer.toast.foldersLocalOnly": "只能在這台電腦上執行的伺服器中參照資料夾",
   "composer.toast.folderPathFailed.title": "無法取得「{name}」的路徑",
   "composer.toast.folderPathFailed.description": "請改用 @ 輸入資料夾路徑。",
   "composer.toast.addFolderFailed": "無法新增資料夾",
