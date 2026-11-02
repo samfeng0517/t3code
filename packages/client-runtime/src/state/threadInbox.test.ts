@@ -5,6 +5,7 @@ import {
   createInboxReturnTracker,
   isThreadWorking,
   liftLiveThreads,
+  sortThreadsByLatestActivity,
   sortInboxThreadsByReturn,
   sortWorkingThreadsBySend,
 } from "./threadInbox.ts";
@@ -259,5 +260,23 @@ describe("liftLiveThreads", () => {
     expect(
       liftLiveThreads([idleNewest, working, idleOlder, approval]).map((thread) => thread.id),
     ).toEqual(["approval", "working", "idle-newest", "idle-older"]);
+  });
+});
+
+describe("sortThreadsByLatestActivity", () => {
+  it("should order threads by their last user message and fall back to the last update when there is none", () => {
+    const at = (id: string, latestUserMessageAt: string | null, updatedAt: string) => ({
+      id: ThreadId.make(id),
+      environmentId,
+      latestUserMessageAt,
+      updatedAt,
+    });
+    expect(
+      sortThreadsByLatestActivity([
+        at("recent-message", "2026-06-01T05:00:00.000Z", "2026-06-01T05:00:00.000Z"),
+        at("old-message-new-update", "2026-06-01T01:00:00.000Z", "2026-06-01T09:00:00.000Z"),
+        at("no-message", null, "2026-06-01T03:00:00.000Z"),
+      ]).map((thread) => thread.id),
+    ).toEqual(["recent-message", "no-message", "old-message-new-update"]);
   });
 });

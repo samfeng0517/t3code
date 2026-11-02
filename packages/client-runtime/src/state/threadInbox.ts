@@ -76,6 +76,26 @@ export function sortWorkingThreadsBySend<T extends WorkingSortInput>(threads: re
   return sortNewestFirst(threads, timestamps);
 }
 
+type ActivitySortInput = Pick<
+  EnvironmentThreadShell,
+  "id" | "environmentId" | "latestUserMessageAt" | "updatedAt"
+>;
+
+/** Newest first by the time the sidebar row shows: the last user message, else the last update. */
+export function sortThreadsByLatestActivity<T extends ActivitySortInput>(
+  threads: readonly T[],
+): T[] {
+  return sortNewestFirst(
+    threads,
+    new Map(
+      threads.map((thread) => [
+        thread,
+        toSortableTimestamp(thread.latestUserMessageAt ?? thread.updatedAt) ?? 0,
+      ]),
+    ),
+  );
+}
+
 type LiveThreadInput = WorkingThreadInput &
   WorkingSortInput &
   Partial<Pick<EnvironmentThreadShell, "pendingGuestMessageCount">>;
