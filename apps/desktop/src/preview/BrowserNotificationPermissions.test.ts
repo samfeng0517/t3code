@@ -3,6 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 
+import * as BrowserMediaPermissions from "./BrowserMediaPermissions.ts";
 import * as BrowserNotificationPermissions from "./BrowserNotificationPermissions.ts";
 
 describe("BrowserNotificationPermissions", () => {
@@ -58,6 +59,34 @@ describe("BrowserNotificationPermissions", () => {
       const permissions = yield* BrowserNotificationPermissions.makeAt(storePath);
 
       assert.deepStrictEqual(yield* permissions.list, []);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+});
+
+describe("BrowserMediaPermissions", () => {
+  it.effect("should keep camera and microphone separate per origin when reopened", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const directory = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-media-" });
+      const storePath = `${directory}/browser-media-permissions.json`;
+      const origin = "https://meet.example.com";
+
+      const first = yield* BrowserMediaPermissions.makeAt(storePath);
+      yield* first.set(origin, "camera", "allow");
+      yield* first.set(origin, "microphone", "block");
+      const reopened = yield* BrowserMediaPermissions.makeAt(storePath);
+      assert.strictEqual(reopened.decisionFor(origin, "camera"), "allow");
+      assert.strictEqual(reopened.decisionFor(origin, "microphone"), "block");
+      assert.deepStrictEqual(yield* reopened.list, [
+        { origin, device: "microphone", decision: "block" },
+        { origin, device: "camera", decision: "allow" },
+      ]);
+
+      const remaining = yield* reopened.remove(origin, "camera");
+      assert.deepStrictEqual(remaining, [{ origin, device: "microphone", decision: "block" }]);
+      const again = yield* BrowserMediaPermissions.makeAt(storePath);
+      assert.isUndefined(again.decisionFor(origin, "camera"));
+      assert.strictEqual(again.decisionFor(origin, "microphone"), "block");
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 });
