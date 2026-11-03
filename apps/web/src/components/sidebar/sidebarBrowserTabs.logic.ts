@@ -22,7 +22,7 @@ const sameOrigin = (left: string, right: string): boolean => {
   }
 };
 
-export const hostOf = (url: string): string | null => {
+const hostOf = (url: string): string | null => {
   try {
     return new URL(url).host || null;
   } catch {

@@ -18,8 +18,10 @@ import {
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+import { isElectron } from "~/env";
 import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
+import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
 import { PreviewBookmarkButton } from "./PreviewBookmarkButton";
 
@@ -53,6 +55,8 @@ interface Props {
   extensionActions?: ReactNode;
   trailingActions?: ReactNode;
   leadingActions?: ReactNode;
+  /** The row is the page's top bar, so it takes over the window titlebar's height, drag area and insets. */
+  titlebar?: boolean | undefined;
 }
 
 const NOOP = () => {};
@@ -84,6 +88,7 @@ export function PreviewChromeRow({
   extensionActions,
   trailingActions,
   leadingActions,
+  titlebar = false,
 }: Props) {
   const t = useT();
   const [draft, setDraft] = useState(url);
@@ -101,7 +106,16 @@ export function PreviewChromeRow({
     <div className="relative">
       <form
         onSubmit={submit}
-        className="flex h-10 min-h-10 shrink-0 items-center gap-1 border-b border-border/60 bg-background px-2 in-data-[preview-panel-mode=inline]:mb-3 in-data-[preview-panel-mode=inline]:h-7 in-data-[preview-panel-mode=inline]:min-h-7 in-data-[preview-panel-mode=inline]:border-b-transparent"
+        className={cn(
+          "flex shrink-0 items-center gap-1 border-b border-border/60 bg-background px-2 in-data-[preview-panel-mode=inline]:mb-3 in-data-[preview-panel-mode=inline]:h-7 in-data-[preview-panel-mode=inline]:min-h-7 in-data-[preview-panel-mode=inline]:border-b-transparent",
+          titlebar
+            ? [
+                "h-(--workspace-topbar-height) min-h-(--workspace-topbar-height)",
+                COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
+                isElectron && "drag-region wco:pr-(--workspace-native-controls-inset)",
+              ]
+            : "h-10 min-h-10",
+        )}
         data-surface-subheader
       >
         <div

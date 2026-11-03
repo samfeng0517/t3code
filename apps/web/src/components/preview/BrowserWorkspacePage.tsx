@@ -5,6 +5,7 @@ import { Globe2Icon } from "lucide-react";
 import { useEffect, useEffectEvent } from "react";
 
 import { openBrowserWorkspaceTabSession } from "~/browser/browserWorkspaceActions";
+import { usePreviewAvailable } from "~/browser/previewRuntime";
 import {
   useBrowserWorkspaceCommands,
   useBrowserWorkspaceThreadRef,
@@ -27,7 +28,6 @@ import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { SidebarInset } from "../ui/sidebar";
-import { hostOf } from "../sidebar/sidebarBrowserTabs.logic";
 import { PreviewPanel } from "./PreviewPanel";
 
 function getShortcutContext() {
@@ -72,31 +72,21 @@ export function BrowserWorkspacePage() {
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [keybindings]);
-  const previewState = useThreadPreviewState(threadRef);
-  const session = activeTab?.sessionTabId
-    ? previewState.sessions[activeTab.sessionTabId]
-    : undefined;
-  const loaded = session && session.navStatus._tag !== "Idle" ? session.navStatus : null;
-  const url = loaded?.url ?? activeTab?.url ?? null;
-  const title =
-    activeTab?.customTitle ||
-    (loaded ? loaded.title.trim() : activeTab?.title) ||
-    (url ? hostOf(url) : null) ||
-    (activeTab ? t("browser.sidebar.blankTab") : t("browser.sidebar.section"));
-
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-        <WorkspacePageHeader electron={isElectron} className="border-b border-border">
-          <h1 className="min-w-0 truncate text-sm font-medium text-foreground">{title}</h1>
-        </WorkspacePageHeader>
-        {threadRef === null ? (
-          <WorkspaceMessage
-            title={t("browser.sidebar.section")}
-            description={t("workspace.preview.unavailable.desktopOnly")}
-          />
-        ) : activeTab === null ? (
-          <NoWorkspaceTabs />
+        {threadRef === null || activeTab === null ? (
+          <>
+            <BareTitlebar />
+            {threadRef === null ? (
+              <WorkspaceMessage
+                title={t("browser.sidebar.section")}
+                description={t("workspace.preview.unavailable.desktopOnly")}
+              />
+            ) : (
+              <NoWorkspaceTabs />
+            )}
+          </>
         ) : (
           <BrowserWorkspaceTabView key={activeTab.id} threadRef={threadRef} tab={activeTab} />
         )}
@@ -116,6 +106,7 @@ function BrowserWorkspaceTabView(props: {
   const status = useBrowserWorkspaceStore((state) => state.openStatusByTabId[tab.id]);
   const serverBrowser = useEnvironmentSupportsServerBrowser(environmentId);
   const canOperatePreview = useEnvironmentScope(environmentId, AuthPreviewOperateScope);
+  const available = usePreviewAvailable(environmentId);
   const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
   const closePreview = useAtomCommand(previewEnvironment.close, "preview close");
   const session = tab.sessionTabId === null ? undefined : previewState.sessions[tab.sessionTabId];
@@ -144,7 +135,7 @@ function BrowserWorkspaceTabView(props: {
   ]);
 
   if (session || !canOperatePreview) {
-    return (
+    const panel = (
       <PreviewPanel
         mode="embedded"
         threadRef={threadRef}
@@ -153,22 +144,39 @@ function BrowserWorkspaceTabView(props: {
         variant="workspace"
       />
     );
-  }
-  if (status === "failed") {
-    return (
-      <WorkspaceMessage title={t("browser.workspace.openFailed")}>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => useBrowserWorkspaceStore.getState().setOpenStatus(tab.id, null)}
-        >
-          {t("browser.workspace.retry")}
-        </Button>
-      </WorkspaceMessage>
+    return session && canOperatePreview && available ? (
+      panel
+    ) : (
+      <>
+        <BareTitlebar />
+        {panel}
+      </>
     );
   }
-  // The session is a round trip away; an empty page reads better than a flash of a spinner.
-  return <div className="min-h-0 flex-1" />;
+  return (
+    <>
+      <BareTitlebar />
+      {status === "failed" ? (
+        <WorkspaceMessage title={t("browser.workspace.openFailed")}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => useBrowserWorkspaceStore.getState().setOpenStatus(tab.id, null)}
+          >
+            {t("browser.workspace.retry")}
+          </Button>
+        </WorkspaceMessage>
+      ) : (
+        // The session is a round trip away; an empty page reads better than a flash of a spinner.
+        <div className="min-h-0 flex-1" />
+      )}
+    </>
+  );
+}
+
+/** An open tab's address bar doubles as the titlebar; every other state keeps a bare one. */
+function BareTitlebar() {
+  return <WorkspacePageHeader electron={isElectron} className="border-b border-border" />;
 }
 
 function NoWorkspaceTabs() {
