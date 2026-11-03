@@ -44,7 +44,7 @@ import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPr
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
-import { SidebarClaudeUsage } from "./SidebarClaudeUsage";
+import { SidebarClaudeUsage, SidebarClaudeUsageChip } from "./SidebarClaudeUsage";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 import { useThreadRouteRef } from "~/hooks/useThreadRouteTarget";
 import {
@@ -216,13 +216,15 @@ function SidebarUtilityItem({
   icon,
   label,
   onClick,
+  className,
 }: {
   icon: ReactNode;
   label: string;
   onClick: () => void;
+  className?: string;
 }) {
   return (
-    <SidebarMenuItem className="shrink-0">
+    <SidebarMenuItem className={cn("shrink-0", className)}>
       <Tooltip>
         <TooltipTrigger
           render={
@@ -297,7 +299,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   };
 
   return (
-    <SidebarMenu className="flex-row items-center">
+    <SidebarMenu className="group/utility flex-row items-center">
       {isOnUtilityPage ? (
         <SidebarMenuItem className="min-w-0 flex-1">
           <SidebarMenuButton onClick={handleBackClick}>
@@ -324,9 +326,12 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             icon={<ChartNoAxesColumnIcon />}
             label={t("sidebar.chrome.usage")}
             onClick={handleUsageClick}
+            // The usage chip opens the same page, so it takes this slot on short windows.
+            className="short-window:group-has-[[data-sidebar-usage-chip]]/utility:hidden"
           />
         </>
       )}
+      <SidebarClaudeUsageChip />
       <SidebarThreadUndoNotice />
       <SidebarUpdatePill />
     </SidebarMenu>

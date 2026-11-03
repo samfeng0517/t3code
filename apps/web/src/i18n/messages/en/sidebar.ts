@@ -10,6 +10,8 @@ export const sidebarEn = {
   "sidebar.usage.title": "Claude usage",
   "sidebar.usage.session": "5-hour",
   "sidebar.usage.weekly": "Weekly",
+  "sidebar.usage.sessionShort": "5h",
+  "sidebar.usage.weeklyShort": "7d",
   "sidebar.usage.model": "Weekly · {model}",
   "sidebar.usage.remaining": "{percent}% left",
   "sidebar.usage.readFromTurns": "Couldn't reach Claude. Showing usage from recent turns.",

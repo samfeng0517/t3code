@@ -7,6 +7,10 @@
 /* Window Controls Overlay: active when Electron exposes native titlebar control geometry. */
 @custom-variant wco (&:is(.wco, .wco *));
 
+/* Window height at which the sidebar footer has room for full Claude usage rows; a laptop gets the toolbar chip. */
+@custom-variant tall-window (@media (height >= 1000px));
+@custom-variant short-window (@media (height < 1000px));
+
 /* Secondary hovering pointers reveal sidebar actions on touch-primary devices. */
 @custom-variant any-hover {
   @media (any-hover: hover) {
