@@ -113,8 +113,14 @@ const screenLabels = (sources: ReadonlyArray<DesktopCapturerSource>): Array<stri
 interface PendingRequest {
   readonly requester: WebContents;
   readonly devices: ReadonlyArray<BrowserMediaDevice>;
-  readonly persistent: boolean;
   readonly callback: (granted: boolean) => void;
+}
+
+interface MediaPrompt {
+  readonly origin: string;
+  readonly persistent: boolean;
+  readonly screen: boolean;
+  readonly requests: Array<PendingRequest>;
 }
 
 /** @public */
@@ -158,9 +164,83 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
     origins.add(origin);
   };
 
-  // One media prompt at a time across sites; the same site's later requests share its answer.
-  let openPrompt: { readonly origin: string; readonly requests: Array<PendingRequest> } | null =
-    null;
+  // One media prompt at a time across sites; later requests of the same kind from the same site
+  // and source share its answer.
+  let openPrompt: MediaPrompt | null = null;
+
+  /** The new prompt, or null when the request joined or was denied by the one already open. */
+  const claimPrompt = (
+    origin: string,
+    persistent: boolean,
+    screen: boolean,
+    request: PendingRequest,
+  ): MediaPrompt | null => {
+    if (openPrompt !== null) {
+      if (
+        openPrompt.origin === origin &&
+        openPrompt.persistent === persistent &&
+        openPrompt.screen === screen
+      ) {
+        openPrompt.requests.push(request);
+      } else {
+        request.callback(false);
+      }
+      return null;
+    }
+    openPrompt = { origin, persistent, screen, requests: [request] };
+    return openPrompt;
+  };
+
+  const settle = (prompt: MediaPrompt, granted: (pending: PendingRequest) => boolean) =>
+    Effect.sync(() => {
+      if (openPrompt !== prompt) return;
+      openPrompt = null;
+      const results = prompt.requests.map(
+        (pending) => [pending.callback, granted(pending)] as const,
+      );
+      for (const [resolve, isGranted] of results) resolve(isGranted);
+    });
+
+  const stillOnOrigin = (pending: PendingRequest, origin: string): boolean =>
+    !pending.requester.isDestroyed() && httpOrigin(pending.requester.getURL()) === origin;
+
+  const screenRecordingDenied = (): boolean =>
+    platform === "darwin" && systemPreferences.getMediaAccessStatus("screen") === "denied";
+
+  // Legacy getUserMedia desktop capture arrives with the same empty mediaTypes as a picker share
+  // and records the whole screen with no picker, so every screen share needs T3's own consent.
+  const requestScreenShare = (
+    requester: WebContents,
+    origin: string,
+    persistent: boolean,
+    callback: (granted: boolean) => void,
+  ): void => {
+    const prompt = claimPrompt(origin, persistent, true, { requester, devices: [], callback });
+    if (prompt === null) return;
+    runFork(
+      Effect.suspend(() =>
+        electronDialog.showMessageBox(
+          {
+            type: "question",
+            buttons: ["Allow", "Cancel"],
+            // Default to Cancel so an Enter typed into the page cannot start a share.
+            defaultId: 1,
+            cancelId: 1,
+            message: `Allow ${new URL(origin).host} to share your screen?`,
+            ...(screenRecordingDenied() ? { detail: MAC_SCREEN_HINT } : {}),
+          },
+          previewHostWindow(requester),
+        ),
+      ).pipe(
+        Effect.map(({ response }) => response === 0),
+        Effect.orElseSucceed(() => false),
+        Effect.flatMap((allowed) =>
+          settle(prompt, (pending) => allowed && stillOnOrigin(pending, origin)),
+        ),
+        Effect.ensuring(settle(prompt, () => false)),
+      ),
+    );
+  };
 
   const promptDetail = (devices: ReadonlyArray<BrowserMediaDevice>, persistent: boolean) => {
     const macHints =
@@ -192,9 +272,8 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
       return;
     }
     const devices = requestedDevices(details.mediaTypes);
-    // Screen share under the macOS system picker arrives with no devices; the picker is the consent.
     if (devices.length === 0) {
-      callback(true);
+      requestScreenShare(requester, origin, persistent, callback);
       return;
     }
     const remembered = devices.map((device) => rememberedDecision(origin, device, persistent));
@@ -210,31 +289,22 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
       callback(false);
       return;
     }
-    const request: PendingRequest = { requester, devices, persistent, callback };
-    if (openPrompt !== null) {
-      if (openPrompt.origin === origin) openPrompt.requests.push(request);
-      else callback(false);
-      return;
-    }
-    const prompt = { origin, requests: [request] };
-    openPrompt = prompt;
+    const prompt = claimPrompt(origin, persistent, false, { requester, devices, callback });
+    if (prompt === null) return;
     const unknownDevices = devices.filter((_, index) => remembered[index] === undefined);
 
-    const grantedAfterPrompt = (pending: PendingRequest): boolean =>
-      !pending.requester.isDestroyed() &&
-      httpOrigin(pending.requester.getURL()) === origin &&
-      pending.devices.every(
-        (device) => rememberedDecision(origin, device, pending.persistent) === "allow",
-      );
-    const settle = (answered: boolean) =>
-      Effect.sync(() => {
-        if (openPrompt !== prompt) return;
-        openPrompt = null;
-        const results = prompt.requests.map((pending) => {
-          if (!answered) defer(pending.requester, origin);
-          return [pending.callback, answered && grantedAfterPrompt(pending)] as const;
-        });
-        for (const [resolve, granted] of results) resolve(granted);
+    const settleDevices = (answered: boolean) =>
+      settle(prompt, (pending) => {
+        if (!answered) {
+          defer(pending.requester, origin);
+          return false;
+        }
+        return (
+          stillOnOrigin(pending, origin) &&
+          pending.devices.every(
+            (device) => rememberedDecision(origin, device, persistent) === "allow",
+          )
+        );
       });
 
     // Options are built inside the fiber so a throw there still frees the slot via `ensuring`.
@@ -266,8 +336,8 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
                 { discard: true },
               ),
         ),
-        Effect.flatMap((decision) => settle(decision !== null)),
-        Effect.ensuring(settle(false)),
+        Effect.flatMap((decision) => settleDevices(decision !== null)),
+        Effect.ensuring(settleDevices(false)),
       ),
     );
   };
@@ -281,8 +351,9 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
     const device = deviceFor(details.mediaType);
     return (
       details.isMainFrame === true &&
-      details.embeddingOrigin === undefined &&
       origin !== null &&
+      // Electron sends the main frame's own origin as embeddingOrigin for main-frame checks.
+      (details.embeddingOrigin === undefined || httpOrigin(details.embeddingOrigin) === origin) &&
       device !== null &&
       rememberedDecision(origin, device, persistent) === "allow"
     );
@@ -317,8 +388,7 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
       desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 0, height: 0 } }),
     ).pipe(
       Effect.flatMap((sources): Effect.Effect<Streams, unknown> => {
-        const screenDenied =
-          platform === "darwin" && systemPreferences.getMediaAccessStatus("screen") === "denied";
+        const screenDenied = screenRecordingDenied();
         if (sources.length === 0 && !screenDenied) return Effect.succeed({});
         const buttons = [...screenLabels(sources), "Cancel"];
         return electronDialog

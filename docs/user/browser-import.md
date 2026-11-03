@@ -87,8 +87,9 @@ again after you restart T3 Code.
 Incognito tabs ask for the camera and microphone too, but forget the answers when you quit T3 Code
 and do not list them in settings. They never show site notifications.
 
-Screen sharing asks every time. On macOS 15 or later you pick what to share in the system picker;
-elsewhere a dialog lets you share a whole screen. Stop sharing from the site, or close the tab.
+T3 Code asks every time a site wants to share your screen. After you allow it, you pick what to
+share: in the system picker on macOS 15 or later, elsewhere in a dialog that shares a whole screen.
+Stop sharing from the site, or close the tab.
 
 If macOS blocks T3 Code's camera, microphone or screen recording, turn it on in **System Settings
 → Privacy & Security**.

@@ -211,37 +211,100 @@ describe("BrowserMediaAccess", () => {
   );
 
   it.effect(
-    "requestMedia should grant without prompt when mediaTypes is empty on an http(s) main frame",
+    "requestMedia should ask every time with a screen share dialog when mediaTypes is empty even if devices are blocked",
     () =>
       Effect.gen(function* () {
         const request = requestWith(yield* BrowserMediaAccess.BrowserMediaAccess);
         const { webContents } = makeRequester(`${MEET}/abc`);
+        storedDecisions.set(storeKey(MEET, "camera"), "block");
+        storedDecisions.set(storeKey(MEET, "microphone"), "block");
+        const screenShare = { requestingUrl: `${MEET}/abc`, isMainFrame: true, mediaTypes: [] };
 
-        assert.isTrue(
-          yield* Effect.promise(() =>
-            request(webContents, {
-              requestingUrl: `${MEET}/abc`,
-              isMainFrame: true,
-              mediaTypes: [],
-            }),
-          ),
+        showMessageBox.mockReturnValue(0);
+        assert.isFalse(
+          yield* Effect.promise(() => request(webContents, { ...screenShare, isMainFrame: false })),
         );
-        assert.isTrue(
+        assert.strictEqual(showMessageBox.mock.calls.length, 0);
+
+        assert.isTrue(yield* Effect.promise(() => request(webContents, screenShare)));
+        const options = showMessageBox.mock.calls[0]?.[0];
+        assert.deepInclude(options, {
+          type: "question",
+          buttons: ["Allow", "Cancel"],
+          defaultId: 1,
+          cancelId: 1,
+          message: "Allow meet.google.com to share your screen?",
+        });
+        assert.isUndefined(options?.detail);
+
+        showMessageBox.mockReturnValue(1);
+        assert.isFalse(
           yield* Effect.promise(() =>
             request(webContents, { requestingUrl: `${MEET}/abc`, isMainFrame: true }),
           ),
         );
+        showMessageBox.mockRejectedValueOnce(new Error("dialog failed"));
+        assert.isFalse(yield* Effect.promise(() => request(webContents, screenShare)));
+        dialogInterrupt.next = true;
+        assert.isFalse(yield* Effect.promise(() => request(webContents, screenShare)));
+
+        showMessageBox.mockReturnValue(0);
+        assert.isTrue(yield* Effect.promise(() => request(webContents, screenShare, false)));
+        assert.isTrue(yield* Effect.promise(() => request(webContents, screenShare, false)));
+        assert.strictEqual(showMessageBox.mock.calls.length, 5);
+        assert.strictEqual(storeSet.mock.calls.length, 0);
+        assert.strictEqual(repeatedCallbacks.count, 0);
+
+        getMediaAccessStatus.mockImplementation((mediaType) =>
+          mediaType === "screen" ? "denied" : "granted",
+        );
+        assert.isTrue(yield* Effect.promise(() => request(webContents, screenShare)));
+        assert.strictEqual(
+          showMessageBox.mock.calls[5]?.[0].detail,
+          "macOS is blocking T3 Code from recording the screen. Allow it in System Settings → Privacy & Security, then try again.",
+        );
+      }).pipe(Effect.provide(layer), Effect.provideService(HostProcess.Platform, "darwin")),
+  );
+
+  it.effect(
+    "requestMedia should share a screen answer only with the same site and source when a screen dialog is open",
+    () =>
+      Effect.gen(function* () {
+        const request = requestWith(yield* BrowserMediaAccess.BrowserMediaAccess);
+        const first = makeRequester(`${MEET}/abc`);
+        const sameSite = makeRequester(`${MEET}/xyz`);
+        const screenShare = (requestingUrl: string) => ({
+          requestingUrl,
+          isMainFrame: true,
+          mediaTypes: [],
+        });
+        const release = pendingDialog();
+
+        const firstAnswer = request(first.webContents, screenShare(`${MEET}/abc`));
+        const sameSiteAnswer = request(sameSite.webContents, screenShare(`${MEET}/xyz`));
         assert.isFalse(
           yield* Effect.promise(() =>
-            request(webContents, {
-              requestingUrl: `${MEET}/abc`,
-              isMainFrame: false,
-              mediaTypes: [],
-            }),
+            request(sameSite.webContents, screenShare(`${MEET}/xyz`), false),
           ),
         );
-        assert.strictEqual(showMessageBox.mock.calls.length, 0);
-        assert.strictEqual(storeSet.mock.calls.length, 0);
+        assert.isFalse(
+          yield* Effect.promise(() => request(sameSite.webContents, camAndMic(`${MEET}/xyz`))),
+        );
+        assert.isFalse(
+          yield* Effect.promise(() =>
+            request(
+              makeRequester("https://chat.example.com/").webContents,
+              screenShare("https://chat.example.com/"),
+            ),
+          ),
+        );
+        assert.strictEqual(showMessageBox.mock.calls.length, 1);
+
+        release(0);
+        assert.isTrue(yield* Effect.promise(() => firstAnswer));
+        assert.isTrue(yield* Effect.promise(() => sameSiteAnswer));
+        assert.strictEqual(showMessageBox.mock.calls.length, 1);
+        assert.strictEqual(repeatedCallbacks.count, 0);
       }).pipe(Effect.provide(layer)),
   );
 
@@ -390,6 +453,7 @@ describe("BrowserMediaAccess", () => {
         const first = makeRequester(`${MEET}/abc`);
         const sameSite = makeRequester(`${MEET}/xyz`);
         const other = makeRequester("https://chat.example.com/");
+        const incognito = makeRequester(`${MEET}/abc`);
         const release = pendingDialog();
 
         const firstAnswer = request(first.webContents, camAndMic(`${MEET}/abc`));
@@ -400,6 +464,11 @@ describe("BrowserMediaAccess", () => {
         });
         const otherAnswer = request(other.webContents, camAndMic("https://chat.example.com/"));
         assert.isFalse(yield* Effect.promise(() => otherAnswer));
+        assert.isFalse(
+          yield* Effect.promise(() =>
+            request(incognito.webContents, camAndMic(`${MEET}/abc`), false),
+          ),
+        );
         assert.strictEqual(showMessageBox.mock.calls.length, 1);
 
         release(0);
@@ -407,6 +476,13 @@ describe("BrowserMediaAccess", () => {
         assert.isTrue(yield* Effect.promise(() => sameSiteAnswer));
         assert.strictEqual(repeatedCallbacks.count, 0);
         assert.strictEqual(showMessageBox.mock.calls.length, 1);
+
+        assert.isTrue(
+          yield* Effect.promise(() =>
+            request(incognito.webContents, camAndMic(`${MEET}/abc`), false),
+          ),
+        );
+        assert.strictEqual(showMessageBox.mock.calls.length, 2);
       }).pipe(Effect.provide(layer)),
   );
 
@@ -496,6 +572,9 @@ describe("BrowserMediaAccess", () => {
         assert.isFalse(access.checkMedia(MEET, { ...mainFrame, mediaType: "unknown" }, true));
         assert.isFalse(access.checkMedia(MEET, { isMainFrame: true }, true));
         assert.isFalse(access.checkMedia(MEET, { ...mainFrame, isMainFrame: false }, true));
+        assert.isTrue(
+          access.checkMedia(`${MEET}/`, { ...mainFrame, embeddingOrigin: `${MEET}/` }, true),
+        );
         assert.isFalse(access.checkMedia(MEET, { ...mainFrame, embeddingOrigin: chat }, true));
         assert.isFalse(access.checkMedia("file:///tmp/a.html", mainFrame, true));
         assert.isFalse(access.checkMedia(MEET, mainFrame, false));
