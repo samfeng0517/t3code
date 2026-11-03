@@ -2,7 +2,7 @@ import { CommandId, type ServerSettings as ContractServerSettings } from "@t3too
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -39,7 +39,7 @@ export const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const settingsService = yield* ServerSettings.ServerSettingsService;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
 
   const cleanUpThread = Effect.fn("ThreadAutoCleanupServiceV2.cleanUpThread")(
     function* (
@@ -49,7 +49,7 @@ export const make = Effect.gen(function* () {
     ) {
       // A setting turned off or changed mid-sweep stops the remaining work at once.
       if (cleanupAfterDays(yield* settingsService.getSettings, kind) !== afterDays) return;
-      const uuid = yield* crypto.randomUUIDv4();
+      const uuid = yield* random.uuidV4();
       yield* orchestrator.dispatch({
         type: kind === "archive" ? "thread.auto-archive" : "thread.auto-delete",
         commandId: CommandId.make(`server:auto-${kind}:${candidate.threadId}:${uuid}`),

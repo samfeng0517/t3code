@@ -56,7 +56,7 @@ describe("resolveStartupRecoveryOffer", () => {
 
   it("offers the last version that started when no update exists", () => {
     expect(
-      resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), "0.1.2", true),
+      resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), "0.1.2", false, true),
     ).toEqual({
       _tag: "Reinstall",
       version: "0.1.2",
@@ -72,26 +72,42 @@ describe("resolveStartupRecoveryOffer", () => {
           notAppliedVersion: "0.1.4",
         }),
         "0.1.2",
+        false,
         true,
       ),
     ).toEqual({ _tag: "Reinstall", version: "0.1.2" });
   });
 
+  it("blames the managed policy unless a newer version can read it", () => {
+    expect(
+      resolveStartupRecoveryOffer(
+        updateState({ status: "available", availableVersion: "0.1.4" }),
+        "0.1.2",
+        true,
+      ),
+    ).toEqual({ _tag: "Update", version: "0.1.4" });
+    expect(
+      resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), "0.1.2", true),
+    ).toEqual({ _tag: "ManagedPolicy" });
+  });
+
   it("falls back to the releases page when this version never started", () => {
-    expect(resolveStartupRecoveryOffer(updateState({ status: "disabled" }), "0.1.3", true)).toEqual(
-      {
-        _tag: "Releases",
-      },
-    );
-    expect(resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), null, true)).toEqual({
+    expect(
+      resolveStartupRecoveryOffer(updateState({ status: "disabled" }), "0.1.3", false, true),
+    ).toEqual({
+      _tag: "Releases",
+    });
+    expect(
+      resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), null, false, true),
+    ).toEqual({
       _tag: "Releases",
     });
   });
 
   it("should not offer upstream downloads when self-update is disabled", () => {
     const disabled = updateState({ enabled: false, status: "disabled" });
-    expect(resolveStartupRecoveryOffer(disabled, "0.1.2", false)).toEqual({ _tag: "None" });
-    expect(resolveStartupRecoveryOffer(disabled, null, false)).toEqual({ _tag: "None" });
+    expect(resolveStartupRecoveryOffer(disabled, "0.1.2", false, false)).toEqual({ _tag: "None" });
+    expect(resolveStartupRecoveryOffer(disabled, null, false, false)).toEqual({ _tag: "None" });
   });
 });
 
@@ -179,6 +195,7 @@ it.effect.each([
       yield* SubscriptionRef.set(state.primaryBackendStartup, {
         _tag: "Failing",
         reason: "Server failed before readiness",
+        managedPolicy: false,
         output: "Failure details",
       });
       yield* Deferred.await(checked);

@@ -323,7 +323,7 @@ export const settingsMiscEn = {
   "settingsMisc.sourceControl.appSignIn.showAccount": "Show account",
   "settingsMisc.sourceControl.appSignIn.hideAccount": "Hide account",
   "settingsMisc.sourceControl.appSignIn.tokenOverrides":
-    "Signed in, but the token saved below is used until you remove it.",
+    "Signed in, but the token saved below is used while it can be read.",
   "settingsMisc.sourceControl.appSignIn.signedIn": "Signed in",
   "settingsMisc.sourceControl.appSignIn.signOut": "Sign out",
   "settingsMisc.sourceControl.appSignIn.approve": "Approve the app on GitHub to finish signing in.",

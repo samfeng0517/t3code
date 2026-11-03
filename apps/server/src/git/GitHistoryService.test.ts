@@ -1,6 +1,7 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
 import * as FileSystem from "effect/FileSystem";
@@ -26,10 +27,10 @@ const historyLayer = (workspaceRoot: string) =>
     Layer.provideMerge(VcsProcess.layer),
     Layer.provideMerge(
       ServerConfig.layerTest(workspaceRoot, { prefix: "t3-history-base-" }).pipe(
-        Layer.provide(NodeServices.layer),
+        Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       ),
     ),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
 
 const identity = ["-c", "user.email=t@t", "-c", "user.name=t"];
@@ -43,7 +44,7 @@ const inWorkspace = <A, E>(
     E,
     | GitHistoryService.GitHistoryService
     | GitVcsDriver.GitVcsDriver
-    | Crypto.Crypto
+    | Digest.Digest
     | FileSystem.FileSystem
     | Path.Path
   >,
@@ -54,7 +55,7 @@ const inWorkspace = <A, E>(
       yield* fs.makeTempDirectoryScoped({ prefix: "t3-history-workspace-" }),
     );
     return yield* body(workspace).pipe(Effect.provide(historyLayer(workspace)));
-  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 const gitIn = Effect.fn("test.git")(function* (
   cwd: string,
@@ -351,7 +352,7 @@ describe("GitHistoryService", () => {
           );
         }),
       );
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect(
@@ -660,9 +661,9 @@ describe("GitHistoryService", () => {
         assert.isTrue(big.truncated);
         assert.isAtMost(new TextEncoder().encode(big.diff).byteLength, 1024 * 1024);
         assert.notInclude(big.diff, "small.txt");
-        const crypto = yield* Crypto.Crypto;
+        const digest = yield* Digest.Digest;
         const expectedHash = Hex.encode(
-          yield* crypto.digest("SHA-256", new TextEncoder().encode(big.diff)),
+          yield* digest.digest(Digest.sha256, new TextEncoder().encode(big.diff)),
         );
         assert.equal(big.diffHash, expectedHash);
         assert.isFalse(small.truncated);

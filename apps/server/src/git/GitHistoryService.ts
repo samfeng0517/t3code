@@ -1,5 +1,5 @@
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
 import * as FileSystem from "effect/FileSystem";
@@ -312,7 +312,7 @@ function parseWorkingTreeStatus(stdout: string, truncated: boolean): GitWorkingT
 export const make = Effect.gen(function* () {
   const git = yield* GitVcsDriver.GitVcsDriver;
   const registry = yield* VcsDriverRegistry.VcsDriverRegistry;
-  const crypto = yield* Crypto.Crypto;
+  const digest = yield* Digest.Digest;
   const path = yield* Path.Path;
   const fileSystem = yield* FileSystem.FileSystem;
   const workspaceContext = yield* Effect.context<
@@ -356,8 +356,8 @@ export const make = Effect.gen(function* () {
 
   // SHA-256 over in-memory bytes has no real failure mode; a failure is a defect.
   const sha256Hex = (text: string) =>
-    crypto
-      .digest("SHA-256", new TextEncoder().encode(text))
+    digest
+      .digest(Digest.sha256, new TextEncoder().encode(text))
       .pipe(Effect.map(Hex.encode), Effect.orDie);
 
   const hashFingerprint = (lines: ReadonlyArray<string>) => sha256Hex(lines.toSorted().join("\n"));

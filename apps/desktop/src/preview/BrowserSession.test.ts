@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -74,7 +75,9 @@ const layerNotificationPermissions = Layer.succeed(
   },
 );
 const layer = BrowserSession.layer.pipe(
-  Layer.provide(Layer.mergeAll(NodeServices.layer, layerDialog, layerNotificationPermissions)),
+  Layer.provide(
+    Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, layerDialog, layerNotificationPermissions),
+  ),
 );
 
 const notificationRequester = (scope: string, persistent: boolean) =>

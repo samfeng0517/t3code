@@ -14,7 +14,6 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { SidebarLayerHeader } from "./SidebarLayerHeader";
 
 export interface SidebarThreadHeaderProps {
-  searchFieldRef?: RefObject<HTMLDivElement | null>;
   hasProjects: boolean;
   projectScope: ReactNode;
   onNewProject: () => void;
@@ -34,7 +33,6 @@ export interface SidebarThreadHeaderProps {
 }
 
 export function SidebarThreadHeader({
-  searchFieldRef,
   hasProjects,
   projectScope,
   onNewProject,
@@ -92,10 +90,7 @@ export function SidebarThreadHeader({
           <SquarePenIcon className="size-3.5" />
         </SidebarHeaderIconButton>
       </SidebarLayerHeader>
-      <div
-        ref={searchFieldRef}
-        className="flex h-8 min-w-0 items-center gap-2 rounded-md bg-sidebar-row-hover ps-2 pe-1 text-sm text-sidebar-muted-foreground focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70"
-      >
+      <div className="flex h-8 min-w-0 items-center gap-2 rounded-md bg-sidebar-row-hover ps-2 pe-1 text-sm text-sidebar-muted-foreground focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70">
         <SearchIcon className="size-3.5 shrink-0 text-(--sidebar-icon-color)" />
         <SidebarInput
           ref={searchInputRef}

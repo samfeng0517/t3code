@@ -32,6 +32,8 @@ export function createGitEnvironmentAtoms<R, E>(
       tag: WS_METHODS.gitPreparePullRequestThread,
       scheduler: vcsCommandScheduler,
       concurrency: vcsCommandConcurrency,
+      onSettled: ({ environmentId, input }, registry) =>
+        invalidateCachedVcsRefs(registry, { environmentId, cwd: input.cwd }),
     }),
     historyLog: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:git:history-log",

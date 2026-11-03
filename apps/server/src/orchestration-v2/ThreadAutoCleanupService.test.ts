@@ -7,7 +7,7 @@ import {
   type ServerSettingsPatch,
 } from "@t3tools/contracts";
 import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -26,10 +26,7 @@ import * as ThreadAutoCleanupService from "./ThreadAutoCleanupService.ts";
 
 const NOW = DateTime.makeUnsafe("2026-10-20T12:00:00.000Z");
 
-const testCrypto = Crypto.make({
-  randomBytes: (size) => new Uint8Array(size).fill(1),
-  digest: (_algorithm, data) => Effect.succeed(data),
-});
+const testRandom = SecureRandom.make((size) => new Uint8Array(size).fill(1));
 
 function candidate(name: string): ProjectionStore.ProjectionThreadCleanupCandidate {
   return {
@@ -111,7 +108,7 @@ const makeHarness = Effect.fn("makeThreadAutoCleanupHarness")(function* (options
     }),
     Layer.succeed(ServerSettings.ServerSettingsService, serverSettings),
     Layer.succeed(ServerActivation.ServerActivation, Deferred.await(activation)),
-    Layer.succeed(Crypto.Crypto, testCrypto),
+    Layer.succeed(SecureRandom.SecureRandom, testRandom),
   );
 
   return {

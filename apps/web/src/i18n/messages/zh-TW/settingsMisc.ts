@@ -303,7 +303,7 @@ export const settingsMiscZhTW: Readonly<Record<keyof typeof settingsMiscEn, stri
   "settingsMisc.sourceControl.appSignIn.showAccount": "顯示帳號",
   "settingsMisc.sourceControl.appSignIn.hideAccount": "隱藏帳號",
   "settingsMisc.sourceControl.appSignIn.tokenOverrides":
-    "已登入，但在你移除之前，會使用下方儲存的權杖。",
+    "已登入，但只要能讀取下方儲存的權杖，就會使用它。",
   "settingsMisc.sourceControl.appSignIn.signedIn": "已登入",
   "settingsMisc.sourceControl.appSignIn.signOut": "登出",
   "settingsMisc.sourceControl.appSignIn.approve": "請在 GitHub 上核准此 app 以完成登入。",
