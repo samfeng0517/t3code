@@ -78,6 +78,8 @@ const layer = BrowserMediaAccess.layer.pipe(
 );
 
 const MEET = "https://meet.google.com";
+const SCREEN_SHARE_DETAIL =
+  "The site may get your whole screen and system audio if it doesn't let you choose.";
 
 const makeRequester = (url: string) => {
   const state = { url, destroyed: false };
@@ -215,7 +217,7 @@ describe("BrowserMediaAccess", () => {
     () =>
       Effect.gen(function* () {
         const request = requestWith(yield* BrowserMediaAccess.BrowserMediaAccess);
-        const { webContents } = makeRequester(`${MEET}/abc`);
+        const { webContents, emit } = makeRequester(`${MEET}/abc`);
         storedDecisions.set(storeKey(MEET, "camera"), "block");
         storedDecisions.set(storeKey(MEET, "microphone"), "block");
         const screenShare = { requestingUrl: `${MEET}/abc`, isMainFrame: true, mediaTypes: [] };
@@ -227,28 +229,24 @@ describe("BrowserMediaAccess", () => {
         assert.strictEqual(showMessageBox.mock.calls.length, 0);
 
         assert.isTrue(yield* Effect.promise(() => request(webContents, screenShare)));
-        const options = showMessageBox.mock.calls[0]?.[0];
-        assert.deepInclude(options, {
+        assert.isTrue(yield* Effect.promise(() => request(webContents, screenShare)));
+        assert.deepInclude(showMessageBox.mock.calls[0]?.[0], {
           type: "question",
           buttons: ["Allow", "Cancel"],
           defaultId: 1,
           cancelId: 1,
           message: "Allow meet.google.com to share your screen?",
+          detail: SCREEN_SHARE_DETAIL,
         });
-        assert.isUndefined(options?.detail);
 
-        showMessageBox.mockReturnValue(1);
+        showMessageBox.mockReturnValueOnce(1);
         assert.isFalse(
           yield* Effect.promise(() =>
             request(webContents, { requestingUrl: `${MEET}/abc`, isMainFrame: true }),
           ),
         );
-        showMessageBox.mockRejectedValueOnce(new Error("dialog failed"));
-        assert.isFalse(yield* Effect.promise(() => request(webContents, screenShare)));
-        dialogInterrupt.next = true;
-        assert.isFalse(yield* Effect.promise(() => request(webContents, screenShare)));
+        emit("did-navigate");
 
-        showMessageBox.mockReturnValue(0);
         assert.isTrue(yield* Effect.promise(() => request(webContents, screenShare, false)));
         assert.isTrue(yield* Effect.promise(() => request(webContents, screenShare, false)));
         assert.strictEqual(showMessageBox.mock.calls.length, 5);
@@ -259,11 +257,49 @@ describe("BrowserMediaAccess", () => {
           mediaType === "screen" ? "denied" : "granted",
         );
         assert.isTrue(yield* Effect.promise(() => request(webContents, screenShare)));
-        assert.strictEqual(
-          showMessageBox.mock.calls[5]?.[0].detail,
-          "macOS is blocking T3 Code from recording the screen. Allow it in System Settings → Privacy & Security, then try again.",
-        );
+        assert.strictEqual(showMessageBox.mock.calls[5]?.[0].detail, SCREEN_SHARE_DETAIL);
       }).pipe(Effect.provide(layer), Effect.provideService(HostProcess.Platform, "darwin")),
+  );
+
+  it.effect(
+    "requestMedia should deny screen shares without a dialog until the page navigates when a screen share dialog is not allowed",
+    () =>
+      Effect.gen(function* () {
+        const request = requestWith(yield* BrowserMediaAccess.BrowserMediaAccess);
+        const { webContents, emit } = makeRequester(`${MEET}/abc`);
+        const screenShare = { requestingUrl: `${MEET}/abc`, isMainFrame: true, mediaTypes: [] };
+        const camera = { requestingUrl: `${MEET}/abc`, isMainFrame: true, mediaTypes: ["video"] };
+
+        showMessageBox.mockReturnValueOnce(1);
+        assert.isFalse(yield* Effect.promise(() => request(webContents, screenShare)));
+        assert.isFalse(yield* Effect.promise(() => request(webContents, screenShare)));
+        assert.strictEqual(showMessageBox.mock.calls.length, 1);
+        assert.isFalse(yield* Effect.promise(() => request(webContents, camera)));
+        assert.strictEqual(showMessageBox.mock.calls.length, 2);
+
+        emit("did-navigate");
+        assert.isFalse(yield* Effect.promise(() => request(webContents, camera)));
+        assert.isFalse(yield* Effect.promise(() => request(webContents, camera)));
+        assert.strictEqual(showMessageBox.mock.calls.length, 3);
+        showMessageBox.mockRejectedValueOnce(new Error("dialog failed"));
+        assert.isFalse(yield* Effect.promise(() => request(webContents, screenShare)));
+        assert.strictEqual(showMessageBox.mock.calls.length, 4);
+        assert.isFalse(yield* Effect.promise(() => request(webContents, screenShare)));
+        assert.strictEqual(showMessageBox.mock.calls.length, 4);
+
+        emit("did-navigate");
+        dialogInterrupt.next = true;
+        assert.isFalse(yield* Effect.promise(() => request(webContents, screenShare)));
+        assert.isFalse(yield* Effect.promise(() => request(webContents, screenShare)));
+        assert.strictEqual(showMessageBox.mock.calls.length, 4);
+
+        emit("did-navigate");
+        showMessageBox.mockReturnValueOnce(0);
+        assert.isTrue(yield* Effect.promise(() => request(webContents, screenShare)));
+        assert.strictEqual(showMessageBox.mock.calls.length, 5);
+        assert.strictEqual(storeSet.mock.calls.length, 0);
+        assert.strictEqual(repeatedCallbacks.count, 0);
+      }).pipe(Effect.provide(layer)),
   );
 
   it.effect(

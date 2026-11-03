@@ -96,6 +96,9 @@ const MAC_DEVICE_HINTS: Record<BrowserMediaDevice, string> = {
     "macOS is blocking T3 Code from using the microphone. Turn it on in System Settings → Privacy & Security → Microphone.",
 };
 
+const SCREEN_SHARE_DETAIL =
+  "The site may get your whole screen and system audio if it doesn't let you choose.";
+
 const MAC_SCREEN_HINT =
   "macOS is blocking T3 Code from recording the screen. Allow it in System Settings → Privacy & Security, then try again.";
 
@@ -152,17 +155,21 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
       ? mediaPermissions.set(origin, device, decision)
       : Effect.sync(() => void incognitoDecisions.set(incognitoKey(origin, device), decision));
 
-  // "Not now" lasts until the requester's next main-frame navigation or reload.
-  const deferredOrigins = new WeakMap<WebContents, Set<string>>();
-  const defer = (requester: WebContents, origin: string): void => {
-    let origins = deferredOrigins.get(requester);
-    if (origins === undefined) {
-      origins = new Set();
-      deferredOrigins.set(requester, origins);
-      requester.once("did-navigate", () => deferredOrigins.delete(requester));
+  // "Not now" (or Cancel for a screen share) lasts until the requester's next main-frame
+  // navigation or reload, separately for devices and screen sharing.
+  const deferredPrompts = new WeakMap<WebContents, Set<string>>();
+  const deferKey = (origin: string, screen: boolean) => JSON.stringify([origin, screen]);
+  const defer = (requester: WebContents, origin: string, screen: boolean): void => {
+    let keys = deferredPrompts.get(requester);
+    if (keys === undefined) {
+      keys = new Set();
+      deferredPrompts.set(requester, keys);
+      requester.once("did-navigate", () => deferredPrompts.delete(requester));
     }
-    origins.add(origin);
+    keys.add(deferKey(origin, screen));
   };
+  const isDeferred = (requester: WebContents, origin: string, screen: boolean): boolean =>
+    deferredPrompts.get(requester)?.has(deferKey(origin, screen)) === true;
 
   // One media prompt at a time across sites; later requests of the same kind from the same site
   // and source share its answer.
@@ -215,8 +222,21 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
     persistent: boolean,
     callback: (granted: boolean) => void,
   ): void => {
+    if (isDeferred(requester, origin, true)) {
+      callback(false);
+      return;
+    }
     const prompt = claimPrompt(origin, persistent, true, { requester, devices: [], callback });
     if (prompt === null) return;
+    // A page can retry right after a denial without a click, so anything but Allow defers.
+    const settleScreen = (allowed: boolean) =>
+      settle(prompt, (pending) => {
+        if (!allowed) {
+          defer(pending.requester, origin, true);
+          return false;
+        }
+        return stillOnOrigin(pending, origin);
+      });
     runFork(
       Effect.suspend(() =>
         electronDialog.showMessageBox(
@@ -227,17 +247,15 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
             defaultId: 1,
             cancelId: 1,
             message: `Allow ${new URL(origin).host} to share your screen?`,
-            ...(screenRecordingDenied() ? { detail: MAC_SCREEN_HINT } : {}),
+            detail: SCREEN_SHARE_DETAIL,
           },
           previewHostWindow(requester),
         ),
       ).pipe(
         Effect.map(({ response }) => response === 0),
         Effect.orElseSucceed(() => false),
-        Effect.flatMap((allowed) =>
-          settle(prompt, (pending) => allowed && stillOnOrigin(pending, origin)),
-        ),
-        Effect.ensuring(settle(prompt, () => false)),
+        Effect.flatMap(settleScreen),
+        Effect.ensuring(settleScreen(false)),
       ),
     );
   };
@@ -285,7 +303,7 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
       callback(true);
       return;
     }
-    if (deferredOrigins.get(requester)?.has(origin) === true) {
+    if (isDeferred(requester, origin, false)) {
       callback(false);
       return;
     }
@@ -296,7 +314,7 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
     const settleDevices = (answered: boolean) =>
       settle(prompt, (pending) => {
         if (!answered) {
-          defer(pending.requester, origin);
+          defer(pending.requester, origin, false);
           return false;
         }
         return (
