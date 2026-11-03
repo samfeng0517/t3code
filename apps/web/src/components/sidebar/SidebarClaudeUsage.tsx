@@ -5,7 +5,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { GaugeIcon, type LucideIcon, TrendingDownIcon, TrendingUpIcon } from "lucide-react";
 import { Fragment, memo } from "react";
 
-import { useThreadUndoNotice } from "~/hooks/showThreadUndoNotice";
 import { useNowMinute } from "~/hooks/useNowMinute";
 import { type Translate, useT } from "~/i18n";
 import { cn } from "~/lib/utils";
@@ -249,9 +248,7 @@ function SidebarClaudeUsageRows(props: { readonly providers: ReadonlyArray<Serve
 /** The compact form for short windows: 5-hour and weekly left in the toolbar, every window on hover. */
 export const SidebarClaudeUsageChip = memo(function SidebarClaudeUsageChip() {
   const providers = useAtomValue(primaryServerProvidersAtom);
-  // The undo notice needs the row's free space; the usage icon returns while it shows.
-  const undoShown = useThreadUndoNotice((state) => state.notice != null);
-  if (undoShown || !hasClaudeUsageLimits(providers)) return null;
+  if (!hasClaudeUsageLimits(providers)) return null;
   return <SidebarClaudeUsageChipContent providers={providers} />;
 });
 
@@ -270,7 +267,8 @@ function SidebarClaudeUsageChipContent(props: {
     // Takes the row's free space and drops pace, then labels, so it never pushes the update button out.
     <SidebarMenuItem
       data-sidebar-usage-chip
-      className="@container flex min-w-0 flex-1 justify-end tall-window:hidden"
+      // The undo notice gets the row until its fade-out unmounts it, so the chip returns in one step.
+      className="@container flex min-w-0 flex-1 justify-end group-has-[[data-sidebar-undo-notice]]/utility:hidden tall-window:hidden"
     >
       <Tooltip>
         <TooltipTrigger
@@ -278,7 +276,7 @@ function SidebarClaudeUsageChipContent(props: {
             <button
               type="button"
               onClick={openLimits}
-              className="flex h-7 min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-0.5 text-xs text-muted-foreground tabular-nums outline-hidden ring-ring hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-inset"
+              className="flex h-7 min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-0.5 text-xs transition-opacity duration-200 ease-out starting:opacity-0 text-muted-foreground tabular-nums outline-hidden ring-ring hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-inset"
             />
           }
         >
