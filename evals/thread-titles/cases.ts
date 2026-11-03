@@ -106,11 +106,29 @@ export const threadTitleEvaluationCases = [
     ],
     rubric: "Keep title generation as the subject. Do not focus on filing the PR.",
   },
+  {
+    id: "preferences-replace-accurate-title",
+    source: "Fork user report: regenerating kept an English title despite title instructions",
+    request: "Fix the two open review findings on the mod source checker.",
+    previousTitle: "Harden Mod Source Checker Lint Rules",
+    instructions: "使用繁體中文台灣用語",
+    messages: [
+      { role: "user", text: "處理 MR !109 上還沒解決的 review 留言" },
+      {
+        role: "assistant",
+        text: "兩則留言都在 `scripts/check-mod-sources.py`：一則要求擋下重複的 mod 來源，一則要求 lint 規則略過註解行。我會一起修。",
+      },
+      { role: "user", text: "好，兩個都修" },
+    ],
+    rubric:
+      "Write the title in Traditional Chinese with Taiwan usage, naming the mod source checker lint rules. Keeping the English previous title fails.",
+  },
 ] satisfies ReadonlyArray<{
   id: string;
   source: string;
   request: string;
   previousTitle: string;
+  instructions?: string;
   messages: ReadonlyArray<ThreadTitleMessage>;
   rubric: string;
 }>;

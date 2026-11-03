@@ -290,7 +290,7 @@ it.layer(layerClaudeTextGenerationTest)("ClaudeTextGeneration", (it) => {
     withFakeClaudeEnv(
       {
         output: JSON.stringify({ structured_output: { title: "Reconnect failures" } }),
-        stdinMustContain: "Additional instructions:\nUse two to four words.",
+        stdinMustContain: "must be replaced:\nUse two to four words.",
       },
       (textGeneration) =>
         textGeneration.generateThreadTitle({
