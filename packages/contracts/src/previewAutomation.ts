@@ -139,7 +139,7 @@ export type PreviewAutomationDialogInput = typeof PreviewAutomationDialogInput.T
 export const PreviewAutomationOpenInput = Schema.Struct({
   ...PreviewAutomationTabTargetFields,
   url: Schema.optional(BoundedUrl).annotate({
-    description: `First page URL. ${URL_GUIDANCE} Omit to open a blank tab.`,
+    description: `First page URL. ${URL_GUIDANCE} Omit to open a blank tab. For a local file, link its path in your reply instead.`,
   }),
   open: Schema.optional(
     Schema.Boolean.annotate({
