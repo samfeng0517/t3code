@@ -28,6 +28,7 @@ import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/c
 import type { AsyncResult } from "effect/reactivity";
 import {
   effectiveSnoozed,
+  threadWokeAt,
   type ThreadSnoozeShell,
 } from "@t3tools/client-runtime/state/thread-settled";
 import {
@@ -930,6 +931,61 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
     return thread.runtime.lastErrorClass === "usage_limit" ? "limited" : "failed";
   }
   return "ready";
+}
+
+/**
+ * Without a Working shelf the inbox stacks by the state each row shows: threads that need
+ * you or just finished, then working, then waiting, then the rest. Each tier keeps the input order.
+ */
+export function orderInboxThreadsByStatus<T extends InboxStatusInput>(
+  threads: readonly T[],
+  now: string,
+  localLastVisitedAt: (thread: T) => string | undefined,
+): T[] {
+  const tiers: T[][] = [[], [], [], []];
+  for (const thread of threads) {
+    // Rows read local visits on older servers, so the tier must too.
+    const resolved =
+      thread.lastVisitedAt === undefined
+        ? { ...thread, lastVisitedAt: localLastVisitedAt(thread) }
+        : thread;
+    tiers[inboxStatusTier(resolved, now)]!.push(thread);
+  }
+  return tiers.flat();
+}
+
+type InboxStatusInput = ThreadStatusInput &
+  SidebarThreadStatusInput &
+  ThreadSnoozeShell &
+  Pick<SidebarThreadSummary, "settledOverride">;
+
+function inboxStatusTier(thread: InboxStatusInput, now: string): 0 | 1 | 2 | 3 {
+  switch (resolveSidebarThreadStatus(thread)) {
+    case "approval":
+    case "input":
+    case "request":
+    case "limited":
+      return 0;
+    case "working":
+      return 1;
+    case "waiting":
+      return 2;
+    case "failed":
+      return hasUnseenFailure(thread) || isUnseenWake(thread, now) ? 0 : 3;
+    case "ready": {
+      const planReady = thread.interactionMode === "plan" && thread.hasActionableProposedPlan;
+      return isUnseenWake(thread, now) || planReady || hasUnseenCompletion(thread) ? 0 : 3;
+    }
+  }
+}
+
+function isUnseenWake(thread: InboxStatusInput, now: string): boolean {
+  const wokeAt = threadWokeAt(thread, { now });
+  return (
+    wokeAt !== null &&
+    thread.settledOverride !== "settled" &&
+    (!thread.lastVisitedAt || Date.parse(thread.lastVisitedAt) < Date.parse(wokeAt))
+  );
 }
 
 /**

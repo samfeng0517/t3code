@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import {
   createInboxReturnTracker,
   isThreadWorking,
-  liftLiveThreads,
   sortThreadsByLatestActivity,
   sortInboxThreadsByReturn,
   sortWorkingThreadsBySend,
@@ -241,25 +240,6 @@ describe("sortWorkingThreadsBySend", () => {
     expect(
       sortWorkingThreadsBySend([launched, sentFirst, sentLast]).map((thread) => thread.id),
     ).toEqual(["sent-last", "sent-first", "launched"]);
-  });
-});
-
-describe("liftLiveThreads", () => {
-  it("should move working and attention-needing threads above idle ones when the list has no Working shelf", () => {
-    const idleNewest = thread("idle-newest", false);
-    const working = {
-      ...thread("working", true),
-      latestUserAuthoredMessageAt: "2026-06-01T01:00:00.000Z",
-    };
-    const approval = {
-      ...thread("approval", false),
-      hasPendingApprovals: true,
-      latestUserAuthoredMessageAt: "2026-06-01T02:00:00.000Z",
-    };
-    const idleOlder = thread("idle-older", false);
-    expect(
-      liftLiveThreads([idleNewest, working, idleOlder, approval]).map((thread) => thread.id),
-    ).toEqual(["approval", "working", "idle-newest", "idle-older"]);
   });
 });
 

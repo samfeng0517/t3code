@@ -96,30 +96,6 @@ export function sortThreadsByLatestActivity<T extends ActivitySortInput>(
   );
 }
 
-type LiveThreadInput = WorkingThreadInput &
-  WorkingSortInput &
-  Partial<Pick<EnvironmentThreadShell, "pendingGuestMessageCount">>;
-
-function threadNeedsAttention(thread: LiveThreadInput): boolean {
-  return (
-    thread.hasPendingApprovals ||
-    thread.hasPendingUserInput ||
-    thread.pendingSubagentRequest != null ||
-    (thread.pendingGuestMessageCount ?? 0) > 0 ||
-    (thread.interactionMode === "plan" && thread.hasActionableProposedPlan)
-  );
-}
-
-/** Without a Working shelf, working and attention-needing threads lead the list, newest send first. */
-export function liftLiveThreads<T extends LiveThreadInput>(threads: readonly T[]): T[] {
-  const live: T[] = [];
-  const rest: T[] = [];
-  for (const thread of threads) {
-    (isThreadWorking(thread) || threadNeedsAttention(thread) ? live : rest).push(thread);
-  }
-  return live.length === 0 ? [...threads] : [...sortWorkingThreadsBySend(live), ...rest];
-}
-
 function sortNewestFirst<T extends Pick<EnvironmentThreadShell, "id" | "environmentId">>(
   threads: readonly T[],
   timestamps: ReadonlyMap<T, number>,

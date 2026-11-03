@@ -37,7 +37,6 @@ import {
 import {
   createInboxReturnTracker,
   isThreadWorking,
-  liftLiveThreads,
   sortThreadsByLatestActivity,
 } from "@t3tools/client-runtime/state/thread-inbox";
 import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
@@ -211,6 +210,7 @@ import {
   shouldNavigateAfterThreadPark,
   sidebarListItemId,
   sidebarThreadKeyAtY,
+  orderInboxThreadsByStatus,
   sortInboxThreadsByReturn,
   sortPinnedThreadsForSidebar,
   sortWorkingThreadsBySend,
@@ -363,6 +363,8 @@ interface SidebarThreadPartitionInput {
   /** Boring mode: folders list active threads by the user's latest message. */
   readonly sortActiveBySend: boolean;
   readonly disconnectedEnvironmentIds: ReadonlySet<EnvironmentId>;
+  /** Visits this client recorded, which older servers do not report. */
+  readonly localLastVisitedAtById: Readonly<Record<string, string>>;
   // Snooze wakes, the queued-turn grace and the Working shelf's exit grace depend
   // on the clock, so the minute tick, the precise snooze-wake tick and the inbox
   // tracker's expiry version are inputs: a new key repartitions.
@@ -484,6 +486,7 @@ function useSidebarThreads(input: {
   );
   // Shared with the old per-project sidebar, so folders keep their open state.
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
+  const localLastVisitedAtById = useUiStateStore((store) => store.threadLastVisitedAtById);
   const setProjectExpanded = useUiStateStore((store) => store.setProjectExpanded);
   const [settledTail, setSettledTail] = useState({
     scopeKey: projectScopeKey,
@@ -505,6 +508,7 @@ function useSidebarThreads(input: {
     workingShelfEnabled,
     sortActiveBySend: folderGroups !== null,
     disconnectedEnvironmentIds,
+    localLastVisitedAtById,
     clockKey: `${nowMinute}:${snoozeWakeClock}:${inboxReturnsVersion}`,
   });
 
@@ -705,7 +709,11 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     ? sortWorkingThreadsBySend(active)
     : workingShelfEnabled
       ? sortInboxThreadsByReturn(active, inboxObservation.returnedAt)
-      : liftLiveThreads(sortThreadsByLatestActivity(active));
+      : orderInboxThreadsByStatus(
+          sortThreadsByLatestActivity(active),
+          preciseNow,
+          (thread) => input.localLastVisitedAtById[threadShellKey(thread)],
+        );
   return {
     pinnedThreads:
       optimisticDrop?.section !== "pinned" || optimisticDrop.order === null

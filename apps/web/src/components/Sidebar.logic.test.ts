@@ -13,6 +13,7 @@ import {
   resolveSidebarRowThreadId,
   belongsInSidebarWorkingShelf,
   isSidebarEnvironmentDisconnected,
+  orderInboxThreadsByStatus,
   orderItemsByPreferredIds,
   pinOrderKeyBetween,
   resolveSidebarSweepKeys,
@@ -1610,6 +1611,65 @@ describe("resolveSidebarFolderDot", () => {
     expect(resolveSidebarFolderDot([idle, working])).toBe("working");
     expect(resolveSidebarFolderDot([working, unread])).toBe("unread");
     expect(resolveSidebarFolderDot([unread, limited])).toBe("attention");
+  });
+});
+
+describe("orderInboxThreadsByStatus", () => {
+  it("should stack attention and unseen results above working, then waiting, then idle threads when the Working shelf is off", () => {
+    const now = "2026-03-09T11:00:00.000Z";
+    const runtime = {
+      status: "running" as const,
+      activeRunId: null,
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      providerName: "Codex",
+      lastError: null,
+      updatedAt: "2026-03-09T10:00:00.000Z",
+    };
+    const row = (id: string, overrides: object = {}) => ({
+      id,
+      hasActionableProposedPlan: false,
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+      interactionMode: "default" as const,
+      latestRun: makeLatestRun(),
+      lastVisitedAt: "2026-03-09T10:06:00.000Z",
+      runtime: null,
+      settledOverride: null,
+      ...overrides,
+    });
+    const ordered = orderInboxThreadsByStatus(
+      [
+        row("idle"),
+        row("waiting", { runtime: { ...runtime, status: "idle" as const } }),
+        row("working", { runtime }),
+        row("done", { lastVisitedAt: "2026-03-09T10:04:00.000Z" }),
+        row("seen-failure", { runtime: { ...runtime, status: "failed" as const } }),
+        row("approval", { hasPendingApprovals: true, runtime }),
+        row("woke", {
+          snoozedAt: "2026-03-09T09:00:00.000Z",
+          snoozedUntil: "2026-03-09T10:30:00.000Z",
+        }),
+        row("woke-seen-failure", {
+          runtime: { ...runtime, status: "failed" as const },
+          snoozedAt: "2026-03-09T10:10:00.000Z",
+          snoozedUntil: "2026-03-09T10:30:00.000Z",
+        }),
+        row("old-server-done", { lastVisitedAt: undefined }),
+      ],
+      now,
+      (thread) => (thread.id === "old-server-done" ? "2026-03-09T10:04:00.000Z" : undefined),
+    );
+    expect(ordered.map((thread) => thread.id)).toEqual([
+      "done",
+      "approval",
+      "woke",
+      "woke-seen-failure",
+      "old-server-done",
+      "working",
+      "waiting",
+      "idle",
+      "seen-failure",
+    ]);
   });
 });
 
