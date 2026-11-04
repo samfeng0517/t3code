@@ -16,7 +16,11 @@ import {
   clampCollapsedComposerCursor,
   collapseExpandedComposerCursor,
   composerHostBrowseChildQuery,
+  composerHomeFolderDrillQuery,
+  composerHomeFolderParentLabel,
   composerHostBrowsePath,
+  isComposerHomeFolderQuery,
+  mergeComposerHomeFolderItems,
   composerSubmissionIntentForKey,
   composerStateAtPromptEnd,
   detectComposerTrigger,
@@ -125,6 +129,60 @@ describe("composerHostBrowsePath", () => {
     });
     const prose = 'say @"hello world';
     expect(detectComposerTrigger(prose, prose.length)).toBeNull();
+  });
+});
+
+describe("composer home folder helpers", () => {
+  it("isComposerHomeFolderQuery should return true when the query is a bare name", () => {
+    expect(isComposerHomeFolderQuery("app_ttw")).toBe(true);
+    expect(isComposerHomeFolderQuery("a")).toBe(true);
+  });
+
+  it("isComposerHomeFolderQuery should return false when the query is empty, contains a slash, or starts with ~ or .", () => {
+    for (const query of ["", "src/", "~/", "~x", "../", ".c"]) {
+      expect(isComposerHomeFolderQuery(query)).toBe(false);
+    }
+  });
+
+  it("composerHomeFolderDrillQuery should open the folder under ~/ when the path has no whitespace", () => {
+    expect(composerHomeFolderDrillQuery("Documents/app_ttw")).toBe("~/Documents/app_ttw/");
+  });
+
+  it("composerHomeFolderDrillQuery should use the quoted form when the path contains whitespace", () => {
+    expect(composerHomeFolderDrillQuery("My Docs/x")).toBe('"~/My Docs/x/');
+  });
+
+  it("composerHomeFolderParentLabel should return ~ when the folder is directly under home", () => {
+    expect(composerHomeFolderParentLabel("Documents")).toBe("~");
+  });
+
+  it("composerHomeFolderParentLabel should return the parent under ~ when the folder is nested", () => {
+    expect(composerHomeFolderParentLabel("Documents/app_ttw")).toBe("~/Documents");
+  });
+
+  it("mergeComposerHomeFolderItems should cap project items at 6 and append home items when home items exist", () => {
+    const projectItems = Array.from({ length: 10 }, (_, i) => `p${i}`);
+    expect(
+      mergeComposerHomeFolderItems({
+        projectItems,
+        homeItems: ["h1", "h2"],
+        projectPending: false,
+      }),
+    ).toEqual(["p0", "p1", "p2", "p3", "p4", "p5", "h1", "h2"]);
+  });
+
+  it("mergeComposerHomeFolderItems should leave project items unchanged when the project search is pending", () => {
+    const projectItems = Array.from({ length: 10 }, (_, i) => `p${i}`);
+    expect(
+      mergeComposerHomeFolderItems({ projectItems, homeItems: ["h1"], projectPending: true }),
+    ).toEqual(projectItems);
+  });
+
+  it("mergeComposerHomeFolderItems should leave project items unchanged when there are no home items", () => {
+    const projectItems = Array.from({ length: 80 }, (_, i) => `p${i}`);
+    expect(
+      mergeComposerHomeFolderItems({ projectItems, homeItems: [], projectPending: false }),
+    ).toEqual(projectItems);
   });
 });
 

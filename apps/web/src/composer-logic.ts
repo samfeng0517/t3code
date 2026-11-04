@@ -59,6 +59,38 @@ export function composerHostBrowseChildQuery(browsePath: string, name: string): 
   return /\s/.test(child) ? `"${child}` : child;
 }
 
+const COMPOSER_PROJECT_ITEMS_WITH_HOME_LIMIT = 6;
+
+/** A bare `@name` (no slash, not `~` or `.` led) also searches folders under the server home. */
+export function isComposerHomeFolderQuery(query: string): boolean {
+  return (
+    query.length >= 1 && !query.includes("/") && !query.startsWith("~") && !query.startsWith(".")
+  );
+}
+
+/** The mention text that opens a home folder; whitespace takes the quoted `@"…` form. */
+export function composerHomeFolderDrillQuery(homeRelativePath: string): string {
+  const query = `~/${homeRelativePath}/`;
+  return /\s/.test(query) ? `"${query}` : query;
+}
+
+export function composerHomeFolderParentLabel(homeRelativePath: string): string {
+  const index = homeRelativePath.lastIndexOf("/");
+  return index < 0 ? "~" : `~/${homeRelativePath.slice(0, index)}`;
+}
+
+export function mergeComposerHomeFolderItems<T>(input: {
+  projectItems: ReadonlyArray<T>;
+  homeItems: ReadonlyArray<T>;
+  projectPending: boolean;
+}): T[] {
+  if (input.projectPending || input.homeItems.length === 0) return [...input.projectItems];
+  return [
+    ...input.projectItems.slice(0, COMPOSER_PROJECT_ITEMS_WITH_HOME_LIMIT),
+    ...input.homeItems,
+  ];
+}
+
 /** An open `@"…` host path mention, which may contain spaces. */
 function detectQuotedHostPathTrigger(text: string, cursor: number): ComposerTrigger | null {
   const lineStart = text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
