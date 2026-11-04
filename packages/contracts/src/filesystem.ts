@@ -52,6 +52,25 @@ export const FilesystemBrowseResult = Schema.Struct({
 });
 export type FilesystemBrowseResult = typeof FilesystemBrowseResult.Type;
 
+export const FilesystemSearchHomeFoldersInput = Schema.Struct({
+  query: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  limit: PositiveInt.check(Schema.isLessThanOrEqualTo(50)),
+});
+export type FilesystemSearchHomeFoldersInput = typeof FilesystemSearchHomeFoldersInput.Type;
+
+export const FilesystemHomeFolderEntry = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  fullPath: TrimmedNonEmptyString,
+  // Path below the home folder joined with "/" on every platform, e.g. "Documents/app".
+  homeRelativePath: TrimmedNonEmptyString,
+});
+export type FilesystemHomeFolderEntry = typeof FilesystemHomeFolderEntry.Type;
+
+export const FilesystemSearchHomeFoldersResult = Schema.Struct({
+  entries: Schema.Array(FilesystemHomeFolderEntry),
+});
+export type FilesystemSearchHomeFoldersResult = typeof FilesystemSearchHomeFoldersResult.Type;
+
 export const FilesystemBrowseFailure = Schema.Literals([
   "windows_path_unsupported",
   "current_project_required",
