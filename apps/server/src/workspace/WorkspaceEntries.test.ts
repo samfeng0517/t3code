@@ -770,5 +770,81 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
         });
       }),
     );
+
+    it.effect(
+      "should list folders before files, hide dotfiles, and cap the count when files are requested",
+      () =>
+        Effect.gen(function* () {
+          const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+          const path = yield* Path.Path;
+          const cwd = yield* makeTempDir({ prefix: "t3code-workspace-browse-files-" });
+          yield* writeTextFile(cwd, "alpha.zip", "x");
+          yield* writeTextFile(cwd, "Beta/notes.md", "x");
+          yield* writeTextFile(cwd, "archive/old.txt", "x");
+          yield* writeTextFile(cwd, ".secret", "x");
+          const cwdWithSeparator = yield* appendSeparator(cwd);
+
+          const withFiles = yield* workspaceEntries.browse({
+            partialPath: cwdWithSeparator,
+            includeFiles: true,
+            limit: 3,
+          });
+          const prefixed = yield* workspaceEntries.browse({
+            partialPath: `${cwdWithSeparator}a`,
+            includeFiles: true,
+          });
+          const hidden = yield* workspaceEntries.browse({
+            partialPath: `${cwdWithSeparator}.`,
+            includeFiles: true,
+          });
+          const foldersOnly = yield* workspaceEntries.browse({ partialPath: cwdWithSeparator });
+
+          expect(withFiles.entries).toEqual([
+            { name: "archive", fullPath: path.join(cwd, "archive"), kind: "directory" },
+            { name: "Beta", fullPath: path.join(cwd, "Beta"), kind: "directory" },
+            { name: "alpha.zip", fullPath: path.join(cwd, "alpha.zip"), kind: "file" },
+          ]);
+          expect(hidden.entries.map((entry) => entry.name)).toEqual([".secret"]);
+          expect(prefixed.entries.map((entry) => entry.name)).toEqual(["archive", "alpha.zip"]);
+          expect(foldersOnly.entries).toEqual([
+            { name: "archive", fullPath: path.join(cwd, "archive") },
+            { name: "Beta", fullPath: path.join(cwd, "Beta") },
+          ]);
+        }),
+    );
+
+    it.effect("should resolve symlinks and skip padded names when files are requested", () =>
+      Effect.gen(function* () {
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-browse-links-" });
+        yield* writeTextFile(cwd, "real/inner.txt", "x");
+        yield* writeTextFile(cwd, "doc.txt", "x");
+        yield* writeTextFile(cwd, "trail ", "x");
+        yield* fileSystem.symlink("real", path.join(cwd, "linkdir"));
+        yield* fileSystem.symlink("doc.txt", path.join(cwd, "linkfile.txt"));
+        yield* fileSystem.symlink("missing", path.join(cwd, "broken"));
+        const cwdWithSeparator = yield* appendSeparator(cwd);
+
+        const result = yield* workspaceEntries.browse({
+          partialPath: cwdWithSeparator,
+          includeFiles: true,
+        });
+        const fromParentSegment = yield* workspaceEntries.browse({
+          partialPath: `${cwdWithSeparator}real/..`,
+          includeFiles: true,
+        });
+
+        expect(result.entries.map((entry) => [entry.name, entry.kind])).toEqual([
+          ["linkdir", "directory"],
+          ["real", "directory"],
+          ["doc.txt", "file"],
+          ["linkfile.txt", "file"],
+        ]);
+        expect(fromParentSegment.parentPath).toBe(cwd);
+        expect(fromParentSegment.entries).toEqual(result.entries);
+      }),
+    );
   });
 });
