@@ -140,3 +140,5 @@ export const BROWSER_NOTIFICATION_PERMISSIONS_LIST_CHANNEL =
   "desktop:browser-notification-permissions-list";
 export const BROWSER_NOTIFICATION_PERMISSIONS_REMOVE_CHANNEL =
   "desktop:browser-notification-permissions-remove";
+export const BROWSER_MEDIA_PERMISSIONS_LIST_CHANNEL = "desktop:browser-media-permissions-list";
+export const BROWSER_MEDIA_PERMISSIONS_REMOVE_CHANNEL = "desktop:browser-media-permissions-remove";

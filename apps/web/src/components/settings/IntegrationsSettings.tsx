@@ -43,6 +43,7 @@ import { MoreVertical, Plus as PlusIcon } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { BrowserExtensionsSetting } from "~/browser/BrowserExtensionsSetting";
+import { BrowserMediaPermissionsSetting } from "~/browser/BrowserMediaPermissionsSetting";
 import { BrowserNotificationPermissionsSetting } from "~/browser/BrowserNotificationPermissionsSetting";
 import { ScreenRotationIcon } from "~/browser/ScreenRotationIcon";
 import { resolveEnvironmentOptionLabel } from "~/components/BranchToolbar.logic";
@@ -1705,6 +1706,7 @@ export function BrowserSettingsPanel() {
           <BrowserProfilesSetting disabled={desktopOnly} />
           <BrowserExtensionsSetting disabled={desktopOnly} />
           <BrowserNotificationPermissionsSetting disabled={desktopOnly} />
+          <BrowserMediaPermissionsSetting disabled={desktopOnly} />
           <BrowserLinkTargetSetting disabled={desktopOnly} />
           <BrowserAutoShowFloatingPreviewSetting disabled={desktopOnly} />
         </SettingsUnavailableGroup>

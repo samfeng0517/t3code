@@ -1,5 +1,5 @@
 import type { Session, WebContents } from "electron";
-import { BrowserWindow, session } from "electron";
+import { session } from "electron";
 import * as Context from "effect/Context";
 import * as Digest from "effect/crypto/Digest";
 import * as Deferred from "effect/Deferred";
@@ -11,8 +11,10 @@ import * as Schema from "effect/Schema";
 import * as SynchronizedRef from "effect/SynchronizedRef";
 
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
+import * as BrowserMediaAccess from "./BrowserMediaAccess.ts";
 import * as BrowserNotificationPermissions from "./BrowserNotificationPermissions.ts";
 import { attachChromeExtensions } from "./ChromeExtensions.ts";
+import { previewHostWindow } from "./PreviewHostWindow.ts";
 
 const PREVIEW_PARTITION_PREFIX = "persist:t3code-preview-";
 /** Ephemeral partitions omit persist: but retain a product prefix so the webview gate recognizes them. */
@@ -32,6 +34,7 @@ const ALLOWED_PREVIEW_PERMISSIONS: ReadonlySet<string> = new Set([
   "loopback-network",
   // Deny local-fonts to untrusted previews: it exposes installed-font fingerprints and file bytes.
   // Notifications are asked per site (see `requestNotifications`): a page's notification shows as T3 Code's.
+  // Camera, microphone and screen share are decided by `BrowserMediaAccess`.
 ]);
 
 const NEVER_EXTERNAL_PROTOCOLS: ReadonlySet<string> = new Set([
@@ -68,17 +71,6 @@ const permissionOrigin = (rawUrl: string | undefined): string | null => {
   try {
     const { origin } = new URL(rawUrl);
     return origin === "null" ? null : origin;
-  } catch {
-    return null;
-  }
-};
-
-/** The http(s) origin a notification permission is remembered under, or null for any other page. */
-const notificationOrigin = (rawUrl: string | undefined): string | null => {
-  if (!rawUrl) return null;
-  try {
-    const url = new URL(rawUrl);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.origin : null;
   } catch {
     return null;
   }
@@ -200,20 +192,13 @@ const encodeScopeForDigest = (scope: string): Uint8Array =>
       ),
   );
 
-// Webview guests have no window; use their embedding page.
-const previewHostWindow = (guest: WebContents | null): BrowserWindow | undefined => {
-  if (guest === null || guest.isDestroyed()) return undefined;
-  const host = guest.hostWebContents ?? guest;
-  if (host.isDestroyed()) return undefined;
-  return BrowserWindow.fromWebContents(host) ?? undefined;
-};
-
 /** @public */
 export const make = Effect.gen(function* BrowserSessionMake() {
   const crypto = yield* Digest.Digest;
   const electronDialog = yield* ElectronDialog.ElectronDialog;
   const notificationPermissions =
     yield* BrowserNotificationPermissions.BrowserNotificationPermissions;
+  const mediaAccess = yield* BrowserMediaAccess.BrowserMediaAccess;
   const runFork = Effect.runForkWith(yield* Effect.context<never>());
   // One prompt at a time, so a page cannot stack dialogs by looping a deep link.
   let permissionPromptOpen = false;
@@ -281,7 +266,7 @@ export const make = Effect.gen(function* BrowserSessionMake() {
     );
   };
   const notificationsAllowed = (requestingOrigin: string): boolean => {
-    const origin = notificationOrigin(requestingOrigin);
+    const origin = BrowserMediaAccess.httpOrigin(requestingOrigin);
     return origin !== null && notificationPermissions.decisionFor(origin) === "allow";
   };
   // One prompt at a time across sites; the same site's later requests share its answer.
@@ -296,7 +281,7 @@ export const make = Effect.gen(function* BrowserSessionMake() {
     request: { readonly requestingUrl?: string; readonly isMainFrame?: boolean },
     callback: (granted: boolean) => void,
   ): void => {
-    const origin = notificationOrigin(request.requestingUrl);
+    const origin = BrowserMediaAccess.httpOrigin(request.requestingUrl);
     const remembered = origin === null ? undefined : notificationPermissions.decisionFor(origin);
     if (remembered !== undefined) {
       callback(remembered === "allow");
@@ -459,17 +444,39 @@ export const make = Effect.gen(function* BrowserSessionMake() {
                   else requestNotifications(webContents, details, callback);
                   return;
                 }
+                if (permission === "media") {
+                  mediaAccess.requestMedia(webContents, details, persistent, callback);
+                  return;
+                }
+                if (permission === "display-capture") {
+                  callback(mediaAccess.allowDisplayCapture(details));
+                  return;
+                }
                 callback(ALLOWED_PREVIEW_PERMISSIONS.has(permission));
               },
             );
             browserSession.setPermissionCheckHandler(
-              (_webContents, permission, requestingOrigin) =>
-                permission === "clipboard-read"
-                  ? clipboardReadDecisions.get(permissionOrigin(requestingOrigin) ?? "") === true
-                  : permission === "notifications"
-                    ? persistent && notificationsAllowed(requestingOrigin)
-                    : ALLOWED_PREVIEW_PERMISSIONS.has(permission),
+              (_webContents, permission, requestingOrigin, details) => {
+                switch (permission) {
+                  case "clipboard-read":
+                    return (
+                      clipboardReadDecisions.get(permissionOrigin(requestingOrigin) ?? "") === true
+                    );
+                  case "notifications":
+                    return persistent && notificationsAllowed(requestingOrigin);
+                  case "media":
+                    return mediaAccess.checkMedia(requestingOrigin, details, persistent);
+                  case "display-capture":
+                    return mediaAccess.allowDisplayCapture({
+                      requestingUrl: requestingOrigin,
+                      isMainFrame: details.isMainFrame,
+                    });
+                  default:
+                    return ALLOWED_PREVIEW_PERMISSIONS.has(permission);
+                }
+              },
             );
+            mediaAccess.installDisplayMediaHandler(browserSession);
             // Attached before the session is published or initialized: the toolbar
             // only learns of extensions loaded after it exists, and a missing toolbar
             // must not cost the user the browser.

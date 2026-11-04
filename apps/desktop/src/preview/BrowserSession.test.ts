@@ -39,6 +39,7 @@ const { attachChromeExtensions } = vi.hoisted(() => ({
 vi.mock("./ChromeExtensions.ts", () => ({ attachChromeExtensions }));
 
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
+import * as BrowserMediaAccess from "./BrowserMediaAccess.ts";
 import * as BrowserNotificationPermissions from "./BrowserNotificationPermissions.ts";
 import * as BrowserSession from "./BrowserSession.ts";
 
@@ -74,9 +75,33 @@ const layerNotificationPermissions = Layer.succeed(
     list: Effect.succeed([]),
   },
 );
+const mediaAccessCalls: Array<readonly [method: string, ...args: Array<unknown>]> = [];
+const layerMediaAccess = Layer.succeed(BrowserMediaAccess.BrowserMediaAccess, {
+  requestMedia: (requester, details, persistent, callback) => {
+    mediaAccessCalls.push(["requestMedia", requester, details, persistent]);
+    callback(true);
+  },
+  checkMedia: (requestingOrigin, details, persistent) => {
+    mediaAccessCalls.push(["checkMedia", requestingOrigin, details, persistent]);
+    return true;
+  },
+  allowDisplayCapture: (details) => {
+    mediaAccessCalls.push(["allowDisplayCapture", details]);
+    return true;
+  },
+  installDisplayMediaHandler: (browserSession) => {
+    mediaAccessCalls.push(["installDisplayMediaHandler", browserSession]);
+  },
+});
 const layer = BrowserSession.layer.pipe(
   Layer.provide(
-    Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, layerDialog, layerNotificationPermissions),
+    Layer.mergeAll(
+      NodeServices.layer,
+      NodeCrypto.layer,
+      layerDialog,
+      layerNotificationPermissions,
+      layerMediaAccess,
+    ),
   ),
 );
 
@@ -105,6 +130,7 @@ describe("BrowserSession", () => {
   beforeEach(() => {
     sessions.clear();
     notificationDecisions.clear();
+    mediaAccessCalls.length = 0;
     attachChromeExtensions.mockReset();
     fromPartition.mockReset();
     fromPartition.mockImplementation((partition: string) => {
@@ -199,59 +225,114 @@ describe("BrowserSession", () => {
     }).pipe(Effect.provide(layer)),
   );
 
-  it.effect("grants preview permissions through both the request and check handlers", () =>
-    Effect.gen(function* () {
-      const browserSessions = yield* BrowserSession.BrowserSession;
-      const partition = yield* browserSessions.getPartition("scope-a");
-      yield* browserSessions.getSession("scope-a");
+  it.effect(
+    "should delegate media and display capture to BrowserMediaAccess when a guest asks",
+    () =>
+      Effect.gen(function* () {
+        const browserSessions = yield* BrowserSession.BrowserSession;
+        const partition = yield* browserSessions.getPartition("scope-a");
+        const created = yield* browserSessions.getSession("scope-a");
 
-      const browserSession = sessions.get(partition);
-      assert.isDefined(browserSession);
+        const browserSession = sessions.get(partition);
+        assert.isDefined(browserSession);
 
-      const requestHandler = browserSession.setPermissionRequestHandler.mock.calls[0]?.[0];
-      const checkHandler = browserSession.setPermissionCheckHandler.mock.calls[0]?.[0];
-      assert.isFunction(requestHandler);
-      assert.isFunction(checkHandler);
+        const requestHandler = browserSession.setPermissionRequestHandler.mock.calls[0]?.[0];
+        const checkHandler = browserSession.setPermissionCheckHandler.mock.calls[0]?.[0];
+        assert.isFunction(requestHandler);
+        assert.isFunction(checkHandler);
 
-      const requestAllows = (permission: string): boolean => {
-        let granted: boolean | undefined;
-        requestHandler(null, permission, (value: boolean) => {
-          granted = value;
-        });
-        assert.isDefined(granted);
-        return granted;
-      };
+        const requestAllows = (permission: string, details?: unknown): boolean => {
+          let granted: boolean | undefined;
+          requestHandler(
+            null,
+            permission,
+            (value: boolean) => {
+              granted = value;
+            },
+            details,
+          );
+          assert.isDefined(granted);
+          return granted;
+        };
 
-      for (const permission of [
-        "clipboard-sanitized-write",
-        "geolocation",
-        "fullscreen",
-        "pointerLock",
-        "loopback-network",
-      ]) {
-        assert.isTrue(requestAllows(permission), `request handler should allow ${permission}`);
+        assert.deepStrictEqual(mediaAccessCalls, [["installDisplayMediaHandler", created]]);
+        mediaAccessCalls.length = 0;
+        const mediaDetails = {
+          requestingUrl: "https://meet.example.com/room",
+          isMainFrame: true,
+          mediaTypes: ["video"],
+        };
+        const captureDetails = {
+          requestingUrl: "https://meet.example.com/room",
+          isMainFrame: true,
+        };
+        const mediaCheck = { isMainFrame: true, mediaType: "video" };
+        assert.isTrue(requestAllows("media", mediaDetails));
+        assert.isTrue(requestAllows("display-capture", captureDetails));
         assert.isTrue(
-          checkHandler(null, permission) as boolean,
-          `check handler should allow ${permission}`,
+          checkHandler(null, "media", "https://meet.example.com", mediaCheck) as boolean,
         );
-      }
+        assert.isTrue(
+          checkHandler(null, "display-capture", "https://meet.example.com", {
+            isMainFrame: false,
+          }) as boolean,
+        );
+        assert.deepStrictEqual(mediaAccessCalls, [
+          ["requestMedia", null, mediaDetails, true],
+          ["allowDisplayCapture", captureDetails],
+          ["checkMedia", "https://meet.example.com", mediaCheck, true],
+          [
+            "allowDisplayCapture",
+            { requestingUrl: "https://meet.example.com", isMainFrame: false },
+          ],
+        ]);
 
-      // `clipboard-write` is not a real Electron permission — the async write API
-      // uses `clipboard-sanitized-write` — so the stale name must not be granted,
-      // and unrelated permissions stay denied.
-      for (const permission of [
-        "clipboard-write",
-        "midi",
-        "local-network",
-        "local-network-access",
-      ]) {
-        assert.isFalse(requestAllows(permission), `request handler should deny ${permission}`);
-        assert.isFalse(
-          checkHandler(null, permission) as boolean,
-          `check handler should deny ${permission}`,
-        );
-      }
-    }).pipe(Effect.provide(layer)),
+        mediaAccessCalls.length = 0;
+        const incognitoPartition = yield* browserSessions.getPartition("scope-b", false);
+        const incognito = yield* browserSessions.getSession("scope-b", false);
+        const incognitoSession = sessions.get(incognitoPartition);
+        const incognitoRequest = incognitoSession?.setPermissionRequestHandler.mock.calls[0]?.[0];
+        const incognitoCheck = incognitoSession?.setPermissionCheckHandler.mock.calls[0]?.[0];
+        assert.isFunction(incognitoRequest);
+        assert.isFunction(incognitoCheck);
+        incognitoRequest(null, "media", () => {}, mediaDetails);
+        incognitoCheck(null, "media", "https://meet.example.com", mediaCheck);
+        assert.deepStrictEqual(mediaAccessCalls, [
+          ["installDisplayMediaHandler", incognito],
+          ["requestMedia", null, mediaDetails, false],
+          ["checkMedia", "https://meet.example.com", mediaCheck, false],
+        ]);
+
+        for (const permission of [
+          "clipboard-sanitized-write",
+          "geolocation",
+          "fullscreen",
+          "pointerLock",
+          "loopback-network",
+        ]) {
+          assert.isTrue(requestAllows(permission), `request handler should allow ${permission}`);
+          assert.isTrue(
+            checkHandler(null, permission) as boolean,
+            `check handler should allow ${permission}`,
+          );
+        }
+
+        // `clipboard-write` is not a real Electron permission — the async write API
+        // uses `clipboard-sanitized-write` — so the stale name must not be granted,
+        // and unrelated permissions stay denied.
+        for (const permission of [
+          "clipboard-write",
+          "midi",
+          "local-network",
+          "local-network-access",
+        ]) {
+          assert.isFalse(requestAllows(permission), `request handler should deny ${permission}`);
+          assert.isFalse(
+            checkHandler(null, permission) as boolean,
+            `check handler should deny ${permission}`,
+          );
+        }
+      }).pipe(Effect.provide(layer)),
   );
 
   it.effect("opens custom-scheme links externally only after the user confirms", () =>

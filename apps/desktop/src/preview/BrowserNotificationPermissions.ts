@@ -4,19 +4,10 @@ import {
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
-import * as Schema from "effect/Schema";
-import * as Semaphore from "effect/Semaphore";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
-
-const PermissionsJson = Schema.fromJsonString(
-  Schema.Struct({ sites: Schema.Array(BrowserNotificationPermission) }),
-);
-const decodeDocument = Schema.decodeUnknownEffect(PermissionsJson);
-const encodeDocument = Schema.encodeEffect(PermissionsJson);
+import { makePermissionStore } from "./BrowserPermissionStore.ts";
 
 export class BrowserNotificationPermissions extends Context.Service<
   BrowserNotificationPermissions,
@@ -34,57 +25,23 @@ export class BrowserNotificationPermissions extends Context.Service<
 export const makeAt = Effect.fn("BrowserNotificationPermissions.make")(function* (
   storePath: string,
 ) {
-  const fileSystem = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const initial = yield* fileSystem.readFileString(storePath).pipe(
-    Effect.flatMap(decodeDocument),
-    Effect.map((document) => document.sites),
-    Effect.catch((cause) =>
-      cause._tag === "PlatformError" && cause.reason._tag === "NotFound"
-        ? Effect.succeed([])
-        : Effect.logWarning("Could not read browser notification permissions.", cause).pipe(
-            Effect.as([]),
-          ),
-    ),
-  );
-  const decisions = new Map(initial.map((site) => [site.origin, site.decision] as const));
-
-  const list = Effect.sync(() =>
-    [...decisions]
-      .map(([origin, decision]) => ({ origin, decision }))
-      .toSorted((left, right) => left.origin.localeCompare(right.origin)),
-  );
-  const writeLock = yield* Semaphore.make(1);
-  // A failed write keeps the in-memory answer for this run rather than prompting again.
-  const persist = list.pipe(
-    Effect.flatMap((sites) => encodeDocument({ sites })),
-    Effect.flatMap((encoded) =>
-      Effect.gen(function* () {
-        const tempPath = `${storePath}.${process.pid}.tmp`;
-        yield* fileSystem.makeDirectory(path.dirname(storePath), { recursive: true });
-        yield* fileSystem.writeFileString(tempPath, `${encoded}\n`);
-        yield* fileSystem.rename(tempPath, storePath);
-      }),
-    ),
-    Effect.catch((cause) =>
-      Effect.logWarning("Could not save browser notification permissions.", cause),
-    ),
-    // Writers share one temp file, so they take turns.
-    writeLock.withPermits(1),
-  );
+  const store = yield* makePermissionStore({
+    storePath,
+    site: BrowserNotificationPermission,
+    keyOf: (site) => site.origin,
+    compare: (left, right) => left.origin.localeCompare(right.origin),
+    label: "browser notification permissions",
+  });
 
   return BrowserNotificationPermissions.of({
-    decisionFor: (origin) => decisions.get(origin),
+    decisionFor: (origin) => store.get(origin)?.decision,
     set: Effect.fn("BrowserNotificationPermissions.set")(function* (origin, decision) {
-      decisions.set(origin, decision);
-      yield* persist;
+      yield* store.put({ origin, decision });
     }),
     remove: Effect.fn("BrowserNotificationPermissions.remove")(function* (origin) {
-      decisions.delete(origin);
-      yield* persist;
-      return yield* list;
+      return yield* store.delete(origin);
     }),
-    list,
+    list: store.list,
   });
 });
 

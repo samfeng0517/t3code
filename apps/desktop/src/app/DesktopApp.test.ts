@@ -51,6 +51,7 @@ import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
 
 import * as BrowserExtensions from "../preview/BrowserExtensions.ts";
 import * as BrowserImport from "../preview/BrowserImport/BrowserImport.ts";
+import * as BrowserMediaPermissions from "../preview/BrowserMediaPermissions.ts";
 import * as BrowserNotificationPermissions from "../preview/BrowserNotificationPermissions.ts";
 import * as DesktopBackendConfiguration from "../backend/DesktopBackendConfiguration.ts";
 import * as DesktopCliCommand from "./DesktopCliCommand.ts";
@@ -193,6 +194,9 @@ it.effect(
             Layer.mock(BrowserExtensions.BrowserExtensions, {}),
             Layer.mock(BrowserImport.BrowserImport, {}),
             Layer.mock(BrowserNotificationPermissions.BrowserNotificationPermissions, {
+              decisionFor: () => undefined,
+            }),
+            Layer.mock(BrowserMediaPermissions.BrowserMediaPermissions, {
               decisionFor: () => undefined,
             }),
             Layer.mock(DesktopBackendConfiguration.DesktopBackendConfiguration, {}),
