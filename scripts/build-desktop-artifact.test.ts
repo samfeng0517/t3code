@@ -38,6 +38,7 @@ import {
   MissingMacPasskeyProvisioningProfileError,
   packWindowsServerAsar,
   preflightWindowsDesktopBuild,
+  renderMacEntitlements,
   renderMacPasskeyEntitlements,
   resolveMacWebAuthnEntitlements,
   resolveLocalMacSigningIdentity,
@@ -1444,7 +1445,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     });
   });
 
-  it("normalizes explicit macOS passkey RP domains and renders required entitlements", () => {
+  it("should render camera and microphone entitlements with and without passkey signing when normalizing macOS passkey RP domains", () => {
     const configuration = resolveMacPasskeySigningConfiguration({
       T3CODE_APPLE_TEAM_ID: "ABC1234567",
       T3CODE_MACOS_PROVISIONING_PROFILE: "/tmp/t3code.provisionprofile",
@@ -1468,6 +1469,15 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.match(entitlements, /<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\/>/u);
     assert.notInclude(entitlements, "keychain-access-groups");
     assert.notInclude(entitlements, "com.apple.developer.web-browser.public-key-credential");
+
+    const withoutPasskeys = renderMacEntitlements();
+    assert.include(withoutPasskeys, "<key>com.apple.security.cs.allow-jit</key>");
+    assert.match(withoutPasskeys, /<key>com\.apple\.security\.device\.camera<\/key>\s*<true\/>/u);
+    assert.match(
+      withoutPasskeys,
+      /<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\/>/u,
+    );
+    assert.notInclude(withoutPasskeys, "com.apple.application-identifier");
   });
 
   it("grants in-app browser passkey entitlements only when the provisioning profile does", () => {
