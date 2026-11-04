@@ -203,7 +203,7 @@ export const settingsPagesZhTW: Readonly<Record<keyof typeof settingsPagesEn, st
     "移除 Pull Request 已合併、且提交已包含在預設分支中的工作樹。",
   "settingsPages.storage.branchOnMerge.title": "刪除已合併的分支",
   "settingsPages.storage.branchOnMerge.description":
-    "刪除遠端分支已不存在、且內容已合併的本機分支；該分支所在的工作樹若沒有未提交的變更，會一併移除。",
+    "刪除內容已合併、且遠端分支已不存在的本機分支；工作樹對話串使用的分支即使沒有追蹤遠端分支也適用。該分支所在的工作樹若沒有未提交的變更，會一併移除；專案目錄若正簽出該分支且沒有變更，會先切回預設分支。",
   "settingsPages.storage.unchanged.title": "刪除未變更的工作樹",
   "settingsPages.storage.unchanged.description": "移除沒有超出預設分支之提交的工作樹。",
   "settingsPages.storage.keepWhen.title": "保留含有本機變更的工作樹",

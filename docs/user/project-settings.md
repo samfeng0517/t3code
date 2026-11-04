@@ -273,6 +273,14 @@ Merge cleanup requires a merged pull request whose commits are included in the r
 branch. A squash or rebase merge on GitHub also counts when the pull request targeted the default
 branch and the worktree is still at the pull request's last commit.
 
+**Delete merged branches** removes local branches whose work is merged, once their remote branch
+is gone. Branches of worktree threads are also removed when they never tracked a remote branch and
+their commits are on the remote default branch. If a merged branch is checked out in a project's
+folder, cleanup switches that folder to the default branch first, but only when it has no edited
+tracked files, open terminal, or active thread; checkouts that are not projects are left alone. A
+branch copied from the remote and then rewritten there before its pull request merged is also
+removed, unless you committed on it locally.
+
 Enable **Delete worktrees with deleted threads** to remove safe worktrees after their last
 thread is deleted, including archived threads and worktrees left by earlier deletions. The
 server waits for sessions and terminals to stop and retries skipped worktrees after restart.

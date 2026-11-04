@@ -213,7 +213,7 @@ export const settingsPagesEn = {
     "Remove worktrees whose pull request is merged and whose commits are included in the default branch.",
   "settingsPages.storage.branchOnMerge.title": "Delete merged branches",
   "settingsPages.storage.branchOnMerge.description":
-    "Delete local branches whose remote branch is gone and whose work is merged. A clean worktree on that branch is removed with it.",
+    "Delete local branches whose work is merged, once their remote branch is gone or, for branches of worktree threads, if they never tracked one. A clean worktree on that branch is removed with it, and a clean project checkout on it switches to the default branch.",
   "settingsPages.storage.unchanged.title": "Delete unchanged worktrees",
   "settingsPages.storage.unchanged.description":
     "Remove worktrees with no commits beyond the default branch.",
