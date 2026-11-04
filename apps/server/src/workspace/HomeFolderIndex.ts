@@ -194,5 +194,4 @@ export const make = Effect.gen(function* () {
   return HomeFolderIndex.of({ search });
 });
 
-/** @public */
 export const layer = Layer.effect(HomeFolderIndex, make);

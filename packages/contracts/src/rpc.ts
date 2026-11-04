@@ -95,6 +95,8 @@ import {
   FilesystemBrowseInput,
   FilesystemBrowseResult,
   FilesystemBrowseError,
+  FilesystemSearchHomeFoldersInput,
+  FilesystemSearchHomeFoldersResult,
 } from "./filesystem.ts";
 import {
   AgentSessionImportInput,
@@ -466,6 +468,7 @@ export const WS_METHODS = {
   shellOpenInEditor: "shell.openInEditor",
 
   filesystemBrowse: "filesystem.browse",
+  filesystemSearchHomeFolders: "filesystem.searchHomeFolders",
   filesystemGetMetadata: "filesystem.getMetadata",
   agentSessionsScan: "agentSessions.scan",
   agentSessionsImport: "agentSessions.import",
@@ -1443,6 +1446,12 @@ const WsFilesystemGetMetadataRpc = Rpc.make(WS_METHODS.filesystemGetMetadata, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsFilesystemSearchHomeFoldersRpc = Rpc.make(WS_METHODS.filesystemSearchHomeFolders, {
+  payload: FilesystemSearchHomeFoldersInput,
+  success: FilesystemSearchHomeFoldersResult,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsFilesystemBrowseRpc = Rpc.make(WS_METHODS.filesystemBrowse, {
   payload: FilesystemBrowseInput,
   success: FilesystemBrowseResult,
@@ -2335,6 +2344,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsMutateRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
+  WsFilesystemSearchHomeFoldersRpc,
   WsFilesystemGetMetadataRpc,
   WsAgentSessionsScanRpc,
   WsAgentSessionsImportRpc,

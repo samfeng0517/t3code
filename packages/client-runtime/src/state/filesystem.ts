@@ -154,5 +154,9 @@ export function createFilesystemEnvironmentAtoms<R, E>(
       // would show folders as they were. Keep it only long enough for a prefetch to land.
       idleTtlMs: BROWSE_IDLE_TTL_MS,
     }),
+    searchHomeFolders: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:filesystem:search-home-folders",
+      tag: WS_METHODS.filesystemSearchHomeFolders,
+    }),
   };
 }
