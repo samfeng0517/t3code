@@ -814,11 +814,121 @@ const make = Effect.gen(function* () {
     return yield* localChangesReason(worktreePath, rules);
   });
 
+  /** Whether every tip a local branch has had was copied from the remote, so it holds no local work. */
+  const tipsFromRemote = Effect.fn("StorageCleanup.tipsFromRemote")(function* (
+    cwd: string,
+    name: string,
+    remote: string,
+  ) {
+    const reflog = yield* git.execute({
+      operation: "StorageCleanup.branchReflog",
+      cwd,
+      args: ["reflog", "show", "--format=%gs", `refs/heads/${name}`],
+      allowNonZeroExit: true,
+    });
+    if (reflog.exitCode !== 0 || reflog.stdout.trim() === "") return false;
+    const remoteName = remote.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const remoteRef = `(?:refs/remotes/)?${remoteName}/`;
+    // A bare `pull` reads the branch's upstream on this remote; any other source may be local work.
+    const fromRemote = new RegExp(
+      `^(?:branch: Created from ${remoteRef}|reset: moving to ${remoteRef}|pull(?: -\\S+)*(?: ${remoteName}(?: \\S+)*)?: Fast-forward$)`,
+    );
+    // An empty subject is a tip moved without a message, so its source is unknown.
+    return reflog.stdout
+      .replace(/\n$/, "")
+      .split("\n")
+      .every((subject) => fromRemote.test(subject));
+  });
+
+  /** Why the main checkout cannot leave its branch for the default branch, or null when it can. */
+  const mainCheckoutBlocked = Effect.fn("StorageCleanup.mainCheckoutBlocked")(function* (
+    mainPath: string,
+    now: number,
+    serverSettings: ServerSettings,
+  ) {
+    // Read under the lease: a local thread's turn start takes no lease, but marks the thread first.
+    const snapshot = yield* readThreads();
+    const main = yield* canonical(mainPath);
+    const roots = [path.resolve(mainPath)];
+    const projectIds = new Set<string>();
+    let managed = false;
+    for (const project of snapshot.projects) {
+      const root = yield* canonical(project.workspaceRoot);
+      const same = pathKey(root) === pathKey(main);
+      if (!same && !inside(main, root)) continue;
+      managed ||= same;
+      roots.push(path.resolve(project.workspaceRoot));
+      projectIds.add(project.id);
+    }
+    // Editors and processes in a checkout that is not a project are invisible here.
+    if (!managed) return "checked out in the main checkout";
+    if (roots.some(hasTerminal)) return "open terminal in the main checkout";
+    const rootKeys = new Set(roots.map(pathKey));
+    for (const thread of snapshot.threads) {
+      const inMain =
+        thread.worktreePath === null
+          ? projectIds.has(thread.projectId)
+          : rootKeys.has(pathKey(thread.worktreePath));
+      // The idle check expects a worktree; a local thread runs in the main checkout.
+      if (
+        inMain &&
+        !storageCleanupThreadIdle({ ...thread, worktreePath: mainPath }, now, serverSettings)
+      )
+        return "a thread in the main checkout is running or has pending work";
+    }
+    if (yield* liveSessionIn(mainPath))
+      return "provider session is still open in the main checkout";
+    const status = yield* git.execute({
+      operation: "StorageCleanup.mainCheckoutChanges",
+      cwd: mainPath,
+      args: ["status", "--porcelain=v1", "-z", "--untracked-files=no", "--ignore-submodules=none"],
+      maxOutputBytes: 64 * 1024,
+    });
+    if (status.stdoutTruncated || status.stdout !== "")
+      return "the main checkout has uncommitted changes";
+    return null;
+  });
+
+  /** Moves the main checkout to the default branch, fast-forwarded to the remote; returns why not. */
+  const switchMainCheckout = Effect.fn("StorageCleanup.switchMainCheckout")(function* (
+    mainPath: string,
+    remote: string,
+    defaultBranch: string,
+    defaultRef: string,
+  ) {
+    const local = yield* git.execute({
+      operation: "StorageCleanup.defaultBranchHead",
+      cwd: mainPath,
+      args: ["rev-parse", "--verify", "--quiet", `refs/heads/${defaultBranch}`],
+      allowNonZeroExit: true,
+    });
+    const hasLocal = local.exitCode === 0;
+    if (hasLocal) {
+      const behind = yield* git.execute({
+        operation: "StorageCleanup.defaultBranchBehind",
+        cwd: mainPath,
+        args: ["merge-base", "--is-ancestor", local.stdout.trim(), defaultRef],
+        allowNonZeroExit: true,
+      });
+      if (behind.exitCode !== 0) return `local ${defaultBranch} has commits not on ${remote}`;
+    }
+    // One step, so a conflicting file fails it before HEAD moves; the ancestor check makes -C a fast-forward.
+    const switched = yield* git.execute({
+      operation: "StorageCleanup.switchMainCheckout",
+      cwd: mainPath,
+      args: ["switch", hasLocal ? "--no-track" : "--track", "-C", defaultBranch, defaultRef],
+      allowNonZeroExit: true,
+    });
+    if (switched.exitCode !== 0) return `could not switch the main checkout to ${defaultBranch}`;
+    return null;
+  });
+
   const cleanRepositoryBranches = Effect.fn("StorageCleanup.cleanRepositoryBranches")(function* (
     project: { readonly id: ProjectId; readonly workspaceRoot: string },
+    projectIds: ReadonlySet<ProjectId>,
     rules: WorktreeCleanupRules,
     snapshot: {
-      readonly projects: ReadonlyArray<{ readonly workspaceRoot: string }>;
+      readonly projects: ReadonlyArray<{ readonly id: ProjectId; readonly workspaceRoot: string }>;
       readonly threads: ReadonlyArray<OrchestrationV2ThreadShell>;
     },
     now: number,
@@ -840,10 +950,21 @@ const make = Effect.gen(function* () {
         "refs/heads",
       ],
     });
+    const threadBranches = new Set(
+      snapshot.threads.flatMap((thread) =>
+        // A local thread records whatever branch the checkout had, so only worktree threads count.
+        thread.branch !== null && thread.worktreePath !== null && projectIds.has(thread.projectId)
+          ? [thread.branch]
+          : [],
+      ),
+    );
     const gone = refs.stdout.split("\n").flatMap((line) => {
       const [name, sha, track, upstreamRemote] = line.split("\0");
-      return name && sha && track === "gone" && upstreamRemote === remote && name !== defaultBranch
-        ? [{ name, sha }]
+      if (!name || !sha || name === defaultBranch) return [];
+      if (track === "gone" && upstreamRemote === remote) return [{ name, sha, localOnly: false }];
+      // A thread's branch merged without ever tracking a remote branch, e.g. merged locally and pushed.
+      return upstreamRemote === "" && threadBranches.has(name)
+        ? [{ name, sha, localOnly: true }]
         : [];
     });
     if (gone.length === 0) return;
@@ -860,7 +981,7 @@ const make = Effect.gen(function* () {
         branch: /^branch refs\/heads\/(.+)$/m.exec(record)?.[1] ?? null,
       }))
       .filter((record) => record.path !== null);
-    for (const { name, sha } of gone) {
+    for (const { name, sha, localOnly } of gone) {
       const worktreeIndex = worktrees.findIndex((record) => record.branch === name);
       const worktreePath = worktreeIndex < 0 ? null : path.resolve(worktrees[worktreeIndex]!.path!);
       const thread = snapshot.threads.find(
@@ -885,7 +1006,11 @@ const make = Effect.gen(function* () {
       };
       const keep = (reason: string) => entries.push({ ...entry, reason: sentence(reason) });
       yield* Effect.gen(function* () {
-        if (worktreeIndex === 0) return keep("checked out in the main checkout");
+        // Without a remote branch or pull request, only gone branches have proof enough to move a checkout.
+        if (localOnly && worktreePath !== null && (yield* fs.exists(worktreePath)))
+          return keep(
+            worktreeIndex === 0 ? "checked out in the main checkout" : "checked out in a worktree",
+          );
         const ancestor = yield* git.execute({
           operation: "StorageCleanup.branchIntegrated",
           cwd,
@@ -893,22 +1018,49 @@ const make = Effect.gen(function* () {
           allowNonZeroExit: true,
         });
         const integrated = ancestor.exitCode === 0;
+        const pullRequest =
+          integrated || localOnly
+            ? null
+            : yield* gitManager
+                .branchPullRequest({ cwd, branch: name }, { refresh: true })
+                .pipe(Effect.orElseSucceed(() => null));
         const merged =
           integrated ||
-          storageCleanupPullRequestMerged(
-            yield* gitManager
-              .branchPullRequest({ cwd, branch: name }, { refresh: true })
-              .pipe(Effect.orElseSucceed(() => null)),
-            { branch: name, defaultBranch, headSha: sha, integrated },
-          );
+          storageCleanupPullRequestMerged(pullRequest, {
+            branch: name,
+            defaultBranch,
+            headSha: sha,
+            integrated,
+          }) ||
+          // A stale copy of a branch rewritten before its merge, holding only tips from the remote.
+          (typeof pullRequest?.headSha === "string" &&
+            storageCleanupPullRequestMerged(pullRequest, {
+              branch: name,
+              defaultBranch,
+              headSha: pullRequest.headSha,
+              integrated: false,
+            }) &&
+            (yield* tipsFromRemote(cwd, name, remote)));
         if (!merged) return keep(`not merged into ${defaultBranch}`);
-        if (worktreePath !== null) {
+        let switched = false;
+        if (worktreeIndex === 0) {
+          const mainPath = path.resolve(worktrees[0]!.path!);
+          const blocked = yield* withWorkspaceLease(
+            mainPath,
+            Effect.gen(function* () {
+              const reason = yield* mainCheckoutBlocked(mainPath, now, serverSettings);
+              return (
+                reason ?? (yield* switchMainCheckout(mainPath, remote, defaultBranch, defaultRef))
+              );
+            }),
+          );
+          if (blocked !== null) return keep(blocked);
+          switched = true;
+          yield* gitManager.invalidateStatus(mainPath);
+        } else if (worktreePath !== null && !(yield* fs.exists(worktreePath))) {
           // Git only lists the stale record of a worktree whose folder is gone; prune frees the branch.
-          if (!(yield* fs.exists(worktreePath))) {
-            yield* cleanupGit(cwd, ["worktree", "prune"], "git worktree prune");
-          }
-        }
-        if (worktreePath !== null && (yield* fs.exists(worktreePath))) {
+          yield* cleanupGit(cwd, ["worktree", "prune"], "git worktree prune");
+        } else if (worktreePath !== null) {
           const aliases = yield* worktreeAliases(worktreePath);
           const removeWorktree = Effect.gen(function* () {
             const blocked = yield* branchWorktreeBlocked(
@@ -957,7 +1109,9 @@ const make = Effect.gen(function* () {
           ...entry,
           outcome: "removed",
           reason: sentence(
-            `${integrated ? `merged into ${defaultBranch}` : "pull request was merged"} and deleted on ${remote}; was ${sha.slice(0, 7)}`,
+            localOnly
+              ? `merged into ${defaultBranch}; no upstream branch; was ${sha.slice(0, 7)}`
+              : `${integrated ? `merged into ${defaultBranch}` : "pull request was merged"} and deleted on ${remote}; was ${sha.slice(0, 7)}${switched ? `; switched the main checkout to ${defaultBranch}` : ""}`,
           ),
         });
         yield* gitManager.invalidateStatus(cwd);
@@ -1012,7 +1166,15 @@ const make = Effect.gen(function* () {
         ...resolveWorktreeCleanup(serverSettings, project.id),
         worktreeKeepWhen: "any-local-files",
       };
-      yield* cleanRepositoryBranches(project, rules, snapshot, now, entries, serverSettings).pipe(
+      yield* cleanRepositoryBranches(
+        project,
+        new Set(members.map((member) => member.project.id)),
+        rules,
+        snapshot,
+        now,
+        entries,
+        serverSettings,
+      ).pipe(
         Effect.catch((error) =>
           Effect.gen(function* () {
             entries.push({
