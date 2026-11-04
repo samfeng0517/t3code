@@ -295,6 +295,7 @@ export function useComposerMenuItems({
           menuGroup: "home" as const,
         })),
         projectPending: workspaceEntries.isPending,
+        homePending: homeFolders.isPending,
       });
     }
     if (composerTrigger.kind === "slash-command") {
@@ -463,7 +464,7 @@ export function useComposerMenuItems({
   const isLoading =
     (composerTriggerKind === "path" &&
       (hostBrowsePath === null
-        ? pathTriggerQuery.length > 0 && workspaceEntries.isPending
+        ? pathTriggerQuery.length > 0 && (workspaceEntries.isPending || homeFolders.isPending)
         : hostEntries.isPending)) ||
     ((composerTriggerKind === "skill" || composerTriggerKind === "slash-command") &&
       workspaceSkillsScanning) ||

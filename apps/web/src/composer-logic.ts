@@ -83,8 +83,11 @@ export function mergeComposerHomeFolderItems<T>(input: {
   projectItems: ReadonlyArray<T>;
   homeItems: ReadonlyArray<T>;
   projectPending: boolean;
+  homePending: boolean;
 }): T[] {
-  if (input.projectPending || input.homeItems.length === 0) return [...input.projectItems];
+  if (input.projectPending) return [...input.projectItems];
+  // Cap while home results are pending too, so their arrival never drops a highlighted item.
+  if (input.homeItems.length === 0 && !input.homePending) return [...input.projectItems];
   return [
     ...input.projectItems.slice(0, COMPOSER_PROJECT_ITEMS_WITH_HOME_LIMIT),
     ...input.homeItems,

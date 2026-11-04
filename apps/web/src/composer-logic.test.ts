@@ -167,6 +167,7 @@ describe("composer home folder helpers", () => {
         projectItems,
         homeItems: ["h1", "h2"],
         projectPending: false,
+        homePending: false,
       }),
     ).toEqual(["p0", "p1", "p2", "p3", "p4", "p5", "h1", "h2"]);
   });
@@ -174,15 +175,43 @@ describe("composer home folder helpers", () => {
   it("mergeComposerHomeFolderItems should leave project items unchanged when the project search is pending", () => {
     const projectItems = Array.from({ length: 10 }, (_, i) => `p${i}`);
     expect(
-      mergeComposerHomeFolderItems({ projectItems, homeItems: ["h1"], projectPending: true }),
+      mergeComposerHomeFolderItems({
+        projectItems,
+        homeItems: ["h1"],
+        projectPending: true,
+        homePending: false,
+      }),
     ).toEqual(projectItems);
   });
 
   it("mergeComposerHomeFolderItems should leave project items unchanged when there are no home items", () => {
     const projectItems = Array.from({ length: 80 }, (_, i) => `p${i}`);
     expect(
-      mergeComposerHomeFolderItems({ projectItems, homeItems: [], projectPending: false }),
+      mergeComposerHomeFolderItems({
+        projectItems,
+        homeItems: [],
+        projectPending: false,
+        homePending: false,
+      }),
     ).toEqual(projectItems);
+  });
+
+  it("mergeComposerHomeFolderItems should keep every shown project item in place when home items arrive after the project results", () => {
+    const projectItems = Array.from({ length: 20 }, (_, i) => `p${i}`);
+    const beforeHome = mergeComposerHomeFolderItems({
+      projectItems,
+      homeItems: [],
+      projectPending: false,
+      homePending: true,
+    });
+    const afterHome = mergeComposerHomeFolderItems({
+      projectItems,
+      homeItems: ["h1", "h2"],
+      projectPending: false,
+      homePending: false,
+    });
+    expect(afterHome.slice(0, beforeHome.length)).toEqual(beforeHome);
+    expect(afterHome[0]).toBe("p0");
   });
 });
 
