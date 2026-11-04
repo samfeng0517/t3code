@@ -58,11 +58,12 @@ export const FilesystemSearchHomeFoldersInput = Schema.Struct({
 });
 export type FilesystemSearchHomeFoldersInput = typeof FilesystemSearchHomeFoldersInput.Type;
 
+// Untrimmed: folder names may begin or end with spaces.
 export const FilesystemHomeFolderEntry = Schema.Struct({
-  name: TrimmedNonEmptyString,
-  fullPath: TrimmedNonEmptyString,
+  name: Schema.NonEmptyString,
+  fullPath: Schema.NonEmptyString,
   // Path below the home folder joined with "/" on every platform, e.g. "Documents/app".
-  homeRelativePath: TrimmedNonEmptyString,
+  homeRelativePath: Schema.NonEmptyString,
 });
 export type FilesystemHomeFolderEntry = typeof FilesystemHomeFolderEntry.Type;
 
