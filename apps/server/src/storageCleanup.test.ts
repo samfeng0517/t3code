@@ -348,6 +348,9 @@ const cleanupFixture = (
     let sessionLive = true;
     let onLiveCheck: Effect.Effect<void> = Effect.void;
     let outboxStatus: string | null = null;
+    let pullRequest: GitManager.GitBranchPullRequest | null = null;
+    let beforeGit: (input: { readonly operation: string }) => Effect.Effect<void> = () =>
+      Effect.void;
     let fullStatusCalls = 0;
     let snapshotReads = 0;
     let terminalListener: ((event: TerminalMetadataStreamEvent) => Effect.Effect<void>) | undefined;
@@ -371,6 +374,7 @@ const cleanupFixture = (
         ...git,
         execute: (input) =>
           Effect.gen(function* () {
+            yield* beforeGit(input);
             // Before Git's own clean check: inside `git worktree remove`, or on
             // Windows the same status check the removal makes before deleting.
             if (
@@ -470,7 +474,7 @@ const cleanupFixture = (
         )) as unknown as SqlClient.SqlClient),
       Effect.provideService(GitManager.GitManager, {
         invalidateStatus: () => Effect.void,
-        branchPullRequest: () => Effect.succeed(null),
+        branchPullRequest: () => Effect.sync(() => pullRequest),
       } as unknown as GitManager.GitManager["Service"]),
       Effect.provideService(TerminalManager.TerminalManager, {
         subscribeMetadata: (
@@ -533,6 +537,12 @@ const cleanupFixture = (
       },
       setOutboxStatus: (status: string | null) => {
         outboxStatus = status;
+      },
+      setPullRequest: (next: GitManager.GitBranchPullRequest | null) => {
+        pullRequest = next;
+      },
+      setBeforeGit: (hook: typeof beforeGit) => {
+        beforeGit = hook;
       },
       setDeletedThreads: (next: OrchestrationV2ThreadShell[]) => {
         deletedThreads = next;
@@ -2429,8 +2439,73 @@ describe("merged branch cleanup", () => {
       command(repo, ["branch", "--list", "--format=%(refname:short)"]).pipe(
         Effect.map((result) => result.stdout.split("\n").filter(Boolean)),
       );
-    return { ...fixture, deleteOnRemote, localBranches };
+    const removeWorktree = () => command(repo, ["worktree", "remove", worktree]);
+    const commitFeature = (content: string) =>
+      Effect.gen(function* () {
+        yield* fs.writeFileString(`${worktree}/tracked.txt`, `${content}\n`);
+        yield* command(worktree, ["commit", "-am", content]);
+      });
+    const landFeature = () =>
+      Effect.gen(function* () {
+        yield* commitFeature("feature work");
+        yield* command(worktree, ["push", "origin", "feature:main"]);
+      });
+    // The remote rewrites `feature` and merges that version, leaving this clone's copy stale.
+    const mergeRewrittenFeature = () =>
+      Effect.gen(function* () {
+        yield* commitFeature("first version");
+        yield* command(worktree, ["push", "-u", "origin", "feature"]);
+        yield* removeWorktree();
+        yield* command(repo, ["branch", "-D", "feature"]);
+        yield* command(repo, ["branch", "--track", "feature", "origin/feature"]);
+        const rewritten = (yield* command(repo, [
+          "commit-tree",
+          "main^{tree}",
+          "-p",
+          "main",
+          "-m",
+          "rewritten",
+        ])).stdout.trim();
+        yield* command(repo, ["push", "origin", `${rewritten}:refs/heads/main`]);
+        yield* command(repo, ["push", "origin", "--delete", "feature"]);
+        fixture.setPullRequest({
+          number: 1,
+          title: "Feature",
+          url: "https://example.com/pulls/1",
+          baseRef: "main",
+          headRef: "feature",
+          state: "merged",
+          updatedAt: null,
+          repositoryKey: null,
+          headSha: rewritten,
+        });
+      });
+    const checkOutLandedFeature = () =>
+      Effect.gen(function* () {
+        yield* landFeature();
+        yield* command(worktree, ["push", "-u", "origin", "feature"]);
+        yield* removeWorktree();
+        yield* command(repo, ["switch", "feature"]);
+        yield* command(repo, ["push", "origin", "--delete", "feature"]);
+      });
+    const currentBranch = () =>
+      command(repo, ["branch", "--show-current"]).pipe(
+        Effect.map((result) => result.stdout.trim()),
+      );
+    return {
+      ...fixture,
+      deleteOnRemote,
+      localBranches,
+      removeWorktree,
+      commitFeature,
+      landFeature,
+      mergeRewrittenFeature,
+      checkOutLandedFeature,
+      currentBranch,
+    };
   });
+  const branchEntry = (report: { readonly entries: ReadonlyArray<{ readonly kind: string }> }) =>
+    report.entries.find((entry) => entry.kind === "branch");
   it.live(
     "should delete a gone branch and its clean worktree when the branch is merged into the default branch",
     () =>
@@ -2587,6 +2662,247 @@ describe("merged branch cleanup", () => {
         expect(yield* localBranches()).toEqual(["feature", "main"]);
       }),
     ),
+  );
+
+  it.live(
+    "should delete a thread's branch without an upstream when it is merged into the default branch",
+    () =>
+      runCleanupTest(
+        Effect.gen(function* () {
+          const { service, landFeature, removeWorktree, localBranches } = yield* goneBranchFixture;
+          yield* landFeature();
+          yield* removeWorktree();
+
+          const report = yield* service.runNow;
+
+          expect(branchEntry(report)).toMatchObject({
+            outcome: "removed",
+            branch: "feature",
+            reason: expect.stringMatching(
+              /^Merged into main; no upstream branch; was [0-9a-f]{7}$/,
+            ),
+          });
+          expect(yield* localBranches()).toEqual(["main"]);
+        }),
+      ),
+  );
+
+  it.live("should leave a branch without an upstream alone when no thread used it", () =>
+    runCleanupTest(
+      Effect.gen(function* () {
+        const { service, landFeature, removeWorktree, localBranches, setThreads } =
+          yield* goneBranchFixture;
+        yield* landFeature();
+        yield* removeWorktree();
+        setThreads([shell({ branch: "other" })]);
+
+        const report = yield* service.runNow;
+
+        expect(branchEntry(report)).toBeUndefined();
+        expect(yield* localBranches()).toEqual(["feature", "main"]);
+      }),
+    ),
+  );
+
+  it.live("should keep a thread's branch without an upstream when it is not merged", () =>
+    runCleanupTest(
+      Effect.gen(function* () {
+        const { service, commitFeature, removeWorktree, localBranches } = yield* goneBranchFixture;
+        yield* commitFeature("local work");
+        yield* removeWorktree();
+
+        const report = yield* service.runNow;
+
+        expect(branchEntry(report)).toMatchObject({
+          outcome: "kept",
+          reason: "Not merged into main",
+        });
+        expect(yield* localBranches()).toEqual(["feature", "main"]);
+      }),
+    ),
+  );
+
+  it.live(
+    "should keep a thread's branch without an upstream when a worktree has it checked out",
+    () =>
+      runCleanupTest(
+        Effect.gen(function* () {
+          const { service, fs, worktree, landFeature, localBranches } = yield* goneBranchFixture;
+          yield* landFeature();
+
+          const report = yield* service.runNow;
+
+          expect(branchEntry(report)).toMatchObject({
+            outcome: "kept",
+            reason: "Checked out in a worktree",
+          });
+          expect(yield* fs.exists(worktree)).toBe(true);
+          expect(yield* localBranches()).toEqual(["feature", "main"]);
+        }),
+      ),
+  );
+
+  it.live(
+    "should delete a stale copy of a gone branch when its rewritten pull request merged and every tip came from the remote",
+    () =>
+      runCleanupTest(
+        Effect.gen(function* () {
+          const { service, mergeRewrittenFeature, localBranches } = yield* goneBranchFixture;
+          yield* mergeRewrittenFeature();
+
+          const report = yield* service.runNow;
+
+          expect(branchEntry(report)).toMatchObject({
+            outcome: "removed",
+            branch: "feature",
+            reason: expect.stringMatching(
+              /^Pull request was merged and deleted on origin; was [0-9a-f]{7}$/,
+            ),
+          });
+          expect(yield* localBranches()).toEqual(["main"]);
+        }),
+      ),
+  );
+
+  it.live.each([
+    "has a local commit",
+    "was moved without a reflog message",
+    "was fast-forwarded from a local branch",
+  ] as const)(
+    "should keep a gone branch whose rewritten pull request merged when it %s",
+    (condition) =>
+      runCleanupTest(
+        Effect.gen(function* () {
+          const fixture = yield* goneBranchFixture;
+          const { service, repo, worktree, command, commitFeature, localBranches } = fixture;
+          const { mergeRewrittenFeature, removeWorktree } = fixture;
+          yield* mergeRewrittenFeature();
+          if (condition === "has a local commit") {
+            yield* command(repo, ["worktree", "add", worktree, "feature"]);
+            yield* commitFeature("local follow-up");
+            yield* removeWorktree();
+          } else if (condition === "was moved without a reflog message") {
+            const next = (yield* command(repo, [
+              "commit-tree",
+              "feature^{tree}",
+              "-p",
+              "feature",
+              "-m",
+              "scripted",
+            ])).stdout.trim();
+            yield* command(repo, ["update-ref", "refs/heads/feature", next]);
+          } else {
+            yield* command(repo, ["branch", "wip", "feature"]);
+            yield* command(repo, ["worktree", "add", worktree, "wip"]);
+            yield* commitFeature("local follow-up");
+            yield* command(worktree, ["switch", "feature"]);
+            yield* command(worktree, ["pull", "--ff-only", ".", "wip"]);
+            yield* removeWorktree();
+            yield* command(repo, ["branch", "-D", "wip"]);
+          }
+
+          const report = yield* service.runNow;
+
+          expect(branchEntry(report)).toMatchObject({
+            outcome: "kept",
+            reason: "Not merged into main",
+          });
+          expect(yield* localBranches()).toEqual(["feature", "main"]);
+        }),
+      ),
+  );
+
+  it.live(
+    "should switch the main checkout to the default branch when its gone branch is merged",
+    () =>
+      runCleanupTest(
+        Effect.gen(function* () {
+          const { service, repo, command, checkOutLandedFeature, currentBranch, localBranches } =
+            yield* goneBranchFixture;
+          yield* checkOutLandedFeature();
+
+          const report = yield* service.runNow;
+
+          expect(branchEntry(report)).toMatchObject({
+            outcome: "removed",
+            branch: "feature",
+            reason: expect.stringMatching(
+              /^Merged into main and deleted on origin; was [0-9a-f]{7}; switched the main checkout to main$/,
+            ),
+          });
+          expect(yield* currentBranch()).toBe("main");
+          const heads = yield* command(repo, ["rev-parse", "main", "origin/main"]);
+          const [local, remote] = heads.stdout.trim().split("\n");
+          expect(local).toBe(remote);
+          expect(yield* localBranches()).toEqual(["main"]);
+        }),
+      ),
+  );
+
+  const runningThread = "A thread in the main checkout is running or has pending work";
+  it.live.each([
+    ["has uncommitted changes", "The main checkout has uncommitted changes"],
+    ["has a running thread", runningThread],
+    ["has a thread that starts during the scan", runningThread],
+    ["has a running thread in a subfolder project", runningThread],
+    ["is not a project", "Checked out in the main checkout"],
+    ["has a file the switch would overwrite", "Could not switch the main checkout to main"],
+  ] as const)(
+    "should keep a gone branch checked out in the main checkout when that checkout %s",
+    ([condition, reason]) =>
+      runCleanupTest(
+        Effect.gen(function* () {
+          const fixture = yield* goneBranchFixture;
+          const { service, fs, repo, command, config, checkOutLandedFeature } = fixture;
+          const { currentBranch, localBranches, setThreads, setProjectRoots } = fixture;
+          yield* checkOutLandedFeature();
+          const running = shell({ branch: "feature", status: "running" });
+          switch (condition) {
+            case "has uncommitted changes":
+              yield* fs.writeFileString(`${repo}/tracked.txt`, "in progress\n");
+              break;
+            case "has a running thread":
+              setThreads([running]);
+              break;
+            case "has a thread that starts during the scan":
+              fixture.setBeforeGit((input) =>
+                input.operation === "StorageCleanup.branchIntegrated"
+                  ? Effect.sync(() => setThreads([running]))
+                  : Effect.void,
+              );
+              break;
+            case "has a running thread in a subfolder project":
+              yield* fs.makeDirectory(`${repo}/sub`);
+              setProjectRoots([repo, `${repo}/sub`]);
+              setThreads([{ ...running, projectId: ProjectId.make("project-2") }]);
+              break;
+            case "is not a project": {
+              const other = `${config.worktreesDir}/other`;
+              yield* command(repo, ["worktree", "add", "-b", "other", other]);
+              setProjectRoots([other]);
+              setThreads([]);
+              break;
+            }
+            case "has a file the switch would overwrite": {
+              const next = `${config.worktreesDir}/next`;
+              yield* command(repo, ["worktree", "add", "--detach", next, "origin/main"]);
+              yield* fs.writeFileString(`${next}/new.txt`, "from the remote\n");
+              yield* command(next, ["add", "new.txt"]);
+              yield* command(next, ["commit", "-m", "add new.txt"]);
+              yield* command(next, ["push", "origin", "HEAD:main"]);
+              yield* command(repo, ["worktree", "remove", next]);
+              yield* fs.writeFileString(`${repo}/new.txt`, "untracked local\n");
+              break;
+            }
+          }
+
+          const report = yield* service.runNow;
+
+          expect(branchEntry(report)).toMatchObject({ outcome: "kept", reason });
+          expect(yield* currentBranch()).toBe("feature");
+          expect(yield* localBranches()).toContain("feature");
+        }),
+      ),
   );
 });
 
