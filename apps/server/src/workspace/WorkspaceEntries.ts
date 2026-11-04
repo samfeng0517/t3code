@@ -204,9 +204,14 @@ export const make = Effect.gen(function* () {
   const browse: WorkspaceEntries["Service"]["browse"] = Effect.fn("WorkspaceEntries.browse")(
     function* (input) {
       const resolvedInputPath = yield* resolveBrowseTarget(input, path);
-      const endsWithSeparator = /[\\/]$/.test(input.partialPath) || input.partialPath === "~";
-      const parentPath = endsWithSeparator ? resolvedInputPath : path.dirname(resolvedInputPath);
-      const prefix = endsWithSeparator ? "" : path.basename(resolvedInputPath);
+      const lastSegment = input.partialPath.split(/[\\/]/).at(-1);
+      const endsWithSeparator =
+        /[\\/]$/.test(input.partialPath) || input.partialPath === "~" || lastSegment === "..";
+      // Resolving drops a trailing "." segment, which would list the parent instead.
+      const endsWithDot = lastSegment === ".";
+      const parentPath =
+        endsWithSeparator || endsWithDot ? resolvedInputPath : path.dirname(resolvedInputPath);
+      const prefix = endsWithSeparator ? "" : endsWithDot ? "." : path.basename(resolvedInputPath);
 
       const dirents = yield* Effect.tryPromise({
         try: () => NodeFSP.readdir(parentPath, { withFileTypes: true }),
@@ -227,25 +232,55 @@ export const make = Effect.gen(function* () {
         ),
       );
 
-      const showHidden = endsWithSeparator || prefix.startsWith(".");
+      // Mentions list whole home folders, where dotfiles would bury everything else.
+      const showHidden = (endsWithSeparator && !input.includeFiles) || prefix.startsWith(".");
       const lowerPrefix = prefix.toLowerCase();
-      const entries: Array<{ readonly name: string; readonly fullPath: string }> = [];
-      for (const dirent of dirents) {
-        if (
-          dirent.isDirectory() &&
+      const candidates = dirents.filter(
+        (dirent) =>
           dirent.name.toLowerCase().startsWith(lowerPrefix) &&
-          (showHidden || !dirent.name.startsWith("."))
-        ) {
-          entries.push({
-            name: dirent.name,
-            fullPath: path.join(parentPath, dirent.name),
-          });
-        }
+          (showHidden || !dirent.name.startsWith(".")) &&
+          // The wire trims names, so a padded name would link to a path that does not exist.
+          (!input.includeFiles || dirent.name.trim() === dirent.name),
+      );
+      const resolveKind = async (
+        dirent: (typeof dirents)[number],
+      ): Promise<"file" | "directory" | undefined> => {
+        if (dirent.isDirectory()) return "directory";
+        if (!input.includeFiles) return undefined;
+        if (dirent.isFile()) return "file";
+        if (!dirent.isSymbolicLink()) return undefined;
+        const stat = await NodeFSP.stat(path.join(parentPath, dirent.name)).catch(() => undefined);
+        return stat?.isDirectory() ? "directory" : stat?.isFile() ? "file" : undefined;
+      };
+      const kinds: Array<"file" | "directory" | undefined> = [];
+      for (let offset = 0; offset < candidates.length; offset += SYMLINK_RESOLVE_BATCH_SIZE) {
+        kinds.push(
+          ...(yield* Effect.promise(() =>
+            Promise.all(
+              candidates.slice(offset, offset + SYMLINK_RESOLVE_BATCH_SIZE).map(resolveKind),
+            ),
+          )),
+        );
       }
+      const entries = candidates.flatMap((dirent, index) => {
+        const kind = kinds[index];
+        return kind === undefined
+          ? []
+          : [{ name: dirent.name, fullPath: path.join(parentPath, dirent.name), kind }];
+      });
 
+      const sorted = entries.toSorted(
+        (left, right) =>
+          (left.kind === right.kind ? 0 : left.kind === "directory" ? -1 : 1) ||
+          left.name.localeCompare(right.name),
+      );
+      const limited = input.limit === undefined ? sorted : sorted.slice(0, input.limit);
       return {
         parentPath,
-        entries: entries.toSorted((left, right) => left.name.localeCompare(right.name)),
+        // Folder-only callers keep the original response shape.
+        entries: input.includeFiles
+          ? limited
+          : limited.map((entry) => ({ name: entry.name, fullPath: entry.fullPath })),
       };
     },
   );

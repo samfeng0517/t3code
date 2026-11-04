@@ -1,9 +1,10 @@
 import * as Schema from "effect/Schema";
-import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 const FILESYSTEM_PATH_MAX_LENGTH = 512;
 
 export const FILESYSTEM_METADATA_BATCH_LIMIT = 64;
+const FILESYSTEM_BROWSE_MAX_LIMIT = 500;
 
 export const FilesystemGetMetadataInput = Schema.Struct({
   // Absolute host paths, including ~/; clients must anchor relative paths.
@@ -29,12 +30,19 @@ export type FilesystemGetMetadataResult = typeof FilesystemGetMetadataResult.Typ
 export const FilesystemBrowseInput = Schema.Struct({
   partialPath: TrimmedNonEmptyString.check(Schema.isMaxLength(FILESYSTEM_PATH_MAX_LENGTH)),
   cwd: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(FILESYSTEM_PATH_MAX_LENGTH))),
+  // Omitted by older clients, which get folders only and the full listing.
+  includeFiles: Schema.optionalKey(Schema.Boolean),
+  limit: Schema.optionalKey(
+    PositiveInt.check(Schema.isLessThanOrEqualTo(FILESYSTEM_BROWSE_MAX_LIMIT)),
+  ),
 });
 export type FilesystemBrowseInput = typeof FilesystemBrowseInput.Type;
 
 export const FilesystemBrowseEntry = Schema.Struct({
   name: TrimmedNonEmptyString,
   fullPath: TrimmedNonEmptyString,
+  // Absent from servers that list folders only.
+  kind: Schema.optionalKey(Schema.Literals(["file", "directory"])),
 });
 export type FilesystemBrowseEntry = typeof FilesystemBrowseEntry.Type;
 
