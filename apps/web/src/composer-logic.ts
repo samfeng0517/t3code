@@ -42,6 +42,36 @@ export function isPathSuggestionCurrent(
   );
 }
 
+/** `@/…`, `@~…` and `@../…` browse the host filesystem; anything else searches the project. */
+export function composerHostBrowsePath(query: string): string | null {
+  if (query === "~" || query === "..") return `${query}/`;
+  return query.startsWith("/") || query.startsWith("~/") || query.startsWith("../") ? query : null;
+}
+
+/**
+ * The mention text that opens `name` inside the folder the query is browsing. Paths with
+ * whitespace take the quoted `@"…` form, since a bare mention ends at the first space.
+ */
+export function composerHostBrowseChildQuery(browsePath: string, name: string): string {
+  // A trailing `.` or `..` names the listed folder itself, not a prefix within it.
+  const folder = /(?:^|\/)\.\.?$/.test(browsePath) ? `${browsePath}/` : browsePath;
+  const child = `${folder.slice(0, folder.lastIndexOf("/") + 1)}${name}/`;
+  return /\s/.test(child) ? `"${child}` : child;
+}
+
+/** An open `@"…` host path mention, which may contain spaces. */
+function detectQuotedHostPathTrigger(text: string, cursor: number): ComposerTrigger | null {
+  const lineStart = text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
+  const match = /(^|\s)@"((?:\/|~\/|\.\.\/)[^"\n]*)$/.exec(text.slice(lineStart, cursor));
+  if (!match) return null;
+  return {
+    kind: "path",
+    query: match[2] ?? "",
+    rangeStart: lineStart + match.index + (match[1]?.length ?? 0),
+    rangeEnd: cursor,
+  };
+}
+
 export function formatAssistantCitationForComposer(citation: AssistantCitation, comment = "") {
   return `${serializeAssistantCitation(withAssistantCitationComment(citation, comment))} `;
 }
@@ -250,6 +280,8 @@ export function collapseExpandedComposerCursor(
 
 export function detectComposerTrigger(text: string, cursorInput: number): ComposerTrigger | null {
   const cursor = clampCursor(text, cursorInput);
+  const quotedHostPath = detectQuotedHostPathTrigger(text, cursor);
+  if (quotedHostPath) return quotedHostPath;
   const tokenStart = tokenStartForCursor(text, cursor);
   const token = text.slice(tokenStart, cursor);
   if (token.startsWith("/")) {

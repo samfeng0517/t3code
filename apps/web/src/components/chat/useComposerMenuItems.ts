@@ -20,7 +20,11 @@ import {
 } from "@t3tools/shared/composerPullRequestMatches";
 import { formatProviderSkillDisplayName } from "@t3tools/shared/inlineSkills";
 
-import type { ComposerTrigger } from "../../composer-logic";
+import {
+  composerHostBrowseChildQuery,
+  composerHostBrowsePath,
+  type ComposerTrigger,
+} from "../../composer-logic";
 import type { DraftId } from "../../composerDraftStore";
 import { basenameOfPath } from "../../pierre-icons";
 import {
@@ -38,7 +42,12 @@ import {
 } from "~/state/pullRequests";
 import { useT } from "~/i18n";
 import { useEnvironmentQuery } from "~/state/query";
-import { useComposerPathSearch, useDebouncedValue, useThreadSearch } from "~/state/queries";
+import {
+  useComposerHostPathBrowse,
+  useComposerPathSearch,
+  useDebouncedValue,
+  useThreadSearch,
+} from "~/state/queries";
 import {
   matchesPullRequestQuery,
   rankPullRequestMatches,
@@ -122,10 +131,17 @@ export function useComposerMenuItems({
     ...identity,
     machine: environmentMachines.get(identity.environmentId) ?? ("server" as const),
   }));
+  const hostBrowsePath = isPathTrigger ? composerHostBrowsePath(pathTriggerQuery) : null;
   const workspaceEntries = useComposerPathSearch({
     environmentId,
     cwd: isPathTrigger ? gitCwd : null,
+    query: isPathTrigger && hostBrowsePath === null ? pathTriggerQuery : null,
+  });
+  const hostEntries = useComposerHostPathBrowse({
+    environmentId,
+    cwd: isPathTrigger ? gitCwd : null,
     query: isPathTrigger ? pathTriggerQuery : null,
+    browsePath: hostBrowsePath,
   });
 
   const pullRequestListTargets =
@@ -186,6 +202,43 @@ export function useComposerMenuItems({
       ? []
       : composerPullRequestsFromLinks(threadPullRequests ?? [], pullRequestProjectId);
 
+  const hostPathItems = (): ComposerCommandItem[] => {
+    const browsedPath = hostEntries.searchedBrowsePath;
+    const result = hostEntries.result;
+    if (browsedPath === null || result === null) return [];
+    const folderName = basenameOfPath(result.parentPath);
+    return [
+      ...(browsedPath.endsWith("/") && folderName
+        ? [
+            {
+              id: `path:directory:${result.parentPath}`,
+              type: "path" as const,
+              path: result.parentPath,
+              pathKind: "directory" as const,
+              searchTarget: hostEntries.searchedTarget,
+              label: folderName,
+              description: t("composer.menu.insertFolder"),
+            },
+          ]
+        : []),
+      ...result.entries.map((entry) => {
+        const kind = entry.kind ?? "directory";
+        return {
+          id: `path:${kind}:${entry.fullPath}`,
+          type: "path" as const,
+          path: entry.fullPath,
+          pathKind: kind,
+          searchTarget: hostEntries.searchedTarget,
+          label: entry.name,
+          description: "",
+          ...(kind === "directory"
+            ? { drillQuery: composerHostBrowseChildQuery(browsedPath, entry.name) }
+            : {}),
+        };
+      }),
+    ];
+  };
+
   const items = ((): ComposerCommandItem[] => {
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "path") {
@@ -206,15 +259,17 @@ export function useComposerMenuItems({
               query: composerTrigger.query,
             })
           : []),
-        ...workspaceEntries.entries.map((entry) => ({
-          id: `path:${entry.kind}:${entry.path}`,
-          type: "path" as const,
-          path: entry.path,
-          pathKind: entry.kind,
-          searchTarget: workspaceEntries.searchedTarget,
-          label: basenameOfPath(entry.path),
-          description: entry.path.slice(0, Math.max(0, entry.path.lastIndexOf("/"))),
-        })),
+        ...(hostBrowsePath === null
+          ? workspaceEntries.entries.map((entry) => ({
+              id: `path:${entry.kind}:${entry.path}`,
+              type: "path" as const,
+              path: entry.path,
+              pathKind: entry.kind,
+              searchTarget: workspaceEntries.searchedTarget,
+              label: basenameOfPath(entry.path),
+              description: entry.path.slice(0, Math.max(0, entry.path.lastIndexOf("/"))),
+            }))
+          : hostPathItems()),
       ];
     }
     if (composerTrigger.kind === "slash-command") {
@@ -381,7 +436,10 @@ export function useComposerMenuItems({
     return [];
   })();
   const isLoading =
-    (composerTriggerKind === "path" && pathTriggerQuery.length > 0 && workspaceEntries.isPending) ||
+    (composerTriggerKind === "path" &&
+      (hostBrowsePath === null
+        ? pathTriggerQuery.length > 0 && workspaceEntries.isPending
+        : hostEntries.isPending)) ||
     ((composerTriggerKind === "skill" || composerTriggerKind === "slash-command") &&
       workspaceSkillsScanning) ||
     (composerTriggerKind === "pull-request" &&

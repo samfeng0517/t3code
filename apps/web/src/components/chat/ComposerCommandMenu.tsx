@@ -42,6 +42,8 @@ export type ComposerCommandItem =
       path: string;
       pathKind: ProjectEntry["kind"];
       searchTarget: ComposerPathSearchTarget;
+      /** Host folders open in place: selecting one rewrites the mention to this text. */
+      drillQuery?: string;
       label: string;
       description: string;
     }

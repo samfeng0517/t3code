@@ -99,6 +99,7 @@ export const composerZhTW: Readonly<Record<keyof typeof composerEn, string>> = {
   "composer.menu.empty.pullRequestNoMatch": "沒有符合 {query} 的 Pull Request。",
   "composer.menu.empty.pullRequestsNone": "這個儲存庫中沒有 Pull Request。",
   "composer.menu.empty.paths": "沒有符合的檔案或資料夾。",
+  "composer.menu.insertFolder": "插入此資料夾",
   "composer.menu.empty.commands": "沒有符合的指令。",
   "composer.menu.listbox.path": "檔案與資料夾",
   "composer.menu.listbox.pull-request": "Pull Request",

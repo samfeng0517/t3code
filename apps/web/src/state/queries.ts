@@ -31,7 +31,7 @@ import { AsyncResult, Atom } from "effect/reactivity";
 import { useEffect, useState } from "react";
 
 import { appAtomRegistry } from "../rpc/atomRegistry";
-import { useFilesystemReadAccess } from "./filesystem";
+import { filesystemEnvironment, useFilesystemReadAccess } from "./filesystem";
 import { orchestrationEnvironment } from "./orchestration";
 import { olderSettledThreads, threadFamilies } from "./threads";
 import { isPaginatedBranchesNextPagePending } from "./paginatedBranches";
@@ -345,6 +345,55 @@ export function useProjectPathSearch(
 
 export function useComposerPathSearch(target: ComposerPathSearchTarget) {
   return useProjectPathSearch(target, COMPOSER_PATH_SEARCH_LIMIT);
+}
+
+/** Lists files and folders outside the project for `@/`, `@~/` and `@../` mentions. */
+export function useComposerHostPathBrowse(
+  target: ComposerPathSearchTarget & {
+    readonly browsePath: string | null;
+  },
+) {
+  const targetKey = JSON.stringify([
+    target.environmentId,
+    target.cwd,
+    target.query,
+    target.browsePath,
+  ]);
+  const debouncedKey = useDebouncedValue(targetKey, PROJECT_PATH_SEARCH_DEBOUNCE_MS);
+  const [environmentId, cwd, query, browsePath] = JSON.parse(debouncedKey) as [
+    EnvironmentId | null,
+    string | null,
+    string | null,
+    string | null,
+  ];
+  const debouncedTarget = { environmentId, cwd, query, browsePath };
+  const fileAccess = useFilesystemReadAccess(debouncedTarget.environmentId);
+  const hasTarget = debouncedTarget.environmentId !== null && debouncedTarget.browsePath !== null;
+  const result = useEnvironmentQuery(
+    fileAccess.canReadFiles && hasTarget
+      ? filesystemEnvironment.browse({
+          environmentId: debouncedTarget.environmentId!,
+          input: {
+            partialPath: debouncedTarget.browsePath!,
+            ...(debouncedTarget.cwd ? { cwd: debouncedTarget.cwd } : {}),
+            includeFiles: true,
+            limit: COMPOSER_PATH_SEARCH_LIMIT,
+          },
+        })
+      : null,
+  );
+  const isSettled = targetKey === debouncedKey;
+  return {
+    // A missing or unreadable folder reads as no matches, like a search that found nothing.
+    result: result.error ? null : (result.data ?? null),
+    isPending: !isSettled || (hasTarget && (fileAccess.isPending || result.isPending)),
+    searchedTarget: {
+      environmentId: debouncedTarget.environmentId,
+      cwd: debouncedTarget.cwd,
+      query: debouncedTarget.query,
+    } satisfies ComposerPathSearchTarget,
+    searchedBrowsePath: debouncedTarget.browsePath,
+  };
 }
 
 interface ProjectContentSearchTarget {

@@ -1856,6 +1856,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (!trigger) return;
     if (item.type === "path") {
       if (!isPathSuggestionCurrent(item.searchTarget, trigger, environmentId, gitCwd)) return;
+      if (item.drillQuery !== undefined) {
+        // Opening a folder keeps the mention open so the menu lists its contents.
+        const applied = applyPromptReplacement(
+          trigger.rangeStart,
+          trigger.rangeEnd,
+          `@${item.drillQuery}`,
+          { expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd) },
+        );
+        if (applied) setComposerHighlightedItemId(null);
+        return;
+      }
       const replacement = `${serializeComposerFileLink(item.path)} `;
       const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
         snapshot.value,
