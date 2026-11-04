@@ -17,6 +17,7 @@ import { messageSearchTokens } from "@t3tools/shared/paletteSearch";
 import { type VcsRefTarget } from "@t3tools/client-runtime/state/vcs";
 import type {
   EnvironmentId,
+  FilesystemHomeFolderEntry,
   OrchestrationV2GetTurnItemResult,
   ProjectContentMatch,
   ProjectEntry,
@@ -30,6 +31,7 @@ import * as Cause from "effect/Cause";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useEffect, useState } from "react";
 
+import { isComposerHomeFolderQuery } from "../composer-logic";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { filesystemEnvironment, useFilesystemReadAccess } from "./filesystem";
 import { orchestrationEnvironment } from "./orchestration";
@@ -41,12 +43,14 @@ import { vcsEnvironment } from "./vcs";
 
 const PROJECT_PATH_SEARCH_DEBOUNCE_MS = 120;
 const COMPOSER_PATH_SEARCH_LIMIT = 80;
+const COMPOSER_HOME_FOLDER_SEARCH_LIMIT = 8;
 const PROJECT_CONTENT_SEARCH_DEBOUNCE_MS = 120;
 const PROJECT_CONTENT_SEARCH_LIMIT = 500;
 const THREAD_SEARCH_DEBOUNCE_MS = 120;
 const VCS_REF_LIST_LIMIT = 100;
 const EMPTY_REFS: ReadonlyArray<VcsRef> = [];
 const EMPTY_PROJECT_ENTRIES: ReadonlyArray<ProjectEntry> = [];
+const EMPTY_HOME_FOLDER_ENTRIES: ReadonlyArray<FilesystemHomeFolderEntry> = [];
 const EMPTY_CONTENT_MATCHES: ReadonlyArray<ProjectContentMatch> = [];
 const INITIAL_BRANCH_CURSORS = [undefined] as const;
 const EMPTY_THREAD_SEARCH_MATCHES: ReadonlyArray<EnvironmentThreadSearchMatch> = Object.freeze([]);
@@ -393,6 +397,41 @@ export function useComposerHostPathBrowse(
       query: debouncedTarget.query,
     } satisfies ComposerPathSearchTarget,
     searchedBrowsePath: debouncedTarget.browsePath,
+  };
+}
+
+/** Finds folders under the server home for a bare `@name` mention. */
+export function useComposerHomeFolderSearch(target: ComposerPathSearchTarget): {
+  entries: ReadonlyArray<FilesystemHomeFolderEntry>;
+  isPending: boolean;
+  searchedTarget: ComposerPathSearchTarget;
+} {
+  const targetKey = JSON.stringify([target.environmentId, target.cwd, target.query]);
+  const debouncedKey = useDebouncedValue(targetKey, PROJECT_PATH_SEARCH_DEBOUNCE_MS);
+  const [environmentId, cwd, rawQuery] = JSON.parse(debouncedKey) as [
+    EnvironmentId | null,
+    string | null,
+    string | null,
+  ];
+  const query = rawQuery === null ? null : rawQuery.trim();
+  const fileAccess = useFilesystemReadAccess(environmentId);
+  const hasTarget = environmentId !== null && query !== null && isComposerHomeFolderQuery(query);
+  const result = useEnvironmentQuery(
+    fileAccess.canReadFiles && hasTarget
+      ? filesystemEnvironment.searchHomeFolders({
+          environmentId: environmentId!,
+          input: { query: query!, limit: COMPOSER_HOME_FOLDER_SEARCH_LIMIT },
+        })
+      : null,
+  );
+  return {
+    // An unreadable home reads as no matches, like host browse.
+    entries: result.error
+      ? EMPTY_HOME_FOLDER_ENTRIES
+      : (result.data?.entries ?? EMPTY_HOME_FOLDER_ENTRIES),
+    isPending:
+      targetKey !== debouncedKey || (hasTarget && (fileAccess.isPending || result.isPending)),
+    searchedTarget: { environmentId, cwd, query },
   };
 }
 

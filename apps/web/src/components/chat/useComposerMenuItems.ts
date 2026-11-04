@@ -21,8 +21,11 @@ import {
 import { formatProviderSkillDisplayName } from "@t3tools/shared/inlineSkills";
 
 import {
+  composerHomeFolderDrillQuery,
+  composerHomeFolderParentLabel,
   composerHostBrowseChildQuery,
   composerHostBrowsePath,
+  mergeComposerHomeFolderItems,
   type ComposerTrigger,
 } from "../../composer-logic";
 import type { DraftId } from "../../composerDraftStore";
@@ -43,6 +46,7 @@ import {
 import { useT } from "~/i18n";
 import { useEnvironmentQuery } from "~/state/query";
 import {
+  useComposerHomeFolderSearch,
   useComposerHostPathBrowse,
   useComposerPathSearch,
   useDebouncedValue,
@@ -143,6 +147,11 @@ export function useComposerMenuItems({
     query: isPathTrigger ? pathTriggerQuery : null,
     browsePath: hostBrowsePath,
   });
+  const homeFolders = useComposerHomeFolderSearch({
+    environmentId,
+    cwd: isPathTrigger ? gitCwd : null,
+    query: isPathTrigger && hostBrowsePath === null ? pathTriggerQuery : null,
+  });
 
   const pullRequestListTargets =
     composerTriggerKind !== "pull-request" ||
@@ -242,7 +251,7 @@ export function useComposerMenuItems({
   const items = ((): ComposerCommandItem[] => {
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "path") {
-      return [
+      const leadingItems: ComposerCommandItem[] = [
         ...matchComposerThreadItems({
           shells: environmentThreadShells,
           environmentId,
@@ -259,18 +268,34 @@ export function useComposerMenuItems({
               query: composerTrigger.query,
             })
           : []),
-        ...(hostBrowsePath === null
-          ? workspaceEntries.entries.map((entry) => ({
-              id: `path:${entry.kind}:${entry.path}`,
-              type: "path" as const,
-              path: entry.path,
-              pathKind: entry.kind,
-              searchTarget: workspaceEntries.searchedTarget,
-              label: basenameOfPath(entry.path),
-              description: entry.path.slice(0, Math.max(0, entry.path.lastIndexOf("/"))),
-            }))
-          : hostPathItems()),
       ];
+      if (hostBrowsePath !== null) return [...leadingItems, ...hostPathItems()];
+      return mergeComposerHomeFolderItems<ComposerCommandItem>({
+        projectItems: [
+          ...leadingItems,
+          ...workspaceEntries.entries.map((entry) => ({
+            id: `path:${entry.kind}:${entry.path}`,
+            type: "path" as const,
+            path: entry.path,
+            pathKind: entry.kind,
+            searchTarget: workspaceEntries.searchedTarget,
+            label: basenameOfPath(entry.path),
+            description: entry.path.slice(0, Math.max(0, entry.path.lastIndexOf("/"))),
+          })),
+        ],
+        homeItems: homeFolders.entries.map((entry) => ({
+          id: `path:home-directory:${entry.fullPath}`,
+          type: "path" as const,
+          path: entry.fullPath,
+          pathKind: "directory" as const,
+          searchTarget: homeFolders.searchedTarget,
+          label: `${entry.name}/`,
+          description: composerHomeFolderParentLabel(entry.homeRelativePath),
+          drillQuery: composerHomeFolderDrillQuery(entry.homeRelativePath),
+          menuGroup: "home" as const,
+        })),
+        projectPending: workspaceEntries.isPending,
+      });
     }
     if (composerTrigger.kind === "slash-command") {
       const builtInSlashCommandItems = [

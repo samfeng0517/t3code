@@ -105,6 +105,8 @@ export const composerEn = {
   "composer.menu.empty.pullRequestsNone": "No pull requests found in this repository.",
   "composer.menu.empty.paths": "No matching files or folders.",
   "composer.menu.insertFolder": "Insert this folder",
+  "composer.menu.group.project": "Project",
+  "composer.menu.group.homeFolder": "Home folder",
   "composer.menu.empty.commands": "No matching command.",
   "composer.menu.listbox.path": "Files and folders",
   "composer.menu.listbox.pull-request": "Pull requests",

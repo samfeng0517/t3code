@@ -29,7 +29,7 @@ import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../compo
 import { useT } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
-import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
+import { Command, CommandGroup, CommandGroupLabel, CommandItem, CommandList } from "../ui/command";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { ComposerBanner } from "./ComposerBanner";
@@ -44,6 +44,8 @@ export type ComposerCommandItem =
       searchTarget: ComposerPathSearchTarget;
       /** Host folders open in place: selecting one rewrites the mention to this text. */
       drillQuery?: string;
+      /** Folders found under the server home render under their own heading. */
+      menuGroup?: "home";
       label: string;
       description: string;
     }
@@ -116,6 +118,24 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
     el?.scrollIntoView({ block: "nearest" });
   }, [props.activeItemId]);
 
+  const isHomeItem = (item: ComposerCommandItem) =>
+    item.type === "path" && item.menuGroup === "home";
+  const homeItems = props.items.filter(isHomeItem);
+  const projectItems =
+    homeItems.length === 0 ? props.items : props.items.filter((item) => !isHomeItem(item));
+  const renderItem = (item: ComposerCommandItem) => (
+    <ComposerCommandMenuItem
+      key={item.id}
+      optionId={composerSuggestionOptionId(props.listId, item.id)}
+      item={item}
+      triggerKind={props.triggerKind}
+      resolvedTheme={props.resolvedTheme}
+      isActive={props.activeItemId === item.id}
+      onHighlight={props.onHighlightedItemChange}
+      onSelect={props.onSelect}
+    />
+  );
+
   return (
     <Command
       autoHighlight={false}
@@ -139,20 +159,22 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
             }
             className="max-h-72 min-h-0 scroll-pb-6"
           >
-            <CommandGroup>
-              {props.items.map((item) => (
-                <ComposerCommandMenuItem
-                  key={item.id}
-                  optionId={composerSuggestionOptionId(props.listId, item.id)}
-                  item={item}
-                  triggerKind={props.triggerKind}
-                  resolvedTheme={props.resolvedTheme}
-                  isActive={props.activeItemId === item.id}
-                  onHighlight={props.onHighlightedItemChange}
-                  onSelect={props.onSelect}
-                />
-              ))}
-            </CommandGroup>
+            {homeItems.length === 0 ? (
+              <CommandGroup>{props.items.map(renderItem)}</CommandGroup>
+            ) : (
+              <>
+                {projectItems.length > 0 ? (
+                  <CommandGroup>
+                    <CommandGroupLabel>{t("composer.menu.group.project")}</CommandGroupLabel>
+                    {projectItems.map(renderItem)}
+                  </CommandGroup>
+                ) : null}
+                <CommandGroup>
+                  <CommandGroupLabel>{t("composer.menu.group.homeFolder")}</CommandGroupLabel>
+                  {homeItems.map(renderItem)}
+                </CommandGroup>
+              </>
+            )}
           </CommandList>
         ) : (
           <div className="px-5 pt-3.5 pb-7">
