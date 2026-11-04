@@ -63,7 +63,11 @@ const scan = Effect.fn("HomeFolderIndex.scan")(function* (home: string, path: Pa
   let level: ReadonlyArray<HomeFolder | undefined> = [undefined];
   const homeDirents = yield* readDirents(home);
 
-  for (let depth = 0; depth < MAX_RECORDED_DEPTH && level.length > 0; depth += 1) {
+  for (
+    let depth = 0;
+    depth < MAX_RECORDED_DEPTH && level.length > 0 && folders.length < MAX_RECORDED_FOLDERS;
+    depth += 1
+  ) {
     const childrenPerFolder = yield* Effect.forEach(
       level,
       (parent) =>
