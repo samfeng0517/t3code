@@ -15,6 +15,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   clampCollapsedComposerCursor,
   collapseExpandedComposerCursor,
+  composerHostBrowseChildQuery,
+  composerHostBrowsePath,
   composerSubmissionIntentForKey,
   composerStateAtPromptEnd,
   detectComposerTrigger,
@@ -81,6 +83,48 @@ describe("isPathSuggestionCurrent", () => {
         current.cwd,
       ),
     ).toBe(false);
+  });
+});
+
+describe("composerHostBrowsePath", () => {
+  it("should browse the host only when the mention starts at the root, home, or parent folder", () => {
+    expect(composerHostBrowsePath("/Users/me/Down")).toBe("/Users/me/Down");
+    expect(composerHostBrowsePath("~")).toBe("~/");
+    expect(composerHostBrowsePath("~/Downloads/")).toBe("~/Downloads/");
+    expect(composerHostBrowsePath("..")).toBe("../");
+    expect(composerHostBrowsePath("../sibling")).toBe("../sibling");
+    expect(composerHostBrowsePath("src/App")).toBeNull();
+    expect(composerHostBrowsePath("./src")).toBeNull();
+    expect(composerHostBrowsePath("~other")).toBeNull();
+    expect(composerHostBrowsePath("")).toBeNull();
+  });
+
+  it("should open a child folder while keeping the typed root when a folder is chosen", () => {
+    expect(composerHostBrowseChildQuery("~/Down", "Downloads")).toBe("~/Downloads/");
+    expect(composerHostBrowseChildQuery("~/", "Documents")).toBe("~/Documents/");
+    expect(composerHostBrowseChildQuery("../", "erp")).toBe("../erp/");
+    expect(composerHostBrowseChildQuery("/Users/me/Documents/er", "erp")).toBe(
+      "/Users/me/Documents/erp/",
+    );
+    expect(composerHostBrowseChildQuery("../..", "erp")).toBe("../../erp/");
+    expect(composerHostBrowseChildQuery("~/Downloads/..", "Documents")).toBe(
+      "~/Downloads/../Documents/",
+    );
+    expect(composerHostBrowseChildQuery("~/Library/", "Application Support")).toBe(
+      '"~/Library/Application Support/',
+    );
+  });
+
+  it("should keep a quoted host path mention open across spaces when a folder name has spaces", () => {
+    const text = 'look at @"~/Library/Application Support/Goo';
+    expect(detectComposerTrigger(text, text.length)).toEqual({
+      kind: "path",
+      query: "~/Library/Application Support/Goo",
+      rangeStart: 8,
+      rangeEnd: text.length,
+    });
+    const prose = 'say @"hello world';
+    expect(detectComposerTrigger(prose, prose.length)).toBeNull();
   });
 });
 
