@@ -491,6 +491,16 @@ const make = Effect.gen(function* () {
           );
         yield* updateDraft(input.reportDate, (draft) =>
           draft === undefined ? fail("no-draft") : { ...draft, triggerRunId: result.run.id },
+        ).pipe(
+          // Without its run id no run settles the draft; a failed one can still be retried,
+          // and the assistant's proposal still lands on it.
+          Effect.tapError(() =>
+            updateDraft(input.reportDate, (draft) =>
+              draft === undefined
+                ? fail("no-draft")
+                : { ...draft, status: "failed", failure: "thread-unavailable" },
+            ).pipe(Effect.ignore({ log: true })),
+          ),
         );
       }),
     );
@@ -689,7 +699,16 @@ const make = Effect.gen(function* () {
             drafts.changes.pipe(Stream.map(() => undefined)),
           ).pipe(
             // A failed read skips the push; an empty list would tell clients the drafts are gone.
-            Stream.mapEffect(() => Effect.option(currentState)),
+            Stream.mapEffect(() =>
+              currentState.pipe(
+                Effect.tapError((cause) =>
+                  Effect.logWarning("assistant drafts were not read for the state stream", {
+                    cause,
+                  }),
+                ),
+                Effect.option,
+              ),
+            ),
             Stream.filter(Option.isSome),
             Stream.map((state) => state.value),
           ),
