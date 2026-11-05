@@ -174,6 +174,7 @@ export const searchIndexEn = {
   "searchIndex.keybinding.filePicker.toggle": "File Picker: Toggle",
   "searchIndex.keybinding.projectSearch.toggle": "Project Search: Toggle",
   "searchIndex.keybinding.usage.open": "Usage: Open",
+  "searchIndex.keybinding.assistant.open": "Open Assistant",
   "searchIndex.keybinding.theme.select": "Theme: Select",
   "searchIndex.keybinding.appearance.cycle": "Appearance: Cycle",
   "searchIndex.keybinding.themeEditor.toggle": "Theme Editor: Toggle",

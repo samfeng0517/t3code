@@ -26,4 +26,9 @@ export const assistantEn = {
   "assistantPage.error.unavailable": "Can't reach ERP",
   "assistantPage.openSettings": "Open settings",
   "assistantPage.refresh": "Refresh",
+  "assistantPage.open": "Open assistant",
+  "assistantPage.sidebar.working": "Working {duration}",
+  "assistantPage.sidebar.stopped": "Clocked out {duration}",
+  "assistantPage.reminder.title": "Time to clock out",
+  "assistantPage.reminder.body": "You've worked today's required hours",
 } as const;

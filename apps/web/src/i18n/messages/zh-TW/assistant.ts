@@ -28,4 +28,9 @@ export const assistantZhTW: Readonly<Record<keyof typeof assistantEn, string>> =
   "assistantPage.error.unavailable": "連不上 ERP",
   "assistantPage.openSettings": "前往設定",
   "assistantPage.refresh": "重新整理",
+  "assistantPage.open": "開啟助理",
+  "assistantPage.sidebar.working": "上班中 {duration}",
+  "assistantPage.sidebar.stopped": "已停卡 {duration}",
+  "assistantPage.reminder.title": "該下班了",
+  "assistantPage.reminder.body": "今天的應工時已經做滿",
 };

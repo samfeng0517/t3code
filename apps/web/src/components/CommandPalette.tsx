@@ -71,6 +71,7 @@ import {
   PaletteIcon,
   RotateCcwIcon,
   SettingsIcon,
+  SparklesIcon,
   MonitorIcon,
   PinIcon,
   PinOffIcon,
@@ -1703,6 +1704,20 @@ function OpenCommandPaletteDialog(props: {
       await navigate({ to: "/usage" });
     },
   });
+
+  if (primaryEnvironmentId !== null) {
+    actionItems.push({
+      kind: "action",
+      value: "action:assistant",
+      searchTerms: ["assistant", "clock", "daily report", "erp"],
+      title: t("assistantPage.open"),
+      icon: <SparklesIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "assistant.open",
+      run: async () => {
+        await navigate({ to: "/assistant" });
+      },
+    });
+  }
 
   for (const direction of [1, -1] as const) {
     const title =

@@ -264,6 +264,7 @@ import { TooltipProvider } from "./ui/tooltip";
 import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import { SidebarBrowserSection } from "./sidebar/SidebarBrowserSection";
+import { AssistantSidebarTab } from "./assistant/AssistantSidebarTab";
 import {
   SidebarSearchResultRow,
   SortableThreadRow,
@@ -3109,6 +3110,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       <ThreadContextDragGhost />
       <SidebarChromeHeader isElectron={isElectron} />
       <SidebarContent ref={sidebarContentRef} className="min-h-full">
+        <AssistantSidebarTab />
         <SidebarBrowserSection />
         {/* Sticks while the thread list scrolls; opaque and above draft and dragged rows (z-10, z-20)
             so they pass under it. */}

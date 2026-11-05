@@ -173,6 +173,7 @@ export const searchIndexZhTW: Readonly<Record<keyof typeof searchIndexEn, string
   "searchIndex.keybinding.filePicker.toggle": "檔案選擇器：切換",
   "searchIndex.keybinding.projectSearch.toggle": "專案搜尋：切換",
   "searchIndex.keybinding.usage.open": "用量：開啟",
+  "searchIndex.keybinding.assistant.open": "開啟助理",
   "searchIndex.keybinding.theme.select": "主題：選擇",
   "searchIndex.keybinding.appearance.cycle": "外觀：循環切換",
   "searchIndex.keybinding.themeEditor.toggle": "主題編輯器：切換",
