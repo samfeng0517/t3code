@@ -140,15 +140,30 @@ function card(
   } = {},
 ) {
   return (
-    <DailyReportDraftCard
-      environmentId={ENVIRONMENT_ID}
-      reportDate="2026-11-05"
-      version={2}
-      input={props.input ?? null}
-      runActive={props.runActive ?? false}
-    />
+    <>
+      {/* Somewhere outside the card to move focus to. */}
+      <button type="button">outside</button>
+      <DailyReportDraftCard
+        environmentId={ENVIRONMENT_ID}
+        reportDate="2026-11-05"
+        version={2}
+        input={props.input ?? null}
+        runActive={props.runActive ?? false}
+      />
+    </>
   );
 }
+
+function deferred<T>() {
+  let resolve: (value: T) => void = () => {};
+  const promise = new Promise<T>((settle) => (resolve = settle));
+  return { promise, resolve };
+}
+
+const saved = (revision: number, overrides: Partial<AssistantDraft> = {}) =>
+  AsyncResult.success({ ...readyDraft, revision, editedByUser: true, ...overrides });
+const staleRevision = () =>
+  AsyncResult.failure(Cause.fail(new AssistantError({ reason: "stale-revision" })));
 
 describe("DailyReportDraftCard", () => {
   it("DailyReportDraftCard should show 已有新版本 and the first item with the count when superseded", async () => {
@@ -168,15 +183,14 @@ describe("DailyReportDraftCard", () => {
     await expect.element(screen.getByText("Review merge requests")).toBeVisible();
     await expect.element(screen.getByText("…共 3 項")).toBeVisible();
     expect(screen.container.textContent).not.toContain("Fix the build");
-    expect(screen.container.querySelectorAll("button, input, textarea")).toHaveLength(0);
+    const controls = screen.container.querySelectorAll("button, input, textarea");
+    expect([...controls].map((control) => control.textContent)).toEqual(["outside"]);
   });
 
   it("DailyReportDraftCard should toast and reseed when saveDraft fails with stale-revision", async () => {
     setup(readyDraft);
     using _locale = zhTW();
-    saveDraft.mockResolvedValue(
-      AsyncResult.failure(Cause.fail(new AssistantError({ reason: "stale-revision" }))),
-    );
+    saveDraft.mockResolvedValue(staleRevision());
     await using screen = await render(card());
     const content = screen.getByRole("textbox", { name: "內容" });
 
@@ -207,6 +221,108 @@ describe("DailyReportDraftCard", () => {
     await screen.rerender(card());
 
     await expect.element(content).toHaveValue("Updated elsewhere");
+  });
+
+  it("DailyReportDraftCard should keep the saved edit when the save answers before the state stream catches up", async () => {
+    setup(readyDraft);
+    using _locale = zhTW();
+    saveDraft.mockResolvedValue(saved(5, { items: [item("Write the release notes today")] }));
+    submitDailyReport.mockResolvedValue(saved(6, { status: "submitted" }));
+    await using screen = await render(card());
+    const content = screen.getByRole("textbox", { name: "內容" });
+
+    await userEvent.fill(content, "Write the release notes today");
+    await userEvent.click(screen.getByRole("button", { name: "outside" }));
+    await vi.waitFor(() => expect(saveDraft).toHaveBeenCalledOnce());
+    // The stream still reports revision 4 with the old content.
+    await screen.rerender(card());
+
+    await expect.element(content).toHaveValue("Write the release notes today");
+    await userEvent.click(screen.getByRole("button", { name: "送出到 ERP", exact: true }));
+    await vi.waitFor(() =>
+      expect(submitDailyReport).toHaveBeenCalledExactlyOnceWith({
+        environmentId: ENVIRONMENT_ID,
+        input: { reportDate: "2026-11-05", revision: 5 },
+      }),
+    );
+  });
+
+  it("DailyReportDraftCard should chain queued saves on the returned revision and submit only after they finish when 送出到 ERP is clicked mid-save", async () => {
+    setup(readyDraft);
+    using _locale = zhTW();
+    const firstSave = deferred<ReturnType<typeof saved>>();
+    const secondSave = deferred<ReturnType<typeof saved>>();
+    saveDraft.mockReturnValueOnce(firstSave.promise).mockReturnValueOnce(secondSave.promise);
+    submitDailyReport.mockResolvedValue(saved(7, { status: "submitted" }));
+    await using screen = await render(card());
+
+    await userEvent.fill(screen.getByRole("textbox", { name: "內容" }), "Edited");
+    await userEvent.tab();
+    await userEvent.click(screen.getByRole("button", { name: "新增項目" }).first());
+    await userEvent.click(screen.getByRole("button", { name: "送出到 ERP", exact: true }));
+
+    expect(saveDraft).toHaveBeenCalledOnce();
+    expect(submitDailyReport).not.toHaveBeenCalled();
+    firstSave.resolve(saved(5));
+    await vi.waitFor(() => expect(saveDraft).toHaveBeenCalledTimes(2));
+    expect(saveDraft.mock.calls[1]?.[0]).toMatchObject({
+      input: {
+        revision: 5,
+        items: [item("Edited"), item("", { section: "yesterday", status: "new" })],
+      },
+    });
+    expect(submitDailyReport).not.toHaveBeenCalled();
+
+    secondSave.resolve(saved(6));
+    await vi.waitFor(() =>
+      expect(submitDailyReport).toHaveBeenCalledExactlyOnceWith({
+        environmentId: ENVIRONMENT_ID,
+        input: { reportDate: "2026-11-05", revision: 6 },
+      }),
+    );
+  });
+
+  it("DailyReportDraftCard should not save the reloaded draft again when the field is left untouched after a stale-revision reseed", async () => {
+    setup(readyDraft);
+    using _locale = zhTW();
+    const firstSave = deferred<ReturnType<typeof staleRevision>>();
+    saveDraft.mockReturnValueOnce(firstSave.promise);
+    await using screen = await render(card());
+    const content = screen.getByRole("textbox", { name: "內容" });
+
+    await userEvent.fill(content, "First edit");
+    await userEvent.tab();
+    // A second edit is still unsaved in the focused field when the first save is rejected.
+    await userEvent.fill(content, "Second edit");
+    firstSave.resolve(staleRevision());
+    await vi.waitFor(() => expect(reloadState).toHaveBeenCalledOnce());
+    current.state = AsyncResult.success({
+      assistantThreadId: null,
+      drafts: [{ ...readyDraft, revision: 5, items: [item("Updated elsewhere")] }],
+    });
+    await screen.rerender(card());
+    await expect.element(content).toHaveValue("Updated elsewhere");
+
+    await userEvent.tab();
+
+    expect(saveDraft).toHaveBeenCalledOnce();
+  });
+
+  it("DailyReportDraftCard should show each item's project when the card is submitted", async () => {
+    setup({
+      ...readyDraft,
+      status: "submitted",
+      items: [
+        item("Write the release notes", { projectId: 7 }),
+        item("Fix the build", { section: "yesterday", projectOther: "Internal tooling" }),
+      ],
+    });
+    using _locale = zhTW();
+    await using screen = await render(card());
+
+    await expect.element(screen.getByText("Example project")).toBeVisible();
+    await expect.element(screen.getByText("Internal tooling")).toBeVisible();
+    await expect.element(screen.getByRole("link", { name: "到 ERP 修改" })).toBeVisible();
   });
 
   it("DailyReportDraftCard should disable 送出到 ERP when the assistant run is active", async () => {

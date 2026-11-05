@@ -52,6 +52,9 @@ const STATUS_VARIANT = {
 } as const satisfies Record<AssistantDraftStatusValue, string>;
 
 const NO_PROJECT = "none";
+// The AssistantDraftItem contract's limits; longer text would fail the save's decode.
+const CONTENT_MAX_LENGTH = 2000;
+const PROJECT_OTHER_MAX_LENGTH = 255;
 const OTHER_PROJECT = "other";
 
 interface DraftForm {
@@ -96,11 +99,27 @@ function SectionLabel(props: { readonly children: ReactNode }) {
   return <div className="mt-2 mb-1 text-xs text-muted-foreground">{props.children}</div>;
 }
 
-function ReadonlyItemRow(props: { readonly item: AssistantDraftItem }) {
+/** A known ERP project's name or the free-text 「其他」; nothing when neither is known. */
+function readonlyProjectLabel(
+  item: AssistantDraftItem,
+  projects: ReadonlyArray<AssistantProject>,
+): string | null {
+  if (item.projectOther) return item.projectOther;
+  return projects.find((project) => project.id === item.projectId)?.name ?? null;
+}
+
+function ReadonlyItemRow(props: {
+  readonly item: AssistantDraftItem;
+  readonly projects?: ReadonlyArray<AssistantProject>;
+}) {
   const t = useT();
+  const project = readonlyProjectLabel(props.item, props.projects ?? []);
   return (
     <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-2 py-1">
       <span className="min-w-0 flex-1 truncate text-sm">{props.item.content}</span>
+      {project === null ? null : (
+        <span className="max-w-40 shrink-0 truncate text-xs text-muted-foreground">{project}</span>
+      )}
       <Badge size="sm" variant={STATUS_VARIANT[props.item.status]}>
         {t(`assistantPage.draftCard.status.${props.item.status}`)}
       </Badge>
@@ -150,7 +169,10 @@ function SupersededCard(props: {
   );
 }
 
-function ReadonlySections(props: { readonly draft: AssistantDraft }) {
+function ReadonlySections(props: {
+  readonly draft: AssistantDraft;
+  readonly projects: ReadonlyArray<AssistantProject>;
+}) {
   const t = useT();
   return (
     <>
@@ -162,7 +184,7 @@ function ReadonlySections(props: { readonly draft: AssistantDraft }) {
               .filter((item) => item.section === section)
               .map((item, index) => (
                 // oxlint-disable-next-line react/no-array-index-key -- draft items carry no id and these rows keep no state
-                <ReadonlyItemRow key={index} item={item} />
+                <ReadonlyItemRow key={index} item={item} projects={props.projects} />
               ))}
           </div>
         </div>
@@ -210,6 +232,7 @@ function EditableItemRow(props: {
           unstyled
           size="compact"
           aria-label={t("assistantPage.draftCard.content")}
+          maxLength={CONTENT_MAX_LENGTH}
           value={item.content}
           onKeyDown={preventEnter}
           onChange={(event) => props.onEdit({ content: event.currentTarget.value })}
@@ -272,6 +295,7 @@ function EditableItemRow(props: {
           <Input
             size="compact"
             aria-label={t("assistantPage.draftCard.otherProject")}
+            maxLength={PROJECT_OTHER_MAX_LENGTH}
             value={item.projectOther}
             onKeyDown={preventEnter}
             onChange={(event) => props.onEdit({ projectOther: event.currentTarget.value })}
@@ -287,17 +311,13 @@ function EditableItemRow(props: {
 }
 
 function EditableSections(props: {
-  readonly environmentId: EnvironmentId;
+  readonly projects: ReadonlyArray<AssistantProject>;
   readonly form: DraftForm;
   readonly onEdit: (form: DraftForm) => void;
   readonly onCommit: (form: DraftForm) => void;
 }) {
   const t = useT();
-  const projects =
-    useEnvironmentQuery(
-      assistantEnvironment.projects({ environmentId: props.environmentId, input: {} }),
-    ).data ?? [];
-  const { form } = props;
+  const { form, projects } = props;
   const patched = (index: number, patch: Partial<AssistantDraftItem>): DraftForm => ({
     ...form,
     items: form.items.map((item, at) => (at === index ? { ...item, ...patch } : item)),
@@ -369,22 +389,28 @@ function LiveCard(props: {
     reportFailure: false,
   });
   const reloadState = useAtomRefresh(assistantEnvironment.state({ environmentId, input: {} }));
+  // Read once per card mount (the page opening), never polled.
+  const projects =
+    useEnvironmentQuery(assistantEnvironment.projects({ environmentId, input: {} })).data ?? [];
 
   const [local, setLocal] = useState(() => ({ revision: draft.revision, form: formOf(draft) }));
   const [focused, setFocused] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reseedRequested, setReseedRequested] = useState(false);
+  // An unsaved edit in the focused field; a reseed discards it.
+  const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState<Exclude<DraftAction, "save"> | null>(null);
   // Handlers outrun renders: these keep saves serialized and a click burst to one request.
   const saveInFlight = useRef<Promise<number | null> | null>(null);
   const queuedSave = useRef<DraftForm | null>(null);
-  const dirty = useRef(false);
   const actionInFlight = useRef(false);
 
   // Another writer moved the draft on: take its version unless the user is mid-edit here.
-  if (draft.revision !== local.revision && (reseedRequested || (!focused && !saving))) {
+  // Revisions only grow, so a stream still behind this card's own save is not newer.
+  if (draft.revision > local.revision && (reseedRequested || (!focused && !saving))) {
     setLocal({ revision: draft.revision, form: formOf(draft) });
     setReseedRequested(false);
+    setDirty(false);
   }
 
   const reportFailure = (result: AtomCommandResult<unknown, unknown>, action: DraftAction) => {
@@ -437,12 +463,12 @@ function LiveCard(props: {
   };
 
   const edit = (form: DraftForm) => {
-    dirty.current = true;
+    setDirty(true);
     setLocal((current) => ({ ...current, form }));
   };
   const commit = (form: DraftForm) => {
-    if (form === local.form && !dirty.current) return;
-    dirty.current = false;
+    if (form === local.form && !dirty) return;
+    setDirty(false);
     setLocal((current) => ({ ...current, form }));
     void persist(form);
   };
@@ -496,14 +522,9 @@ function LiveCard(props: {
         />
         <SourceLine draft={draft} />
         {mode === "editable" ? (
-          <EditableSections
-            environmentId={environmentId}
-            form={local.form}
-            onEdit={edit}
-            onCommit={commit}
-          />
+          <EditableSections projects={projects} form={local.form} onEdit={edit} onCommit={commit} />
         ) : (
-          <ReadonlySections draft={draft} />
+          <ReadonlySections draft={draft} projects={projects} />
         )}
         {mode === "editable" ? (
           <div className="mt-2.5 flex items-center justify-end gap-2">
