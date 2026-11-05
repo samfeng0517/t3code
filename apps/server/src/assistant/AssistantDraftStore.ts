@@ -45,9 +45,10 @@ const dayNumber = (reportDate: string) => Date.parse(`${reportDate}T00:00:00Z`) 
 
 /** Keeps the drafts within 14 days of the newest report date in the file. */
 const prune = (file: AssistantDraftFile): AssistantDraftFile => {
-  const dates = Object.keys(file.drafts);
-  if (dates.length === 0) return file;
-  const newest = Math.max(...dates.map(dayNumber));
+  // An impossible date such as 2026-13-01 parses to NaN; it must not make every draft look stale.
+  const days = Object.keys(file.drafts).map(dayNumber).filter(Number.isFinite);
+  if (days.length === 0) return file;
+  const newest = Math.max(...days);
   return {
     ...file,
     drafts: Object.fromEntries(
@@ -62,7 +63,8 @@ export class AssistantDraftStore extends Context.Service<
     readonly read: () => Effect.Effect<AssistantDraftFile, AssistantDraftStoreError>;
     /**
      * Applies `f` under a lock and writes the result. Drafts `f` replaced get a bumped revision
-     * and a fresh `updatedAt`; callers bump `version` themselves.
+     * and a fresh `updatedAt`, so `f` should replace only the drafts it changes; callers bump
+     * `version` themselves.
      */
     readonly update: <A>(
       f: (file: AssistantDraftFile) => readonly [A, AssistantDraftFile],
@@ -103,38 +105,37 @@ const make = Effect.gen(function* () {
     Effect.mapError((cause) => new AssistantDraftStoreError({ operation: "read", cause })),
   );
 
-  const read = () => lock.withPermits(1)(readUnlocked());
+  const read = Effect.fn("AssistantDraftStore.read")(function* () {
+    return yield* readUnlocked();
+  }, lock.withPermits(1));
 
-  const update = <A>(f: (file: AssistantDraftFile) => readonly [A, AssistantDraftFile]) =>
-    lock
-      .withPermits(1)(
-        Effect.gen(function* () {
-          const current = yield* readUnlocked();
-          const [result, proposed] = f(current);
-          const updatedAt = DateTime.formatIso(yield* DateTime.now);
-          const drafts = Object.fromEntries(
-            Object.entries(proposed.drafts).map(([date, draft]) => {
-              const previous = current.drafts[date];
-              if (previous === draft) return [date, draft];
-              return [
-                date,
-                { ...draft, revision: (previous?.revision ?? draft.revision) + 1, updatedAt },
-              ];
-            }),
-          );
-          const next = prune({ ...proposed, drafts });
-          const contents = yield* encodeFile(next).pipe(
-            Effect.mapError((cause) => new AssistantDraftStoreError({ operation: "write", cause })),
-          );
-          yield* writeFileStringAtomically({ filePath, contents }).pipe(
-            Effect.provide(context),
-            Effect.mapError((cause) => new AssistantDraftStoreError({ operation: "write", cause })),
-          );
-          yield* PubSub.publish(pubsub, next);
-          return result;
-        }),
-      )
-      .pipe(Effect.withSpan("AssistantDraftStore.update"));
+  const update = Effect.fn("AssistantDraftStore.update")(function* <A>(
+    f: (file: AssistantDraftFile) => readonly [A, AssistantDraftFile],
+  ): Effect.fn.Return<A, AssistantDraftStoreError> {
+    const current = yield* readUnlocked();
+    const [result, proposed] = f(current);
+    const updatedAt = DateTime.formatIso(yield* DateTime.now);
+    const drafts = Object.fromEntries(
+      Object.entries(proposed.drafts).map(([date, draft]) => {
+        const previous = current.drafts[date];
+        if (previous === draft) return [date, draft];
+        return [
+          date,
+          { ...draft, revision: (previous?.revision ?? draft.revision) + 1, updatedAt },
+        ];
+      }),
+    );
+    const next = prune({ ...proposed, drafts });
+    const contents = yield* encodeFile(next).pipe(
+      Effect.mapError((cause) => new AssistantDraftStoreError({ operation: "write", cause })),
+    );
+    yield* writeFileStringAtomically({ filePath, contents }).pipe(
+      Effect.provide(context),
+      Effect.mapError((cause) => new AssistantDraftStoreError({ operation: "write", cause })),
+    );
+    yield* PubSub.publish(pubsub, next);
+    return result;
+  }, lock.withPermits(1));
 
   return AssistantDraftStore.of({
     read,

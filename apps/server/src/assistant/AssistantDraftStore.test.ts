@@ -71,6 +71,7 @@ it.layer(NodeServices.layer)("AssistantDraftStore", (it) => {
       const second = (yield* store.read()).drafts["2026-11-05"];
       assert.equal(second?.revision, 2);
       assert.equal(second?.problemText, "blocked");
+      assert.notEqual(second?.updatedAt, "2026-11-05T00:00:00.000Z");
     }).pipe(Effect.provide(layerTest())),
   );
 
@@ -85,6 +86,8 @@ it.layer(NodeServices.layer)("AssistantDraftStore", (it) => {
             "2026-10-21": draft("2026-10-21"),
             "2026-10-22": draft("2026-10-22"),
             "2026-11-05": draft("2026-11-05"),
+            // An impossible date is dropped without taking the valid drafts with it.
+            "2026-13-01": draft("2026-13-01"),
           },
         },
       ]);
