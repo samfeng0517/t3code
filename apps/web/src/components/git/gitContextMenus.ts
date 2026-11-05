@@ -16,6 +16,13 @@ export type GitMenuTarget =
       readonly message: string;
       /** The full stash commit hash; the server rejects a pop or drop whose hash moved. */
       readonly hash: string;
+    }
+  | {
+      readonly kind: "worktree";
+      readonly path: string;
+      readonly name: string;
+      /** Null for a worktree without a commit, which offers no hash to copy. */
+      readonly hash: string | null;
     };
 
 /** Opens the menu for `target` at a viewport position. */
@@ -39,8 +46,12 @@ export interface GitMenuContext {
   readonly isOnline: boolean;
   /** Another write holds the page's write lock. */
   readonly pending: boolean;
-  /** Title of the first thread recorded on this branch. */
+  /** Title of the first thread recorded on this branch, or of an unsettled thread in this worktree. */
   readonly inUseBy: string | null;
+  /** The worktree's threads could not be read, so deleting it is not offered. */
+  readonly threadCheckFailed: boolean;
+  /** The worktree is the checkout the page is showing. */
+  readonly isCurrentWorktree: boolean;
   /** The branch is checked out at the repository root. */
   readonly isCurrentBranch: boolean;
   /** The remote branch is the one its remote's HEAD points at. */
@@ -109,32 +120,46 @@ function writeItems(
         { id: "pop-stash", label: t("git.menu.popStash") },
         { id: "delete", label: t("git.menu.delete"), destructive: true },
       ];
+    case "worktree":
+      return [
+        {
+          id: "delete",
+          label: t("git.menu.deleteWorktree"),
+          destructive: true,
+          disabled:
+            context.inUseBy !== null || context.threadCheckFailed || context.isCurrentWorktree,
+        },
+      ];
   }
 }
 
-/** One menu for a commit, ref or stash, shared by graph rows, ref labels, the refs sidebar and the detail's "⋯" button. */
+/** One menu for a commit, ref, stash or worktree, shared by graph rows, ref labels, the refs sidebar and the detail's "⋯" button. */
 export function buildGitMenu(
   target: GitMenuTarget,
   context: GitMenuContext,
 ): ContextMenuItem<GitMenuAction>[] {
-  const copy: ContextMenuItem<GitMenuAction> = {
-    id: "copy-hash",
-    label: t("git.menu.copyHash"),
-    icon: "copy",
-  };
-  if (!context.canWrite) return [copy];
+  const copy: ContextMenuItem<GitMenuAction>[] =
+    target.hash === null ? [] : [{ id: "copy-hash", label: t("git.menu.copyHash"), icon: "copy" }];
+  if (!context.canWrite) return copy;
   const blocked = !context.isOnline || context.pending;
   const items: ContextMenuItem<GitMenuAction>[] = writeItems(target, context).map((item) =>
     blocked ? { ...item, disabled: true } : item,
   );
-  items.push({ ...copy, separatorBefore: true });
-  if (target.kind === "local" && context.inUseBy !== null) {
-    items.push({
-      id: "in-use",
-      label: t("git.menu.inUse", { title: context.inUseBy }),
-      header: true,
-      separatorBefore: true,
-    });
+  items.push(...copy.map((item) => ({ ...item, separatorBefore: true })));
+  const inUse =
+    target.kind === "local" && context.inUseBy !== null
+      ? t("git.menu.inUse", { title: context.inUseBy })
+      : target.kind !== "worktree"
+        ? null
+        : context.isCurrentWorktree
+          ? t("git.menu.worktreeCurrent")
+          : context.inUseBy !== null
+            ? t("git.menu.worktreeInUse", { title: context.inUseBy })
+            : context.threadCheckFailed
+              ? t("git.menu.worktreeCheckFailed")
+              : null;
+  if (inUse !== null) {
+    items.push({ id: "in-use", label: inUse, header: true, separatorBefore: true });
   }
   return items;
 }

@@ -71,6 +71,10 @@ export const gitEn = {
   "git.menu.popStash": "Pop (apply and delete)",
   "git.menu.pushTag": "Push tag",
   "git.menu.inUse": 'Thread "{title}" is using this branch',
+  "git.menu.deleteWorktree": "Delete worktree",
+  "git.menu.worktreeInUse": 'Unsettled thread "{title}" is using this worktree',
+  "git.menu.worktreeCheckFailed": "Could not check which threads use this worktree",
+  "git.menu.worktreeCurrent": "This page is showing this worktree",
   "git.dialog.createBranch": "Create branch",
   "git.dialog.createTag": "Create tag",
   "git.dialog.renameBranch": "Rename branch {name}",
@@ -85,6 +89,8 @@ export const gitEn = {
   "git.dialog.stashHint": "Includes new files. When applied later, all changes come back unstaged.",
   "git.dialog.stash": "Stash",
   "git.confirm.deleteTag": "Delete local tag {name}? The tag on the remote is not affected.",
+  "git.confirm.deleteWorktree":
+    "Delete the worktree at {path}? Uncommitted changes in it are lost. Its branch is kept.",
   "git.confirm.deleteBranch": "Delete branch {name}?",
   "git.confirm.deleteRemoteBranch":
     "Delete branch {name} on {remote}? It disappears for everyone. This does not delete your local branch.",
@@ -112,6 +118,7 @@ export const gitEn = {
   "git.toast.deletedBranch": "Deleted branch {name}",
   "git.toast.deletedRemoteBranch": "Deleted remote branch {name}",
   "git.toast.deletedTag": "Deleted tag {name}",
+  "git.toast.deletedWorktree": "Deleted worktree {name}",
   "git.toast.pushedTag": "Pushed tag {name} to {remote}",
   "git.toast.appliedStash": "Applied stash",
   "git.toast.poppedStash": "Popped stash",

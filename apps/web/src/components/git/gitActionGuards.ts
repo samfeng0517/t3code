@@ -1,6 +1,11 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
-import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  OrchestrationV2ThreadShell,
+  ProjectId,
+  ThreadId,
+} from "@t3tools/contracts";
 
 interface RepoScope {
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
@@ -92,4 +97,39 @@ export function activeRootThreads(
       threadRuntimeIsActive(thread.runtime),
   );
   return filterThreads(active, (thread) => input.projectInRepo(thread.projectId));
+}
+
+type WorktreeThreadRow = Pick<
+  OrchestrationV2ThreadShell,
+  "id" | "title" | "lineage" | "settledOverride"
+>;
+
+/**
+ * The first of the worktree's threads (from the server, archived ones excluded) that still holds
+ * it: one that is running, or whose root thread is not settled. The shell omits older settled
+ * threads and idle subagent children; `familyOf` reads an omitted thread's family, and a root the
+ * shell omits is settled, since unsettled roots are always listed. `"unknown"` when a read fails.
+ */
+export async function worktreeHoldingThread(input: {
+  readonly threadIds: ReadonlyArray<ThreadId>;
+  readonly shellOf: (threadId: ThreadId) => EnvironmentThreadShell | null;
+  readonly familyOf: (threadId: ThreadId) => Promise<ReadonlyArray<WorktreeThreadRow> | null>;
+}): Promise<WorktreeThreadRow | "unknown" | null> {
+  for (const threadId of input.threadIds) {
+    const shell = input.shellOf(threadId);
+    if (shell !== null && threadRuntimeIsActive(shell.runtime)) return shell;
+    let family: ReadonlyArray<WorktreeThreadRow> = [];
+    if (shell === null) {
+      const read = await input.familyOf(threadId);
+      if (read === null) return "unknown";
+      family = read;
+    }
+    // A thread in neither was deleted or archived since the server listed it.
+    const thread = shell ?? family.find((row) => row.id === threadId);
+    if (thread === undefined) continue;
+    const rootId = thread.lineage.rootThreadId;
+    const root = input.shellOf(rootId) ?? family.find((row) => row.id === rootId);
+    if (root !== undefined && root !== null && root.settledOverride !== "settled") return thread;
+  }
+  return null;
 }

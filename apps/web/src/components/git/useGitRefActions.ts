@@ -3,6 +3,7 @@ import {
   settlePromise,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   type EnvironmentId,
   GitBranchNotFullyMergedError,
@@ -10,6 +11,7 @@ import {
   GitStashConflictError,
   GitStashMovedError,
   GitStashPartiallyAppliedError,
+  type ThreadId,
 } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
 import * as Schema from "effect/Schema";
@@ -18,12 +20,16 @@ import { useState } from "react";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useT } from "~/i18n";
 import { readLocalApi } from "~/localApi";
+import { readThreadShell } from "~/state/entities";
 import { gitEnvironment } from "~/state/git";
+import { orchestrationEnvironment } from "~/state/orchestration";
+import { threadFamilies } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 import { vcsEnvironment } from "~/state/vcs";
 
 import { toastManager } from "../ui/toast";
-import { threadsUsingBranch } from "./gitActionGuards";
+import { threadsUsingBranch, worktreeHoldingThread } from "./gitActionGuards";
 import { buildGitMenu, type GitMenuAction, type GitMenuTarget } from "./gitContextMenus";
 import { SHORT_HASH_LENGTH } from "./gitHistoryState";
 import type { GitRefNameChoice, GitRefNameRequest } from "./GitRefNameDialog";
@@ -38,6 +44,7 @@ const isStashConflict = Schema.is(GitStashConflictError);
 const isStashPartiallyApplied = Schema.is(GitStashPartiallyAppliedError);
 
 type GitStashTarget = Extract<GitMenuTarget, { readonly kind: "stash" }>;
+type GitWorktreeTarget = Extract<GitMenuTarget, { readonly kind: "worktree" }>;
 
 /** Splits `origin/feature` by the refs' own remote list, since remote names can contain `/`. */
 function remoteBranchOf(refs: GitHistoryRefsResult | null, fullName: string) {
@@ -82,6 +89,16 @@ export function useGitRefActions(input: {
     commandOptions,
   );
   const stashActionCommand = useAtomCommand(gitEnvironment.stashAction, commandOptions);
+  const removeWorktreeCommand = useAtomCommand(vcsEnvironment.removeWorktree, commandOptions);
+  const loadWorktreeThreadIds = useAtomQueryRunner(orchestrationEnvironment.worktreeThreadIds, {
+    reportFailure: false,
+    refresh: true,
+  });
+  const loadThreadFamily = useAtomQueryRunner(
+    (target: { readonly threadId: ThreadId }) =>
+      threadFamilies.familyAtom(environmentId, target.threadId),
+    { reportFailure: false },
+  );
   const { copyToClipboard } = useCopyToClipboard({
     onCopy: () => toastManager.add({ type: "success", title: t("git.toast.copiedHash") }),
     onError: (error) =>
@@ -274,7 +291,43 @@ export function useGitRefActions(input: {
     await runStash(cwd, target, "drop", () => t("git.toast.deletedStash"));
   };
 
+  /** The first thread still holding the worktree; settled and archived threads let it go. */
+  const worktreeHolder = async (path: string) => {
+    const ids = await loadWorktreeThreadIds({ environmentId, input: { worktreePath: path } });
+    if (ids._tag !== "Success") return "unknown" as const;
+    return worktreeHoldingThread({
+      threadIds: ids.value.threadIds,
+      shellOf: (threadId) => readThreadShell(scopeThreadRef(environmentId, threadId)),
+      familyOf: async (threadId) => {
+        const family = await loadThreadFamily({ threadId });
+        return family._tag === "Success" ? family.value.threads : null;
+      },
+    });
+  };
+
+  const deleteWorktree = async (cwd: string, target: GitWorktreeTarget) => {
+    const message = t("git.confirm.deleteWorktree", { path: target.path });
+    const confirmed = await confirm(message, {
+      destructive: true,
+      confirmLabel: t("git.menu.delete"),
+    });
+    if (!confirmed) return;
+    await writes.run(
+      "delete-worktree",
+      () =>
+        removeWorktreeCommand({ environmentId, input: { cwd, path: target.path, force: true } }),
+      () => t("git.toast.deletedWorktree", { name: target.name }),
+    );
+  };
+
   const perform = async (cwd: string, target: GitMenuTarget, action: GitMenuAction) => {
+    if (target.kind === "worktree") {
+      if (action === "copy-hash" && target.hash !== null) {
+        return copyToClipboard(target.hash, undefined);
+      }
+      if (action === "delete") return deleteWorktree(cwd, target);
+      return;
+    }
     if (action === "copy-hash") return copyToClipboard(target.hash, undefined);
     if (action === "checkout") return checkout(cwd, target);
     if (action === "create-branch") return createBranch(cwd, target.hash);
@@ -309,12 +362,19 @@ export function useGitRefActions(input: {
             branch: target.name,
           })
         : [];
-    const inUseBy = branchThreads[0]?.title ?? null;
+    const holder =
+      target.kind === "worktree" && writes.canWrite && target.path !== repoRoot
+        ? await worktreeHolder(target.path)
+        : null;
+    const inUseBy =
+      branchThreads[0]?.title ?? (holder !== null && holder !== "unknown" ? holder.title : null);
     const items = buildGitMenu(target, {
       canWrite: writes.canWrite,
       isOnline: writes.isOnline,
       pending: writes.pending !== null,
       inUseBy,
+      threadCheckFailed: holder === "unknown",
+      isCurrentWorktree: target.kind === "worktree" && target.path === repoRoot,
       isCurrentBranch: target.kind === "local" && target.name === refs.head.branch,
       isRemoteDefaultBranch:
         target.kind === "remote" && remoteBranchOf(refs, target.fullName)?.isDefault === true,

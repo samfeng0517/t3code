@@ -73,6 +73,10 @@ export const gitZhTW: Readonly<Record<keyof typeof gitEn, string>> = {
   "git.menu.popStash": "取出（套用後刪除）",
   "git.menu.pushTag": "Push tag",
   "git.menu.inUse": "thread『{title}』正在使用這個 branch",
+  "git.menu.deleteWorktree": "刪除 worktree",
+  "git.menu.worktreeInUse": "未結案的 thread『{title}』正在使用這個 worktree",
+  "git.menu.worktreeCheckFailed": "無法確認有哪些 thread 使用這個 worktree",
+  "git.menu.worktreeCurrent": "此頁正在顯示這個 worktree",
   "git.dialog.createBranch": "建立 branch",
   "git.dialog.createTag": "建立 tag",
   "git.dialog.renameBranch": "重新命名 branch {name}",
@@ -87,6 +91,8 @@ export const gitZhTW: Readonly<Record<keyof typeof gitEn, string>> = {
   "git.dialog.stashHint": "包含新檔案；之後套用時所有變更都會回到未 stage",
   "git.dialog.stash": "Stash",
   "git.confirm.deleteTag": "刪除本機 tag {name}？remote 上的 tag 不受影響。",
+  "git.confirm.deleteWorktree":
+    "刪除位於 {path} 的 worktree？其中未 commit 的變更會遺失，branch 會保留。",
   "git.confirm.deleteBranch": "刪除 branch {name}？",
   "git.confirm.deleteRemoteBranch":
     "刪除 {remote} 上的 branch {name}？其他人也會看不到它。這個動作不會刪除本機 branch。",
@@ -113,6 +119,7 @@ export const gitZhTW: Readonly<Record<keyof typeof gitEn, string>> = {
   "git.toast.deletedBranch": "已刪除 branch {name}",
   "git.toast.deletedRemoteBranch": "已刪除遠端 branch {name}",
   "git.toast.deletedTag": "已刪除 tag {name}",
+  "git.toast.deletedWorktree": "已刪除 worktree {name}",
   "git.toast.pushedTag": "已將 tag {name} push 到 {remote}",
   "git.toast.appliedStash": "已套用 stash",
   "git.toast.poppedStash": "已取出 stash",
