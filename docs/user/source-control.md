@@ -49,6 +49,8 @@ project root.
   threads working in local mode. You get a warning while an agent is running there.
 - A branch a thread is using can't be renamed or deleted from here. Deleting an unmerged branch asks
   again before it is force-deleted.
+- Right-click a worktree in the sidebar to delete it once no unsettled thread uses it. Settled and
+  archived threads don't block it. Uncommitted changes in it are lost; its branch is kept.
 - Git refuses a checkout that would overwrite uncommitted changes, and nothing is stashed for you.
 - Connections without source-control write access can browse history and diffs but not change anything.
 
