@@ -1,4 +1,8 @@
+// @effect-diagnostics nodeBuiltinImport:off -- The patched library finds native hosts through real manifest files on disk.
 import * as NodeEvents from "node:events";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
@@ -19,6 +23,48 @@ const ipc = vi.hoisted(() => ({
   partitions: new Map<string, unknown>(),
 }));
 
+const nativeHosts = vi.hoisted(() => ({
+  userData: "/nonexistent-user-data",
+  spawned: [] as Array<{ readonly kill: () => void; readonly killed: () => boolean }>,
+  // What the fake host does once it is written to: reply with a message, or exit.
+  onWrite: undefined as { readonly reply: unknown } | "exit" | undefined,
+}));
+
+vi.mock("node:child_process", async () => {
+  const { EventEmitter } = await import("node:events");
+  return {
+    spawn: () => {
+      let killed = false;
+      const child = Object.assign(new EventEmitter(), {
+        stdout: new EventEmitter(),
+        stderr: new EventEmitter(),
+        stdin: {
+          write: () => {
+            const onWrite = nativeHosts.onWrite;
+            queueMicrotask(() => {
+              if (onWrite === "exit") {
+                child.emit("exit", 1);
+              } else if (onWrite !== undefined) {
+                const body = Buffer.from(JSON.stringify(onWrite.reply));
+                const length = Buffer.alloc(4);
+                length.writeUInt32LE(body.length, 0);
+                child.stdout.emit("data", Buffer.concat([length, body]));
+              }
+            });
+            return true;
+          },
+        },
+        kill: () => {
+          killed = true;
+          return true;
+        },
+      });
+      nativeHosts.spawned.push({ kill: child.kill, killed: () => killed });
+      return child;
+    },
+  };
+});
+
 vi.mock("electron", () => {
   const windowClass = { getAllWindows: () => [], fromWebContents: () => null };
   return {
@@ -26,7 +72,7 @@ vi.mock("electron", () => {
       isReady: () => true,
       on: () => undefined,
       getAppPath: () => "/nonexistent-app",
-      getPath: () => "/nonexistent-user-data",
+      getPath: () => nativeHosts.userData,
       name: "Test App",
     },
     ipcMain: {
@@ -64,7 +110,7 @@ import { ElectronChromeExtensions } from "electron-chrome-extensions";
 const EXTENSION_ID = "a".repeat(32);
 const OTHER_EXTENSION_ID = "b".repeat(32);
 
-const makeSession = () => {
+const makeSession = (permissions: ReadonlyArray<string> = ["storage"]) => {
   const extension = {
     id: EXTENSION_ID,
     name: "Example",
@@ -75,7 +121,7 @@ const makeSession = () => {
       manifest_version: 3,
       name: "Example",
       version: "1.0.0",
-      permissions: ["storage"],
+      permissions,
       action: { default_title: "Example" },
     },
   };
@@ -115,9 +161,9 @@ const makeFakeWindow = () =>
     getSize: () => [900, 700],
   });
 
-const setup = () => {
+const setup = (permissions?: ReadonlyArray<string>) => {
   ipc.partitions.clear();
-  const session = makeSession();
+  const session = makeSession(permissions);
   const createdWindows: Array<unknown> = [];
   const extensions = new ElectronChromeExtensions({
     license: "GPL-3.0",
@@ -140,6 +186,7 @@ const frameEvent = (
   type: "frame",
   sender: Object.assign(new NodeEvents.EventEmitter(), {
     id: 1,
+    ipc: new NodeEvents.EventEmitter(),
     session,
     getURL: () => url ?? "",
     getType: () => senderType,
@@ -151,7 +198,7 @@ const frameEvent = (
 const serviceWorkerEvent = (session: FakeSession, scope: string) => ({
   type: "service-worker",
   session,
-  serviceWorker: { scope, versionId: 1 },
+  serviceWorker: { scope, versionId: 1, ipc: new NodeEvents.EventEmitter() },
 });
 
 const handler = (channel: string) => {
@@ -434,5 +481,106 @@ describe("electron-chrome-extensions windows.create patch", () => {
       `chrome-extension://${OTHER_EXTENSION_ID}/assets/green-38.png`,
     );
     assert.notStrictEqual(response.body, "png-bytes");
+  });
+});
+
+const NATIVE_HOST = "com.example.host";
+
+const nativeHostFixture = () => {
+  nativeHosts.spawned.length = 0;
+  nativeHosts.onWrite = undefined;
+  const userData = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-native-host-"));
+  nativeHosts.userData = userData;
+  const hostPath = NodePath.join(userData, "host");
+  NodeFS.writeFileSync(hostPath, "");
+  NodeFS.mkdirSync(NodePath.join(userData, "NativeMessagingHosts"));
+  NodeFS.writeFileSync(
+    NodePath.join(userData, "NativeMessagingHosts", `${NATIVE_HOST}.json`),
+    JSON.stringify({
+      name: NATIVE_HOST,
+      description: "Example host",
+      path: hostPath,
+      type: "stdio",
+      allowed_origins: [`chrome-extension://${EXTENSION_ID}/`],
+    }),
+  );
+  const { session, extensions } = setup(["nativeMessaging"]);
+  const hostReady = (connectionId: string) =>
+    (
+      extensions as unknown as {
+        api: { runtime: { hostMap: Record<string, { ready: Promise<void> } | undefined> } };
+      }
+    ).api.runtime.hostMap[connectionId]?.ready;
+  return {
+    session,
+    hostReady,
+    [Symbol.dispose]: () => {
+      nativeHosts.userData = "/nonexistent-user-data";
+      NodeFS.rmSync(userData, { recursive: true, force: true });
+    },
+  };
+};
+
+describe("electron-chrome-extensions native messaging patch", () => {
+  it("connectNative should kill the host when the connecting service worker stops", async () => {
+    using fixture = nativeHostFixture();
+    const worker = serviceWorkerEvent(fixture.session, `chrome-extension://${EXTENSION_ID}/`);
+    await handler("crx-msg")(worker, EXTENSION_ID, "runtime.connectNative", "port-1", NATIVE_HOST);
+    await fixture.hostReady("port-1");
+    assert.lengthOf(nativeHosts.spawned, 1);
+    fixture.session.serviceWorkers.emit("running-status-changed", {
+      versionId: worker.serviceWorker.versionId,
+      runningStatus: "stopped",
+    });
+    assert.isTrue(nativeHosts.spawned[0]?.killed());
+  });
+
+  it("connectNative should not spawn the host when the service worker stops before the host launches", async () => {
+    using fixture = nativeHostFixture();
+    const worker = serviceWorkerEvent(fixture.session, `chrome-extension://${EXTENSION_ID}/`);
+    await handler("crx-msg")(worker, EXTENSION_ID, "runtime.connectNative", "port-1", NATIVE_HOST);
+    const launched = fixture.hostReady("port-1");
+    fixture.session.serviceWorkers.emit("running-status-changed", {
+      versionId: worker.serviceWorker.versionId,
+      runningStatus: "stopped",
+    });
+    await launched;
+    assert.lengthOf(nativeHosts.spawned, 0);
+  });
+
+  it("sendNativeMessage should kill the host when the host has replied", async () => {
+    using fixture = nativeHostFixture();
+    nativeHosts.onWrite = { reply: { pong: true } };
+    const worker = serviceWorkerEvent(fixture.session, `chrome-extension://${EXTENSION_ID}/`);
+    const response = await handler("crx-msg")(
+      worker,
+      EXTENSION_ID,
+      "runtime.sendNativeMessage",
+      NATIVE_HOST,
+      { ping: true },
+    );
+    assert.deepStrictEqual(response, { pong: true });
+    assert.isTrue(nativeHosts.spawned[0]?.killed());
+  });
+
+  it("sendNativeMessage should reject when the host exits without replying", async () => {
+    using fixture = nativeHostFixture();
+    nativeHosts.onWrite = "exit";
+    const worker = serviceWorkerEvent(fixture.session, `chrome-extension://${EXTENSION_ID}/`);
+    const error = await rejectionOf(
+      handler("crx-msg")(worker, EXTENSION_ID, "runtime.sendNativeMessage", NATIVE_HOST, {
+        ping: true,
+      }),
+    );
+    assert.instanceOf(error, Error);
+  });
+
+  it("connectNative should kill the host when the connecting extension page is destroyed", async () => {
+    using fixture = nativeHostFixture();
+    const page = frameEvent(fixture.session, `chrome-extension://${EXTENSION_ID}/popup.html`);
+    await handler("crx-msg")(page, EXTENSION_ID, "runtime.connectNative", "port-1", NATIVE_HOST);
+    await fixture.hostReady("port-1");
+    page.sender.emit("destroyed");
+    assert.isTrue(nativeHosts.spawned[0]?.killed());
   });
 });
