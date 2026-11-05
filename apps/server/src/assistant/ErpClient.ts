@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
+import * as References from "effect/References";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http";
@@ -85,11 +86,7 @@ const ErrorBody = Schema.Struct({
 });
 const decodeErrorBody = Schema.decodeUnknownOption(ErrorBody);
 
-/** Single resources may arrive bare or wrapped in Laravel's `{ data }` envelope. */
-const enveloped = <S extends Schema.Top>(schema: S) =>
-  Schema.Union([Schema.Struct({ data: schema }), schema]);
-const unwrap = <A>(value: { readonly data: A } | A, isWrapped: (value: unknown) => boolean) =>
-  isWrapped(value) ? (value as { readonly data: A }).data : (value as A);
+const EnvelopeBody = Schema.Struct({ data: Schema.Unknown });
 
 const REQUEST_TIMEOUT = "15 seconds";
 const ERP_MESSAGE_LIMIT = 300;
@@ -143,11 +140,14 @@ const make = Effect.gen(function* () {
     const tokenHash = Hex.encode(
       yield* digest
         .digest(Digest.sha256, new TextEncoder().encode(erpToken))
-        .pipe(Effect.mapError(() => unavailable("settings unavailable"))),
+        .pipe(Effect.mapError(() => unavailable("unexpected error"))),
     );
-    if ((yield* Ref.get(suspendedTokenHash)) === tokenHash) {
+    const suspended = yield* Ref.get(suspendedTokenHash);
+    if (suspended === tokenHash) {
       return yield* new AssistantError({ reason: "suspended" });
     }
+    // A new token gets a fresh start; ERP may also have lifted the old one's suspension.
+    if (suspended !== null) yield* Ref.set(suspendedTokenHash, null);
     return { baseUrl: erpBaseUrl.replace(/\/+$/u, ""), token: Redacted.make(erpToken), tokenHash };
   });
 
@@ -184,78 +184,81 @@ const make = Effect.gen(function* () {
     }
   });
 
-  const call = Effect.fn("ErpClient.call")(function* <S extends Schema.Top>(
+  /** Sends one request and returns its JSON body; the timeout covers the body read too. */
+  const request = Effect.fn("ErpClient.request")(function* (
     method: "GET" | "POST",
     path: string,
-    schema: S,
     body?: unknown,
-  ): Effect.fn.Return<S["Type"], AssistantError, S["DecodingServices"]> {
+  ) {
     const { baseUrl, token, tokenHash } = yield* connection;
     const url = `${baseUrl}/api/v1${path}`;
     const base = (method === "GET" ? HttpClientRequest.get(url) : HttpClientRequest.post(url)).pipe(
       HttpClientRequest.setHeader("Authorization", `Bearer ${Redacted.value(token)}`),
       HttpClientRequest.setHeader("Accept", "application/json"),
     );
-    const request = body === undefined ? base : base.pipe(HttpClientRequest.bodyJsonUnsafe(body));
-    const response = yield* http.execute(request).pipe(
-      Effect.timeout(REQUEST_TIMEOUT),
-      Effect.mapError(() => unavailable("network error")),
-    );
-    if (response.status < 200 || response.status >= 300) {
-      return yield* yield* failureFor(response, tokenHash);
-    }
-    const json = yield* response.json.pipe(
-      Effect.mapError(() => unavailable("unexpected response")),
-    );
-    return yield* Schema.decodeEffect(schema)(json).pipe(
-      Effect.mapError(() => unavailable("unexpected response")),
+    const httpRequest =
+      body === undefined ? base : base.pipe(HttpClientRequest.bodyJsonUnsafe(body));
+    return yield* Effect.gen(function* () {
+      const response = yield* http.execute(httpRequest).pipe(
+        // Keeps the ERP URL out of client spans and sends ERP only the headers above.
+        Effect.provideService(References.TracerEnabled, false),
+        Effect.provideService(HttpClient.TracerPropagationEnabled, false),
+        Effect.mapError(() => unavailable("network error")),
+      );
+      if (response.status < 200 || response.status >= 300) {
+        return yield* yield* failureFor(response, tokenHash);
+      }
+      return yield* response.json.pipe(Effect.mapError(() => unavailable("unexpected response")));
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: REQUEST_TIMEOUT,
+        orElse: () => Effect.fail(unavailable("network error")),
+      }),
     );
   });
 
-  const hasData = (value: unknown) =>
-    typeof value === "object" && value !== null && "data" in value;
-  const ClockingResponse = enveloped(ErpClocking);
-  const ListOf = <S extends Schema.Top>(schema: S) =>
-    Schema.Union([Schema.Struct({ data: Schema.Array(schema) }), Schema.Array(schema)]);
+  const decode = <S extends Schema.Top>(schema: S, json: unknown) =>
+    Schema.decodeUnknownEffect(schema)(json).pipe(
+      Effect.mapError(() => unavailable("unexpected response")),
+    );
+
+  /** Resources and lists may arrive bare or wrapped in Laravel's `{ data }` envelope. */
+  const decodeEnveloped = <S extends Schema.Top>(schema: S, json: unknown) =>
+    decode(EnvelopeBody, json).pipe(
+      Effect.flatMap((wrapped) => decode(schema, wrapped.data)),
+      Effect.catch(() => decode(schema, json)),
+    );
 
   return ErpClient.of({
     getActiveClocking: Effect.fn("ErpClient.getActiveClocking")(function* () {
-      return yield* call("GET", "/profile/clockings/active", ErpActiveClocking);
+      return yield* decode(ErpActiveClocking, yield* request("GET", "/profile/clockings/active"));
     }),
     listClockings: Effect.fn("ErpClient.listClockings")(function* (month: string) {
-      const listed = yield* call(
-        "GET",
-        `/profile/clockings?month=${encodeURIComponent(month)}`,
-        ListOf(ErpClocking),
-      );
-      return unwrap(listed, hasData);
+      const json = yield* request("GET", `/profile/clockings?month=${encodeURIComponent(month)}`);
+      return yield* decodeEnveloped(Schema.Array(ErpClocking), json);
     }),
     clockIn: Effect.fn("ErpClient.clockIn")(function* () {
-      return unwrap(
-        yield* call("POST", "/profile/clockings/clock-in", ClockingResponse, { type: "ordinary" }),
-        hasData,
-      );
+      const json = yield* request("POST", "/profile/clockings/clock-in", { type: "ordinary" });
+      return yield* decodeEnveloped(ErpClocking, json);
     }),
     clockOut: Effect.fn("ErpClient.clockOut")(function* () {
-      return unwrap(
-        yield* call("POST", "/profile/clockings/clock-out", ClockingResponse, {}),
-        hasData,
-      );
+      const json = yield* request("POST", "/profile/clockings/clock-out", {});
+      return yield* decodeEnveloped(ErpClocking, json);
     }),
     getTodayReport: Effect.fn("ErpClient.getTodayReport")(function* () {
-      return unwrap(
-        yield* call("GET", "/profile/daily-reports/today", enveloped(ErpTodayReport)),
-        (value) => hasData(value) && !("server_date" in (value as object)),
-      );
+      const json = yield* request("GET", "/profile/daily-reports/today");
+      return yield* decodeEnveloped(ErpTodayReport, json);
     }),
     listActivities: Effect.fn("ErpClient.listActivities")(function* () {
-      return unwrap(yield* call("GET", "/profile/activities", ListOf(ErpActivity)), hasData);
+      const json = yield* request("GET", "/profile/activities");
+      return yield* decodeEnveloped(Schema.Array(ErpActivity), json);
     }),
     listProjects: Effect.fn("ErpClient.listProjects")(function* () {
-      return unwrap(yield* call("GET", "/lookup/projects", ListOf(ErpProject)), hasData);
+      const json = yield* request("GET", "/lookup/projects");
+      return yield* decodeEnveloped(Schema.Array(ErpProject), json);
     }),
     submitReport: Effect.fn("ErpClient.submitReport")(function* (body: ErpDailyReportBody) {
-      yield* call("POST", "/profile/daily-reports", Schema.Unknown, body);
+      yield* request("POST", "/profile/daily-reports", body);
     }),
   });
 });
