@@ -5,7 +5,6 @@ export const sidebarEn = {
   "sidebar.chrome.settings": "Settings",
   "sidebar.chrome.pullRequests": "{Plural}",
   "sidebar.chrome.git": "Git",
-  "sidebar.chrome.usage": "Usage",
 
   "sidebar.usage.title": "Claude usage",
   "sidebar.usage.session": "5-hour",

@@ -1,10 +1,4 @@
-import {
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  ChartNoAxesColumnIcon,
-  GitGraphIcon,
-  SettingsIcon,
-} from "lucide-react";
+import { ArrowLeftIcon, ArrowRightIcon, GitGraphIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo } from "react";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
@@ -216,15 +210,13 @@ function SidebarUtilityItem({
   icon,
   label,
   onClick,
-  className,
 }: {
   icon: ReactNode;
   label: string;
   onClick: () => void;
-  className?: string;
 }) {
   return (
-    <SidebarMenuItem className={cn("shrink-0", className)}>
+    <SidebarMenuItem className="shrink-0">
       <Tooltip>
         <TooltipTrigger
           render={
@@ -286,13 +278,6 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     void navigate({ to: "/settings" });
   };
 
-  const handleUsageClick = () => {
-    if (isMobile) {
-      setOpenMobile(false);
-    }
-    void navigate({ to: "/usage" });
-  };
-
   const handleBackClick = () => {
     closeMobileSidebar();
     void navigateToMainApp();
@@ -321,13 +306,6 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             icon={<GitGraphIcon />}
             label={t("sidebar.chrome.git")}
             onClick={handleGitClick}
-          />
-          <SidebarUtilityItem
-            icon={<ChartNoAxesColumnIcon />}
-            label={t("sidebar.chrome.usage")}
-            onClick={handleUsageClick}
-            // The usage chip opens the same page, so it takes this slot on short windows.
-            className="short-window:group-has-[[data-sidebar-usage-chip]]/utility:hidden"
           />
         </>
       )}

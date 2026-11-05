@@ -266,7 +266,6 @@ function SidebarClaudeUsageChipContent(props: {
   return (
     // Takes the row's free space and drops pace, then labels, so it never pushes the update button out.
     <SidebarMenuItem
-      data-sidebar-usage-chip
       // The undo notice gets the row until its fade-out unmounts it, so the chip returns in one step.
       className="@container flex min-w-0 flex-1 justify-end group-has-[[data-sidebar-undo-notice]]/utility:hidden tall-window:hidden"
     >

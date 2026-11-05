@@ -7,7 +7,6 @@ export const sidebarZhTW: Readonly<Record<keyof typeof sidebarEn, string>> = {
   "sidebar.chrome.settings": "設定",
   "sidebar.chrome.pullRequests": "{title}",
   "sidebar.chrome.git": "Git",
-  "sidebar.chrome.usage": "用量",
 
   "sidebar.usage.title": "Claude 用量",
   "sidebar.usage.session": "5 小時",
