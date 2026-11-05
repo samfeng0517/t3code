@@ -38,7 +38,7 @@ import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPr
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
-import { SidebarClaudeUsage, SidebarClaudeUsageChip } from "./SidebarClaudeUsage";
+import { SidebarUsageLimits, SidebarUsageLimitsChip } from "./SidebarUsageLimits";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 import { useThreadRouteRef } from "~/hooks/useThreadRouteTarget";
 import {
@@ -309,7 +309,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           />
         </>
       )}
-      <SidebarClaudeUsageChip />
+      <SidebarUsageLimitsChip />
       <SidebarThreadUndoNotice />
       <SidebarUpdatePill />
     </SidebarMenu>
@@ -321,7 +321,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     <SidebarFooter>
       <SidebarProviderUpdatePill />
       <SidebarUpdateArchitectureWarning />
-      <SidebarClaudeUsage />
+      <SidebarUsageLimits />
       <SidebarUtilityMenu />
     </SidebarFooter>
   );
