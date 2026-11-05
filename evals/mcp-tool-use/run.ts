@@ -267,7 +267,6 @@ const McpToolUseWorld = Schema.StructWithRest(
   Rest,
 );
 
-/** One fake thread, one JSON object per line in a case file. */
 /** The ERP data T3 puts in the assistant's daily-draft message; `buildDailyDraftMessage` input. */
 const AssistantDraftInput = Schema.Struct({
   reportDate: Schema.String,
@@ -290,6 +289,7 @@ const AssistantDraftInput = Schema.Struct({
   ),
 });
 
+/** One fake thread, one JSON object per line in a case file. */
 export const McpToolUseCase = Schema.Struct({
   id: Schema.String,
   area: Schema.String,
@@ -1150,7 +1150,6 @@ const linkedEntry = (sample: Sample, url: string) => {
   return { ...pr, state: seeded?.state ?? "open", title: seeded?.title ?? null };
 };
 
-/** A believable T3 result for a tool the case does not mock. */
 /** T3's daily report tool results for an assistant case; errors carry T3's failure fields. */
 const assistantDefault = (
   sample: Sample,
@@ -1182,6 +1181,7 @@ const assistantDefault = (
   };
 };
 
+/** A believable T3 result for a tool the case does not mock. */
 export const t3Default = (
   sample: Sample,
   name: string,

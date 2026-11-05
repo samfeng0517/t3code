@@ -769,6 +769,34 @@ it.effect("builds device cases from product-backed worlds and synthetic prior tu
   }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
+it.effect("builds the assistant cases and lists the daily report tools only in them", () =>
+  Effect.gen(function* () {
+    const cases = NodeFS.readFileSync(new URL("./cases/assistant.ndjson", import.meta.url), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => decodeDeviceCase(line));
+    assert.equal(new Set(cases.map((c) => c.id)).size, 4);
+    const options = { model: "claude-sonnet-5-5", keepUserInstructions: false } as const;
+    const tool = "mcp__t3-code__assistant_propose_daily_report";
+    assert.notInclude(
+      buildBase(template, options).t3.map(({ name }) => name),
+      tool,
+    );
+    const base = buildBase(template, { ...options, assistant: true });
+    assert.include(
+      base.t3.map(({ name }) => name),
+      tool,
+    );
+    for (const testCase of cases) {
+      const sample = makeSample(testCase, base);
+      yield* withDevices(sample);
+      const text = JSON.stringify(buildMessages(sample));
+      assert.include(text, "日報寫法", testCase.id);
+      if (testCase.prompt === "") assert.include(text, "<erp-data>", testCase.id);
+    }
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+);
+
 const secretCases = () =>
   NodeFS.readFileSync(new URL("./cases/secrets.ndjson", import.meta.url), "utf8")
     .trim()
