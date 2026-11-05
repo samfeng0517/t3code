@@ -565,6 +565,9 @@ describe("AssistantSettings", () => {
       modelSelection: null,
       runtimeMode: "approval-required",
     });
+  });
+
+  it("ServerSettings should keep a hand-edited http erpBaseUrl when decoding settings.json", () => {
     // Only patches validate the URL, so a hand-edited one cannot fail the whole settings file.
     expect(
       decodeServerSettings({ assistant: { erpBaseUrl: "http://erp.example.com" } }).assistant
