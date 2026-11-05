@@ -77,7 +77,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.scheduledTasksDelete]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksRunNow]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksRotateWebhookToken]: AuthOrchestrationOperateScope,
-  // Clocking and the daily report write to the user's ERP account.
+  // Assistant mutations write to the user's ERP account or start and edit the assistant thread.
   [WS_METHODS.assistantClockIn]: AuthOrchestrationOperateScope,
   [WS_METHODS.assistantClockOut]: AuthOrchestrationOperateScope,
   [WS_METHODS.assistantGetOrCreateThread]: AuthOrchestrationOperateScope,

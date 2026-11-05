@@ -1978,6 +1978,17 @@ it.effect("SQL list older settled threads below a cursor", () =>
     yield* createThread({ name: "child", settledDay: 1, subagent: true });
     yield* createThread({ name: "archived", settledDay: 1, archived: true });
     yield* createThread({ name: "assistant", settledDay: 1, assistant: true });
+    yield* createThread({
+      name: "archived-assistant",
+      settledDay: 1,
+      assistant: true,
+      archived: true,
+    });
+    // An archived assistant thread keeps its memory, so lookups still find it.
+    assert.sameMembers(
+      [...(yield* store.listAssistantThreadIds())],
+      [id("assistant"), id("archived-assistant")],
+    );
 
     const list = (
       before: { readonly settledAt: string; readonly threadId?: ThreadId },

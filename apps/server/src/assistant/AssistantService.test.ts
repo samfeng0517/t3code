@@ -116,19 +116,16 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
     Ref.update(shells, (current) => new Map(current).set(shell.id, shell));
 
   const threads = Layer.mock(ThreadManagement.ThreadManagementService)({
-    listActiveShellIndex: () =>
+    listAssistantThreadIds: () =>
       Ref.get(shells).pipe(
         Effect.map((current) =>
-          [...current.values()].map((shell) => ({
-            id: shell.id,
-            projectId: shell.projectId,
-            lineage: shell.lineage,
-            settledOverride: null,
-            settledAt: null,
-            pinnedAt: null,
-            snoozedUntil: null,
-            mayBeLive: false,
-          })),
+          [...current.values()]
+            .filter((shell) => shell.lineage.assistant === true && shell.deletedAt === null)
+            .toSorted(
+              (left, right) =>
+                DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt),
+            )
+            .map((shell) => shell.id),
         ),
       ),
     getThreadShell: (threadId) =>
@@ -249,12 +246,18 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect(
-    "getOrCreateThread should return the existing thread when one with lineage.assistant exists",
-    () =>
+  it.effect.each([
+    { state: "active", archivedAt: null },
+    { state: "archived", archivedAt: NOW },
+  ])(
+    "getOrCreateThread should return the existing thread when one with lineage.assistant is $state",
+    ({ archivedAt }) =>
       Effect.gen(function* () {
         const harness = yield* makeHarness();
-        yield* harness.addShell(assistantShell("existing-assistant", harness.root));
+        yield* harness.addShell({
+          ...assistantShell("existing-assistant", harness.root),
+          archivedAt,
+        });
         yield* Effect.gen(function* () {
           const assistant = yield* AssistantService.AssistantService;
           assert.equal(yield* assistant.getOrCreateThread(), "existing-assistant");
@@ -332,7 +335,16 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
 
   it.effect("getClockStatus should return expectedEnd null when no segment is open", () =>
     Effect.gen(function* () {
-      const harness = yield* makeHarness();
+      // 07:00 in Taipei is still the previous day in UTC.
+      const harness = yield* makeHarness({
+        active: activeClocking({
+          meta: {
+            server_now: "2026-11-05T07:00:00+08:00",
+            today_ordinary_hours: 0,
+            today_required_hours: 8,
+          },
+        }),
+      });
       yield* Effect.gen(function* () {
         const assistant = yield* AssistantService.AssistantService;
         const status = yield* assistant.getClockStatus();
@@ -405,6 +417,19 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
           assert.isTrue(command?.commandId.startsWith("assistant-settings:runtime:"));
         }).pipe(Effect.provide(harness.layer));
       }).pipe(Effect.scoped),
+  );
+
+  it.effect("writeMemory should release the idle session when no run is active", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* harness.addShell(assistantShell("existing-assistant", harness.root));
+      yield* Effect.gen(function* () {
+        const assistant = yield* AssistantService.AssistantService;
+        yield* assistant.writeMemory({ content: "# 助理記憶\n" });
+        assert.equal(yield* Deferred.await(harness.released), "session-1");
+        assert.equal(yield* Ref.get(harness.releaseCalls), 1);
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(Effect.scoped),
   );
 
   it.effect("writeMemory should defer the session release when the assistant run is active", () =>

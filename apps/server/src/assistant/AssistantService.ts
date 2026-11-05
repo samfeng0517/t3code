@@ -134,19 +134,17 @@ const make = Effect.gen(function* () {
       if ((yield* liveShell(cached)) !== null) return cached;
       yield* Ref.set(cachedThreadId, null);
     }
-    const index = yield* threads.listActiveShellIndex().pipe(Effect.mapError(threadUnavailable));
-    let newest: { readonly id: ThreadId; readonly createdAt: DateTime.Utc } | null = null;
-    for (const entry of index) {
-      if (entry.lineage.assistant !== true) continue;
-      if (!(yield* managedFolders.isScratchProject(entry.projectId))) continue;
-      const shell = yield* liveShell(entry.id);
-      if (shell === null) continue;
-      if (newest === null || DateTime.isGreaterThan(shell.createdAt, newest.createdAt)) {
-        newest = { id: shell.id, createdAt: shell.createdAt };
-      }
+    // Archived assistant threads count too: archiving must not fork the chat or reset its memory.
+    const candidates = yield* threads
+      .listAssistantThreadIds()
+      .pipe(Effect.mapError(threadUnavailable));
+    for (const threadId of candidates) {
+      const shell = yield* liveShell(threadId);
+      if (shell === null || !(yield* managedFolders.isScratchProject(shell.projectId))) continue;
+      yield* Ref.set(cachedThreadId, threadId);
+      return threadId;
     }
-    yield* Ref.set(cachedThreadId, newest?.id ?? null);
-    return newest?.id ?? null;
+    return null;
   });
 
   const memoryPath = Effect.fn("AssistantService.memoryPath")(function* (threadId: ThreadId) {
@@ -266,7 +264,10 @@ const make = Effect.gen(function* () {
     const completedHours = active.meta.today_ordinary_hours;
     const requiredHours = active.meta.today_required_hours;
     const activeStart = active.data?.type === "ordinary" ? active.data.start_time : null;
-    const stored = yield* drafts.read().pipe(Effect.option);
+    const stored = yield* drafts.read().pipe(
+      Effect.tapError((cause) => Effect.logWarning("assistant drafts were not read", { cause })),
+      Effect.option,
+    );
     if (stored._tag === "Some" && stored.value.workday !== workday) {
       yield* drafts
         .update((file) => [undefined, { ...file, workday }])
@@ -344,13 +345,12 @@ const make = Effect.gen(function* () {
     Effect.catch((cause) => Effect.logWarning("assistant settings watcher stopped", { cause })),
   );
 
-  const handleDomainEvent = Effect.fn("AssistantService.handleDomainEvent")(function* (
-    event: OrchestrationV2DomainEvent,
-  ) {
+  // Untraced: it sees every domain event on the server; releaseSessions keeps its own span.
+  const handleDomainEvent = Effect.fnUntraced(function* (event: OrchestrationV2DomainEvent) {
     if (event.type !== "run.updated" || !TERMINAL_RUN_STATUSES.has(event.payload.status)) return;
     if (event.threadId !== (yield* Ref.get(cachedThreadId))) return;
     if (!(yield* Ref.getAndSet(memoryReloadPending, false))) return;
-    yield* releaseSessions(event.threadId).pipe(Effect.ignore);
+    yield* releaseSessions(event.threadId).pipe(Effect.ignore({ log: true }));
   });
 
   const start = Effect.fn("AssistantService.start")(function* () {

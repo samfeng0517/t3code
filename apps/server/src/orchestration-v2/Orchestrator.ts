@@ -463,6 +463,10 @@ export interface OrchestratorV2Shape {
     ReadonlyArray<ActiveShellIndexEntry>,
     OrchestratorV2Error
   >;
+  readonly listAssistantThreadIds: () => Effect.Effect<
+    ReadonlyArray<ThreadId>,
+    OrchestratorV2Error
+  >;
   readonly listOlderSettledThreads: (
     query: OlderSettledThreadsQuery,
   ) => Effect.Effect<OlderSettledThreadsListing, OrchestratorV2Error>;
@@ -14300,6 +14304,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     ),
     countThreads: Effect.fn("OrchestratorV2.countThreads")(function () {
       return projectionStore.countThreads().pipe(Effect.mapError(shellProjectionError));
+    }),
+    listAssistantThreadIds: Effect.fn("OrchestratorV2.listAssistantThreadIds")(function () {
+      return projectionStore.listAssistantThreadIds().pipe(Effect.mapError(shellProjectionError));
     }),
     listActiveShellIndex: Effect.fn("OrchestratorV2.listActiveShellIndex")(function () {
       return projectionStore.listActiveShellIndex().pipe(Effect.mapError(shellProjectionError));
