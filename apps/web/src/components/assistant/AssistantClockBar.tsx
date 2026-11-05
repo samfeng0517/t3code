@@ -87,7 +87,10 @@ function describeAssistantFailure(
 }
 
 /** Toasts a failed command; an ERP rejection shows the ERP's own message verbatim. */
-function toastCommandFailure(result: AtomCommandResult<unknown, unknown>, t: Translate): unknown {
+export function toastCommandFailure(
+  result: AtomCommandResult<unknown, unknown>,
+  t: Translate,
+): unknown {
   if (result._tag === "Success" || isAtomCommandInterrupted(result)) return null;
   const error = squashAtomCommandFailure(result);
   if (isAssistantError(error) && error.reason === "rejected") {

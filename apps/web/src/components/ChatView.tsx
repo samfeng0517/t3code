@@ -1519,6 +1519,7 @@ export default function ChatView(props: ChatViewProps) {
     optimisticMessages: optimisticUserMessages,
     anchoredMessages: anchoredTimelineMessages,
     attachmentUrlById: timelineAttachmentUrlById,
+    assistantThread: activeThread?.lineage.assistant === true,
     ...(serverProjection === null
       ? {}
       : {

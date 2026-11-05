@@ -1,7 +1,11 @@
 import type { ThreadStructure, ThreadStructureRuntime } from "@t3tools/client-runtime/state/shell";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import {
+  AssistantDraftSection,
+  AssistantDraftStatusValue,
+  NonNegativeInt,
   type AssetResource,
+  type AssistantDraftItem,
   type OrchestrationV2Checkpoint,
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2PlanArtifact,
@@ -26,7 +30,11 @@ import {
 import type { HtmlRenderReference } from "@t3tools/shared/htmlRender";
 import { turnItemDetailRevision } from "@t3tools/client-runtime/work-log/item-detail";
 import type { McpAppReference } from "@t3tools/shared/mcpApp";
-import { htmlRenderFromToolItem, mcpAppFromToolItem } from "@t3tools/shared/toolOutput";
+import {
+  dailyReportDraftFromToolItem,
+  htmlRenderFromToolItem,
+  mcpAppFromToolItem,
+} from "@t3tools/shared/toolOutput";
 import {
   contextCompactionLabel,
   workEntryIndicatesToolFailure,
@@ -50,6 +58,8 @@ import {
 } from "./types";
 import * as DateTime from "effect/DateTime";
 import * as Equal from "effect/Equal";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { shallow } from "zustand/vanilla/shallow";
 
 export { formatDuration } from "@t3tools/shared/orchestrationTiming";
@@ -132,6 +142,18 @@ export type TimelineEntry = (
       readonly createdAt: string;
       readonly runId: RunId | null;
       readonly htmlRender: HtmlRenderReference;
+    }
+  | {
+      readonly id: string;
+      readonly kind: "daily-report-draft";
+      readonly createdAt: string;
+      readonly reportDate: string;
+      readonly version: number;
+      /** What the assistant proposed; null when the wire summarized the call's input. */
+      readonly input: {
+        readonly items: ReadonlyArray<AssistantDraftItem>;
+        readonly problemText: string;
+      } | null;
     }
   | {
       readonly id: string;
@@ -557,6 +579,42 @@ export interface TimelineEntriesInput {
   readonly attempts?: ReadonlyArray<OrchestrationV2RunAttempt>;
   readonly nodes?: ReadonlyArray<OrchestrationV2ExecutionNode>;
   readonly plans?: ReadonlyArray<OrchestrationV2PlanArtifact>;
+  /** Draft proposals render as cards only in the assistant thread. */
+  readonly assistantThread?: boolean;
+}
+
+const ProposedDailyReportInput = Schema.Struct({
+  items: Schema.Array(
+    Schema.Struct({
+      section: AssistantDraftSection,
+      content: Schema.String,
+      status: AssistantDraftStatusValue,
+      project_id: Schema.optional(Schema.NullOr(Schema.Int)),
+      project_other: Schema.optional(Schema.NullOr(Schema.String)),
+      sort_order: NonNegativeInt,
+    }),
+  ),
+  problem_text: Schema.optional(Schema.String),
+});
+const decodeProposedDailyReportInput = Schema.decodeUnknownOption(ProposedDailyReportInput);
+
+function proposedDailyReportInput(
+  value: unknown,
+): Extract<TimelineEntry, { kind: "daily-report-draft" }>["input"] {
+  return Option.match(decodeProposedDailyReportInput(value), {
+    onNone: () => null,
+    onSome: (input) => ({
+      items: input.items.map((item) => ({
+        section: item.section,
+        content: item.content,
+        status: item.status,
+        projectId: item.project_id ?? null,
+        projectOther: item.project_other ?? null,
+        sortOrder: item.sort_order,
+      })),
+      problemText: input.problem_text ?? "",
+    }),
+  });
 }
 
 export interface TimelineEntriesProjection {
@@ -706,6 +764,23 @@ export function deriveTimelineEntriesFromVisibleTurnItems(
         createdAt,
         runId: item.runId,
         htmlRender,
+        ...attemptMetadata,
+      });
+      continue;
+    }
+
+    const dailyReportDraft =
+      input.assistantThread === true && item.type === "dynamic_tool"
+        ? dailyReportDraftFromToolItem(item)
+        : undefined;
+    if (dailyReportDraft !== undefined) {
+      entries.push({
+        id: item.id,
+        kind: "daily-report-draft",
+        createdAt,
+        reportDate: dailyReportDraft.reportDate,
+        version: dailyReportDraft.version,
+        input: proposedDailyReportInput(item.type === "dynamic_tool" ? item.input : null),
         ...attemptMetadata,
       });
       continue;
@@ -928,6 +1003,7 @@ function reuseTimelineEntries(
   const before = previous.input;
   if (
     input.visibleTurnItems.length < before.visibleTurnItems.length ||
+    input.assistantThread !== before.assistantThread ||
     !shallow(input.optimisticMessages, before.optimisticMessages) ||
     !shallow(input.anchoredMessages, before.anchoredMessages) ||
     !shallow(input.attachmentUrlById, before.attachmentUrlById) ||

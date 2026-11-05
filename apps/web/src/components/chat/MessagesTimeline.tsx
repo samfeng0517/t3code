@@ -126,6 +126,8 @@ import {
   McpAppTimelineRow,
 } from "./TimelineAssistantRows";
 import { V2EventTimelineRow } from "./TimelineV2EventRow";
+import { DailyReportDraftCard } from "../assistant/DailyReportDraftCard";
+import { subscribeDraftReveal } from "../assistant/draftReveal";
 import { startTimelinePositionRestore } from "./useTimelinePositionRestore";
 import {
   attachTimelineViewport,
@@ -1208,6 +1210,23 @@ const ConversationTimeline = memo(function ConversationTimeline({
     contentInsetEndAdjustment,
   });
 
+  const draftRevealThreadId = citationThreadRef?.threadId ?? null;
+  const revealLatestDraft = useEffectEvent(() => {
+    const index = rows.findLastIndex((row) => row.kind === "daily-report-draft");
+    if (index < 0) return;
+    navigateTimeline();
+    void listRef.current?.scrollToIndex({
+      index,
+      animated: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      viewOffset: 96,
+    });
+  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens for the clock bar chip asking to show the latest draft card
+  useEffect(() => {
+    if (draftRevealThreadId === null) return;
+    return subscribeDraftReveal(draftRevealThreadId, revealLatestDraft);
+  }, [draftRevealThreadId]);
+
   // LegendList moves rows one commit late; per-row providers prevent thread context leaks.
   const onAudioPlaybackChange = (rowId: string, event: SyntheticEvent) => {
     const audio = event.target;
@@ -1463,7 +1482,8 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
                   row.kind === "event" ||
                   row.kind === "attempt-fold" ||
                   row.kind === "html-render" ||
-                  row.kind === "mcp-app"
+                  row.kind === "mcp-app" ||
+                  row.kind === "daily-report-draft"
                 ? "pb-2"
                 : "pb-4",
         (row.kind === "message" && row.message.role === "assistant") ||
@@ -1513,12 +1533,31 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "html-render" ? <HtmlRenderTimelineRow row={row} /> : null}
       {row.kind === "mcp-app" ? <McpAppTimelineRow row={row} /> : null}
+      {row.kind === "daily-report-draft" ? <DailyReportDraftTimelineRow row={row} /> : null}
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
       {row.kind === "worktree-setup" ? <WorktreeSetupTimelineRow row={row} /> : null}
       {row.kind === "event" ? <V2EventTimelineRow row={row} /> : null}
     </div>
   );
 });
+
+function DailyReportDraftTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "daily-report-draft" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const activity = use(TimelineRowActivityCtx);
+  return (
+    <DailyReportDraftCard
+      environmentId={ctx.activeThreadEnvironmentId}
+      reportDate={row.reportDate}
+      version={row.version}
+      input={row.input}
+      runActive={activity.isWorking}
+    />
+  );
+}
 
 function WorktreeSetupTimelineRow({
   row,
