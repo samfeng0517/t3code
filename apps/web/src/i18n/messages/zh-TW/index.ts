@@ -27,6 +27,7 @@ import { settingsMiscZhTW } from "./settingsMisc";
 import { deviceZhTW } from "./device";
 import { filesZhTW } from "./files";
 import { legacySidebarZhTW } from "./legacySidebar";
+import { assistantZhTW } from "./assistant";
 
 export const zhTW: Readonly<Record<MessageKey, string>> = {
   ...commonZhTW,
@@ -57,4 +58,5 @@ export const zhTW: Readonly<Record<MessageKey, string>> = {
   ...deviceZhTW,
   ...filesZhTW,
   ...legacySidebarZhTW,
+  ...assistantZhTW,
 };

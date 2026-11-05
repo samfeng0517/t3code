@@ -23,6 +23,7 @@ import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-reques
 import { Route as ChatNewRouteImport } from './routes/_chat.new'
 import { Route as ChatGitRouteImport } from './routes/_chat.git'
 import { Route as ChatBrowserRouteImport } from './routes/_chat.browser'
+import { Route as ChatAssistantRouteImport } from './routes/_chat.assistant'
 import { Route as ThreadsEnvironmentIdThreadIdRouteImport } from './routes/threads.$environmentId.$threadId'
 import { Route as ChatSettingsWorktreesRouteImport } from './routes/_chat.settings.worktrees'
 import { Route as ChatSettingsThreadsRouteImport } from './routes/_chat.settings.threads'
@@ -120,6 +121,11 @@ const ChatGitRoute = ChatGitRouteImport.update({
 const ChatBrowserRoute = ChatBrowserRouteImport.update({
   id: '/browser',
   path: '/browser',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatAssistantRoute = ChatAssistantRouteImport.update({
+  id: '/assistant',
+  path: '/assistant',
   getParentRoute: () => ChatRoute,
 } as any)
 const ThreadsEnvironmentIdThreadIdRoute =
@@ -281,6 +287,7 @@ export interface FileRoutesByFullPath {
   '/guest': typeof GuestRoute
   '/pair': typeof PairRoute
   '/welcome': typeof WelcomeRoute
+  '/assistant': typeof ChatAssistantRoute
   '/browser': typeof ChatBrowserRoute
   '/git': typeof ChatGitRoute
   '/new': typeof ChatNewRoute
@@ -324,6 +331,7 @@ export interface FileRoutesByTo {
   '/guest': typeof GuestRoute
   '/pair': typeof PairRoute
   '/welcome': typeof WelcomeRoute
+  '/assistant': typeof ChatAssistantRoute
   '/browser': typeof ChatBrowserRoute
   '/git': typeof ChatGitRoute
   '/new': typeof ChatNewRoute
@@ -370,6 +378,7 @@ export interface FileRoutesById {
   '/guest': typeof GuestRoute
   '/pair': typeof PairRoute
   '/welcome': typeof WelcomeRoute
+  '/_chat/assistant': typeof ChatAssistantRoute
   '/_chat/browser': typeof ChatBrowserRoute
   '/_chat/git': typeof ChatGitRoute
   '/_chat/new': typeof ChatNewRoute
@@ -417,6 +426,7 @@ export interface FileRouteTypes {
     | '/guest'
     | '/pair'
     | '/welcome'
+    | '/assistant'
     | '/browser'
     | '/git'
     | '/new'
@@ -460,6 +470,7 @@ export interface FileRouteTypes {
     | '/guest'
     | '/pair'
     | '/welcome'
+    | '/assistant'
     | '/browser'
     | '/git'
     | '/new'
@@ -505,6 +516,7 @@ export interface FileRouteTypes {
     | '/guest'
     | '/pair'
     | '/welcome'
+    | '/_chat/assistant'
     | '/_chat/browser'
     | '/_chat/git'
     | '/_chat/new'
@@ -653,6 +665,13 @@ declare module '@tanstack/react-router' {
       path: '/browser'
       fullPath: '/browser'
       preLoaderRoute: typeof ChatBrowserRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/assistant': {
+      id: '/_chat/assistant'
+      path: '/assistant'
+      fullPath: '/assistant'
+      preLoaderRoute: typeof ChatAssistantRouteImport
       parentRoute: typeof ChatRoute
     }
     '/threads/$environmentId/$threadId': {
@@ -924,6 +943,7 @@ const ChatSettingsRouteWithChildren = ChatSettingsRoute._addFileChildren(
 )
 
 interface ChatRouteChildren {
+  ChatAssistantRoute: typeof ChatAssistantRoute
   ChatBrowserRoute: typeof ChatBrowserRoute
   ChatGitRoute: typeof ChatGitRoute
   ChatNewRoute: typeof ChatNewRoute
@@ -936,6 +956,7 @@ interface ChatRouteChildren {
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
+  ChatAssistantRoute: ChatAssistantRoute,
   ChatBrowserRoute: ChatBrowserRoute,
   ChatGitRoute: ChatGitRoute,
   ChatNewRoute: ChatNewRoute,

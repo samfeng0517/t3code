@@ -26,6 +26,7 @@ import { settingsMiscEn } from "./settingsMisc";
 import { deviceEn } from "./device";
 import { filesEn } from "./files";
 import { legacySidebarEn } from "./legacySidebar";
+import { assistantEn } from "./assistant";
 
 // English is the source of truth: every other locale is typed against these keys.
 export const en = {
@@ -57,6 +58,7 @@ export const en = {
   ...deviceEn,
   ...filesEn,
   ...legacySidebarEn,
+  ...assistantEn,
 } as const;
 
 export type MessageKey = keyof typeof en;
