@@ -78,3 +78,4 @@ export * from "./secretReference.ts";
 export * from "./settingsSecretValue.ts";
 export * from "./clientRpcPermissions.ts";
 export * from "./pageComments.ts";
+export * from "./assistant.ts";
