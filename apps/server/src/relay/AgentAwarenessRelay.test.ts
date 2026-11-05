@@ -204,6 +204,7 @@ const makeTestRelay = Effect.fnUntraced(function* (
     listThreadWorktreePaths: unused,
     listOlderSettledThreads: unused,
     readShellSnapshot: unused,
+    getThreadTitles: unused,
     ensureLegacyTranscript: unused,
     dispatch: unused,
     searchThread: () => Effect.die("unused"),

@@ -18,7 +18,7 @@ import ProjectScriptsControl, {
 } from "../ProjectScriptsControl";
 import { memo, useState, type ComponentProps } from "react";
 import { useT } from "~/i18n";
-import type { ContextWindowSnapshot } from "~/lib/contextWindow";
+import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/context-window";
 import { ThreadDetailsCard } from "./ThreadDetailsCard";
 import { ThreadDetailsContextRow } from "./ThreadDetailsContextRow";
 import { OpenInPicker } from "./OpenInPicker";

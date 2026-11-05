@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import type * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import type * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 
 import {
   ORCA_YAML_FILE,
@@ -13,6 +14,12 @@ import {
   parseOrcaYaml,
   parseWorktreeInclude,
 } from "../project/compatProjectFiles.ts";
+
+class WorktreeLinkError extends Schema.TaggedError<WorktreeLinkError>()("WorktreeLinkError", {
+  source: Schema.String,
+  destination: Schema.String,
+  cause: Schema.Defect(),
+}) {}
 
 // Orca's admission limits for `.worktreeinclude`, measured before anything is copied.
 const COPY_BUDGET_BYTES = 2 * 1024 ** 3;
@@ -159,13 +166,15 @@ export function makeWorktreePopulator(deps: WorktreePopulationDeps) {
   });
 
   const link = (source: string, destination: string) =>
-    Effect.tryPromise(() =>
-      deps.platform === "win32"
-        ? NodeFSP.symlink(source, destination, "junction").catch(() =>
-            NodeFSP.symlink(source, destination, "dir"),
-          )
-        : NodeFSP.symlink(source, destination, "dir"),
-    );
+    Effect.tryPromise({
+      try: () =>
+        deps.platform === "win32"
+          ? NodeFSP.symlink(source, destination, "junction").catch(() =>
+              NodeFSP.symlink(source, destination, "dir"),
+            )
+          : NodeFSP.symlink(source, destination, "dir"),
+      catch: (cause) => new WorktreeLinkError({ source, destination, cause }),
+    });
 
   /**
    * Classifies every entry with one git call. Entries git cannot classify are filtered first, and

@@ -3,20 +3,26 @@ import { EnvironmentId, ProjectId, type PullRequestDetailView } from "@t3tools/c
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
-const mocks = vi.hoisted(() => ({ setLabels: vi.fn() }));
+const state = vi.hoisted(() => ({ update: vi.fn(), setLabels: vi.fn(), canUpdate: true }));
 
 vi.mock(import("~/state/use-atom-command"), async (original) => {
   const { pullRequestEnvironment } = await import("~/state/pullRequests");
   return {
     ...(await original()),
     useAtomCommand: ((command: unknown) =>
-      command === pullRequestEnvironment.setLabels ? mocks.setLabels : vi.fn()) as never,
+      command === pullRequestEnvironment.setLabels ? state.setLabels : state.update) as never,
   };
 });
-
+vi.mock(import("~/state/session"), async (original) => ({
+  ...(await original()),
+  readEnvironmentScope: () => true,
+  useEnvironmentScope: () => true,
+}));
 vi.mock(import("~/state/pullRequests"), async (original) => {
   const actual = await original();
   const { AsyncResult, Atom } = await import("effect/reactivity");
+  const allowed = Atom.make(true);
+  const denied = Atom.make(false);
   const candidates = Atom.make(
     AsyncResult.success({
       candidates: [
@@ -31,9 +37,19 @@ vi.mock(import("~/state/pullRequests"), async (original) => {
     pullRequestEnvironment: {
       ...actual.pullRequestEnvironment,
       labelCandidates: (() => candidates) as never,
+      update: {
+        ...actual.pullRequestEnvironment.update,
+        permissionAtom: () => (state.canUpdate ? allowed : denied),
+      },
     },
   };
 });
+
+function setup() {
+  state.update.mockReset();
+  state.update.mockResolvedValue({ _tag: "Success", value: undefined });
+  state.canUpdate = true;
+}
 
 import { act, render as renderUi } from "../../../test/render";
 import { PullRequestSummaryTab } from "./PullRequestSummaryTab";
@@ -127,7 +143,9 @@ async function render(value = detail) {
   });
 }
 
-it("keeps an unsaved description when collapsed and reopened", async () => {
+it("keeps an unsaved description when collapsed and reopened, and after a failed save", async () => {
+  setup();
+  state.update.mockResolvedValue({ _tag: "Failure", cause: new Error("offline") });
   await using screen = await render();
   await act(async () =>
     screen.container.querySelector<HTMLButtonElement>('[aria-label="Edit description"]')!.click(),
@@ -139,11 +157,58 @@ it("keeps an unsaved description when collapsed and reopened", async () => {
   expect(screen.expanded("Description")).toBe("false");
   await screen.click("Description");
   expect(screen.container.querySelector("textarea")!.value).toBe("Unsaved description");
+
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(state.update).toHaveBeenCalledTimes(1);
+  await expect.element(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+  expect(screen.container.querySelector("textarea")!.value).toBe("Unsaved description");
+});
+
+it("ticks a description checkbox placed after an attachment and edits from the ticked body", async () => {
+  setup();
+  let finishSave = (_result: unknown) => {};
+  state.update.mockReturnValueOnce(new Promise((resolve) => (finishSave = resolve)));
+  const body = "Intro\n\nhttps://example.com/shot.png\n\n## Test plan\n- [ ] First\n- [ ] Second";
+  const ticked = body.replace("- [ ] Second", "- [x] Second");
+  await using screen = await render({ ...detail, body, observedAt: 1 });
+  const boxes = () => screen.container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+  expect([...boxes()].map((box) => box.disabled)).toEqual([false, false]);
+
+  await userEvent.click(boxes()[1]!);
+  expect(state.update).toHaveBeenCalledWith({
+    environmentId: "environment",
+    input: expect.objectContaining({ number: 1, body: ticked }),
+  });
+  expect([...boxes()].map((box) => box.checked)).toEqual([false, true]);
+  await act(async () => finishSave({ _tag: "Success", value: undefined }));
+
+  // The host has not been read since the save, so the editor starts from the ticked body.
+  await act(async () =>
+    screen.container.querySelector<HTMLButtonElement>('[aria-label="Edit description"]')!.click(),
+  );
+  expect(screen.container.querySelector("textarea")!.value).toBe(ticked);
+});
+
+it("leaves description checkboxes read-only without the right to edit it", async () => {
+  setup();
+  const body = "- [ ] First";
+  {
+    await using screen = await render({ ...detail, body, viewer: "someone-else" });
+    expect(
+      screen.container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled,
+    ).toBe(true);
+  }
+  state.canUpdate = false;
+  await using screen = await render({ ...detail, body });
+  expect(screen.container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled).toBe(
+    true,
+  );
 });
 
 function setupLabels() {
-  mocks.setLabels.mockReset();
-  mocks.setLabels.mockResolvedValue({ _tag: "Success", value: undefined });
+  setup();
+  state.setLabels.mockReset();
+  state.setLabels.mockResolvedValue({ _tag: "Success", value: undefined });
   return {
     ...detail,
     labels: [{ name: "bug", color: null }],
@@ -159,7 +224,7 @@ it("label menu should send nothing when it closes without changes", async () => 
   await expect.element(page.getByRole("option", { name: /docs/ })).toBeVisible();
   await userEvent.keyboard("{Escape}");
   await expect.element(page.getByRole("option", { name: /docs/ })).not.toBeInTheDocument();
-  expect(mocks.setLabels).not.toHaveBeenCalled();
+  expect(state.setLabels).not.toHaveBeenCalled();
 });
 
 it("label menu should send one add and one remove batch on close when labels were toggled while open", async () => {
@@ -171,15 +236,15 @@ it("label menu should send one add and one remove batch on close when labels wer
   await expect
     .element(page.getByRole("option", { name: /docs/ }).getByLabelText("Applied"))
     .toBeVisible();
-  expect(mocks.setLabels).not.toHaveBeenCalled();
+  expect(state.setLabels).not.toHaveBeenCalled();
   await userEvent.keyboard("{Escape}");
-  await vi.waitFor(() => expect(mocks.setLabels).toHaveBeenCalledTimes(2));
+  await vi.waitFor(() => expect(state.setLabels).toHaveBeenCalledTimes(2));
   const reference = {
     projectId: value.projectId,
     repository: value.repository,
     number: value.number,
   };
-  expect(mocks.setLabels.mock.calls).toEqual([
+  expect(state.setLabels.mock.calls).toEqual([
     [
       {
         environmentId: "environment",

@@ -5,7 +5,6 @@ export const chatViewEn = {
   "chatView.threadError.chatGptLimitReached": "ChatGPT usage limit reached",
   "chatView.threadError.workspaceLimit":
     "You've reached your workspace's limit for using your ChatGPT plan in other apps. Copy a request to ask your workspace admin for increased usage limits.",
-  "chatView.threadError.reviewUsageSettings": "Review your usage settings in ChatGPT.",
   "chatView.threadError.copyRequestForAdmin": "Copy request for admin",
   "chatView.threadError.dismiss": "Dismiss error",
   "chatView.usageLimitRecovery.title": "Usage limit reached",

@@ -12,11 +12,16 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import { BrowserMediaPermissions } from "./BrowserMediaPermissions.ts";
 import { MEDIA_PERMISSION_STATE_CHANNEL } from "./GuestProtocol.ts";
 import { previewHostWindow } from "./PreviewHostWindow.ts";
+
+class ScreenSourcesError extends Schema.TaggedError<ScreenSourcesError>()("ScreenSourcesError", {
+  cause: Schema.Defect(),
+}) {}
 
 interface MediaRequestDetails {
   readonly requestingUrl?: string;
@@ -422,9 +427,11 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
     screenDialogOpen = true;
     const host = new URL(origin).host;
 
-    const chooseScreen = Effect.tryPromise(() =>
-      desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 0, height: 0 } }),
-    ).pipe(
+    const chooseScreen = Effect.tryPromise({
+      try: () =>
+        desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 0, height: 0 } }),
+      catch: (cause) => new ScreenSourcesError({ cause }),
+    }).pipe(
       Effect.flatMap((sources): Effect.Effect<Streams, unknown> => {
         const screenDenied = screenRecordingDenied();
         if (sources.length === 0 && !screenDenied) return Effect.succeed({});
