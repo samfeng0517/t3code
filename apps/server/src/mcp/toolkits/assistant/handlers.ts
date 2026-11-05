@@ -39,6 +39,11 @@ const toFailure = (error: AssistantService.AssistantAgentDraftError) => {
         message:
           "The user changed the draft on the card after you last read it, so nothing was saved. Call assistant_get_daily_report_draft again, then propose your revision on top of the current draft.",
       });
+    case "unread-earlier-workday":
+      return new OrchestratorMcpFailure({
+        code: "invalid_request",
+        message: `The newest draft is for ${error.reportDate ?? "an earlier day"}, an earlier workday, and you have not read it since the day changed or since your last change to it, so nothing was saved. Call assistant_get_daily_report_draft and follow its note before proposing.`,
+      });
     case "unavailable":
       return new OrchestratorMcpFailure({
         code: "orchestration_error",

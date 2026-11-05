@@ -205,6 +205,11 @@ interface HarnessOptions {
   readonly sendGate?: Gate;
   /** Holds ERP listProjects open, i.e. the draft message's preparation. */
   readonly projectsGate?: Gate;
+  /** Holds every ERP getTodayReport call open; each call offers to `arrived` first. */
+  readonly todayGate?: {
+    readonly arrived: Queue.Queue<void>;
+    readonly release: Deferred.Deferred<void>;
+  };
   readonly scratchUnavailable?: boolean;
 }
 
@@ -320,10 +325,19 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
     listProjects: () =>
       passGate(options.projectsGate).pipe(Effect.as([{ id: 7, name: "Example" }])),
     getTodayReport: () =>
-      Effect.suspend(() =>
-        erpState.todayFailure === undefined
-          ? Effect.succeed(erpState.today)
-          : Effect.fail(erpState.todayFailure),
+      (options.todayGate === undefined
+        ? Effect.void
+        : Queue.offer(options.todayGate.arrived, undefined).pipe(
+            Effect.andThen(Deferred.await(options.todayGate.release)),
+          )
+      ).pipe(
+        Effect.andThen(
+          Effect.suspend(() =>
+            erpState.todayFailure === undefined
+              ? Effect.succeed(erpState.today)
+              : Effect.fail(erpState.todayFailure),
+          ),
+        ),
       ),
     listActivities: () =>
       Effect.succeed([
@@ -1135,6 +1149,38 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
   );
 
   it.effect(
+    "getClockStatus should reply to a concurrent request while the first one's draft is still being prepared when both find no draft",
+    () =>
+      Effect.gen(function* () {
+        const projectsGate = yield* makeGate;
+        const todayGate = {
+          arrived: yield* Queue.unbounded<void>(),
+          release: yield* Deferred.make<void>(),
+        };
+        const harness = yield* makeHarness({ clockings: [todaySegment], projectsGate, todayGate });
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          const sent = yield* awaitStoredDraft("2026-11-05", (d) => d.triggerRunId !== undefined);
+          const first = yield* assistant.getClockStatus().pipe(Effect.forkChild);
+          const second = yield* assistant.getClockStatus().pipe(Effect.forkChild);
+          // Both requests passed the no-draft check before either stored the generating draft.
+          yield* Queue.take(todayGate.arrived);
+          yield* Queue.take(todayGate.arrived);
+          yield* Deferred.succeed(todayGate.release, undefined);
+          yield* Deferred.await(projectsGate.started);
+          assert.lengthOf((yield* Fiber.join(first)).segments, 1);
+          assert.lengthOf((yield* Fiber.join(second)).segments, 1);
+          assert.equal((yield* readStoredDraft("2026-11-05"))?.status, "generating");
+          assert.lengthOf(harness.sends, 0);
+          yield* Deferred.succeed(projectsGate.release, undefined);
+          yield* Fiber.join(sent);
+          assert.lengthOf(harness.sends, 1);
+          assert.equal((yield* readStoredDraft("2026-11-05"))?.triggerAttempt, 1);
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
     "getDraftForAgent should keep the last triggered draft and flag it as an earlier workday when the clock moves to the next day",
     () =>
       Effect.gen(function* () {
@@ -1176,6 +1222,105 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
           const next = yield* assistant.getDraftForAgent(callerThreadId);
           assert.equal(next.draft.reportDate, "2026-11-06");
           assert.isFalse(next.fromEarlierWorkday);
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "getDraftForAgent should treat the ERP workday as today when the user is still clocked in past midnight",
+    () =>
+      Effect.gen(function* () {
+        const lateSegment = {
+          ...todaySegment,
+          start_time: "2026-11-05T22:00:00+08:00",
+        } satisfies ErpClient.ErpClocking;
+        const harness = yield* makeHarness({
+          active: activeClocking({
+            data: lateSegment,
+            meta: {
+              server_now: "2026-11-06T00:30:00+08:00",
+              today_ordinary_hours: 0,
+              today_required_hours: 8,
+            },
+          }),
+          clockings: [lateSegment],
+        });
+        yield* harness.addShell(assistantShell("existing-assistant", harness.root));
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          const callerThreadId = ThreadId.make("existing-assistant");
+          yield* TestClock.setTime(
+            DateTime.toEpochMillis(DateTime.makeUnsafe("2026-11-06T00:30:00+08:00")),
+          );
+          yield* seedDraft(storedDraft());
+          assert.equal((yield* assistant.getClockStatus()).reportDate, "2026-11-05");
+          assert.isFalse((yield* assistant.getDraftForAgent(callerThreadId)).fromEarlierWorkday);
+          const saved = yield* assistant.proposeDraft({
+            callerThreadId,
+            items: [],
+            problemText: "",
+            sources: [{ key: "erp_prefill", status: "ok" }],
+          });
+          assert.isFalse(saved.fromEarlierWorkday);
+
+          yield* seedDraft(storedDraft({ status: "submitted" }));
+          const submitted = yield* Effect.flip(assistant.getDraftForAgent(callerThreadId));
+          assert.equal(submitted.kind, "submitted");
+          assert.equal(submitted.reportDate, "2026-11-05");
+
+          // A clock read from an earlier date says nothing about today.
+          yield* TestClock.setTime(
+            DateTime.toEpochMillis(DateTime.makeUnsafe("2026-11-07T08:30:00+08:00")),
+          );
+          const nextDay = yield* Effect.flip(assistant.getDraftForAgent(callerThreadId));
+          assert.equal(nextDay.kind, "no-draft");
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "proposeDraft should reject an earlier workday's draft when the agent has not read it since the day changed or since its last write",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
+        yield* harness.addShell(assistantShell("existing-assistant", harness.root));
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          const callerThreadId = ThreadId.make("existing-assistant");
+          const proposal = {
+            callerThreadId,
+            items: [
+              {
+                section: "today",
+                content: "Plan for 11/06",
+                status: "new",
+                projectId: 7,
+                projectOther: null,
+                sortOrder: 0,
+              },
+            ],
+            problemText: "",
+            sources: [{ key: "erp_prefill", status: "ok" }],
+          } as const;
+          yield* TestClock.setTime(
+            DateTime.toEpochMillis(DateTime.makeUnsafe("2026-11-05T20:00:00+08:00")),
+          );
+          yield* seedDraft(storedDraft());
+          yield* assistant.getDraftForAgent(callerThreadId);
+
+          yield* TestClock.setTime(
+            DateTime.toEpochMillis(DateTime.makeUnsafe("2026-11-06T08:30:00+08:00")),
+          );
+          const unread = yield* Effect.flip(assistant.proposeDraft(proposal));
+          assert.equal(unread.kind, "unread-earlier-workday");
+          assert.equal(unread.reportDate, "2026-11-05");
+          assert.lengthOf((yield* readStoredDraft("2026-11-05"))?.items ?? [], 0);
+
+          assert.isTrue((yield* assistant.getDraftForAgent(callerThreadId)).fromEarlierWorkday);
+          assert.equal((yield* assistant.proposeDraft(proposal)).version, 2);
+          const unreadAfterWrite = yield* Effect.flip(assistant.proposeDraft(proposal));
+          assert.equal(unreadAfterWrite.kind, "unread-earlier-workday");
+          assert.equal((yield* readStoredDraft("2026-11-05"))?.version, 2);
         }).pipe(Effect.provide(harness.layer));
       }).pipe(Effect.scoped),
   );

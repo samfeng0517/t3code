@@ -24,7 +24,6 @@ import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { randomUuidV4 } from "@t3tools/provider-core/server/randomUuid";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
-import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -107,9 +106,10 @@ export class AssistantAgentDraftError extends Schema.TaggedError<AssistantAgentD
       "no-draft",
       "submitted",
       "stale",
+      "unread-earlier-workday",
       "unavailable",
     ]),
-    /** The submitted draft's date, for `submitted`. */
+    /** The draft's date, for `submitted` and `unread-earlier-workday`. */
     reportDate: Schema.optional(Schema.String),
   },
 ) {}
@@ -324,6 +324,11 @@ const make = Effect.gen(function* () {
   });
 
   const triggerLock = yield* Semaphore.make(1);
+  /** The workday ERP gave the last clock read, and the Asia/Taipei date ERP read it on. */
+  const lastClockWorkday = yield* Ref.make<{
+    readonly workday: string;
+    readonly readOn: string;
+  } | null>(null);
   const submitLock = yield* Semaphore.make(1);
   const draftsUnavailable = () => new AssistantError({ reason: "unavailable" });
   const fail = (reason: AssistantError["reason"]) => new AssistantError({ reason });
@@ -535,6 +540,30 @@ const make = Effect.gen(function* () {
 
   /** Report dates ERP already closed (exempt or submitted); they never trigger a draft. */
   const closedReportDates = new Set<string>();
+  /** Generating drafts this process is still preparing; startup recovery must leave them alone. */
+  const preparingReportDates = new Set<string>();
+
+  const draftForNewWorkday = Effect.fn("AssistantService.draftForNewWorkday")(function* (
+    reportDate: string,
+    today: ErpClient.ErpTodayReport,
+  ) {
+    const prepared = yield* prepareDraftMessage(today).pipe(
+      Effect.tapError(() =>
+        updateDraft(reportDate, (draft) =>
+          draft === undefined
+            ? fail("no-draft")
+            : { ...draft, status: "failed", failure: "thread-unavailable" },
+        ).pipe(Effect.ignore({ log: true })),
+      ),
+    );
+    yield* dispatchDraft({
+      reportDate,
+      summary: "今天第一次打卡，助理開始擬日報草稿",
+      prepared,
+      start: (draft) =>
+        draft?.status === "generating" && draft.triggerRunId === undefined ? draft : fail("busy"),
+    });
+  });
 
   const maybeTriggerDraft = Effect.fn("AssistantService.maybeTriggerDraft")(function* (
     status: AssistantClockStatus,
@@ -548,43 +577,33 @@ const make = Effect.gen(function* () {
       closedReportDates.add(reportDate);
       return;
     }
-    // Drafting creates the thread, reads ERP and starts a turn; the clock reply waits only for
-    // the generating draft, so the chip never reads "after clock-in" once the user clocked in.
-    const generatingStored = yield* Deferred.make<void>();
-    yield* triggerLock
-      .withPermits(1)(
-        Effect.gen(function* () {
-          if ((yield* readDraft(reportDate)) !== undefined) return;
-          yield* updateDraft(reportDate, (draft) =>
+    // The clock reply waits only for the generating draft, so the chip never reads "after
+    // clock-in" once the user clocked in; the request that stored it drafts in the background.
+    yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        const stored = yield* triggerLock.withPermits(1)(
+          updateDraft(reportDate, (draft) =>
             draft === undefined ? newDraft(reportDate, status.serverNow) : fail("busy"),
-          );
-          yield* Deferred.succeed(generatingStored, undefined);
-          const prepared = yield* prepareDraftMessage(today).pipe(
-            Effect.tapError(() =>
-              updateDraft(reportDate, (draft) =>
-                draft === undefined
-                  ? fail("no-draft")
-                  : { ...draft, status: "failed", failure: "thread-unavailable" },
-              ).pipe(Effect.ignore({ log: true })),
+          ).pipe(
+            Effect.tap(() => Effect.sync(() => preparingReportDates.add(reportDate))),
+            Effect.as(true),
+            Effect.catchIf(
+              (error) => error.reason === "busy",
+              () => Effect.succeed(false),
             ),
-          );
-          yield* dispatchDraft({
-            reportDate,
-            summary: "今天第一次打卡，助理開始擬日報草稿",
-            prepared,
-            start: (draft) =>
-              draft?.status === "generating" && draft.triggerRunId === undefined
-                ? draft
-                : fail("busy"),
-          });
-        }),
-      )
-      .pipe(
-        Effect.catch((cause) => Effect.logWarning("assistant draft was not triggered", { cause })),
-        Effect.ensuring(Deferred.succeed(generatingStored, undefined)),
-        Effect.forkIn(serviceScope),
-      );
-    yield* Deferred.await(generatingStored);
+          ),
+        );
+        if (!stored) return;
+        yield* draftForNewWorkday(reportDate, today).pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning("assistant draft was not triggered", { cause }),
+          ),
+          Effect.ensuring(Effect.sync(() => preparingReportDates.delete(reportDate))),
+          Effect.interruptible,
+          Effect.forkIn(serviceScope),
+        );
+      }),
+    );
   });
 
   const getDailyReport = Effect.fn("AssistantService.getDailyReport")(function* () {
@@ -780,6 +799,7 @@ const make = Effect.gen(function* () {
   const getClockStatus = Effect.fn("AssistantService.getClockStatus")(function* () {
     const active = yield* erp.getActiveClocking();
     const workday = active.data?.date ?? taipeiDate(active.meta.server_now);
+    yield* Ref.set(lastClockWorkday, { workday, readOn: taipeiDate(active.meta.server_now) });
     const clockings = yield* erp.listClockings(workday.slice(0, 7));
     const segments = clockings
       .filter((clocking) => clocking.date === workday && clocking.type === "ordinary")
@@ -880,11 +900,23 @@ const make = Effect.gen(function* () {
   const agentRefused = (kind: AssistantAgentDraftError["kind"]) =>
     new AssistantAgentDraftError({ kind });
 
-  /** The draft revision the agent last read or wrote; card edits after it are unseen. */
+  /**
+   * The draft revision the agent last read or wrote; card edits after it are unseen. A write, or
+   * a read made while the draft was still today's, leaves the earlier-workday note unseen.
+   */
   const agentSeenRevision = yield* Ref.make<{
     readonly reportDate: string;
     readonly revision: number;
+    readonly sawEarlierWorkdayNote: boolean;
   } | null>(null);
+
+  /** ERP's workday trails the calendar date while a segment that began before midnight is open. */
+  const currentWorkday = Effect.fn("AssistantService.currentWorkday")(function* () {
+    const clockDate = taipeiDate(DateTime.formatIso(yield* DateTime.now));
+    const read = yield* Ref.get(lastClockWorkday);
+    // No ERP clock read on this date yet: fall back to the server clock's Asia/Taipei date.
+    return read !== null && read.readOn === clockDate ? read.workday : clockDate;
+  });
 
   /**
    * The draft the agent works on: the newest report date, i.e. the last one triggered. After
@@ -898,8 +930,7 @@ const make = Effect.gen(function* () {
     const newest = Object.keys(file.drafts).toSorted().at(-1);
     const draft = newest === undefined ? undefined : file.drafts[newest];
     if (draft === undefined) return yield* agentRefused("no-draft");
-    const today = taipeiDate(DateTime.formatIso(yield* DateTime.now));
-    const fromEarlierWorkday = draft.reportDate < today;
+    const fromEarlierWorkday = draft.reportDate < (yield* currentWorkday());
     if (draft.status === "submitted") {
       return yield* fromEarlierWorkday
         ? agentRefused("no-draft")
@@ -915,6 +946,7 @@ const make = Effect.gen(function* () {
     yield* Ref.set(agentSeenRevision, {
       reportDate: found.draft.reportDate,
       revision: found.draft.revision,
+      sawEarlierWorkdayNote: found.fromEarlierWorkday,
     });
     return found;
   });
@@ -927,6 +959,10 @@ const make = Effect.gen(function* () {
       fromEarlierWorkday,
     } = yield* agentDraft(input.callerThreadId);
     const seen = yield* Ref.get(agentSeenRevision);
+    // Only the get tool's note tells the agent which day this is; without it "today" lands here.
+    if (fromEarlierWorkday && (seen?.reportDate !== reportDate || !seen.sawEarlierWorkdayNote)) {
+      return yield* new AssistantAgentDraftError({ kind: "unread-earlier-workday", reportDate });
+    }
     const stored = yield* updateDraft(reportDate, (draft) => {
       if (draft === undefined) return fail("no-draft");
       if (draft.status === "submitted") return fail("submitted");
@@ -960,7 +996,11 @@ const make = Effect.gen(function* () {
               : agentRefused("unavailable"),
       ),
     );
-    yield* Ref.set(agentSeenRevision, { reportDate, revision: stored.revision });
+    yield* Ref.set(agentSeenRevision, {
+      reportDate,
+      revision: stored.revision,
+      sawEarlierWorkdayNote: false,
+    });
     return { reportDate: stored.reportDate, version: stored.version, fromEarlierWorkday };
   });
 
@@ -970,6 +1010,7 @@ const make = Effect.gen(function* () {
       const file = yield* readDrafts;
       for (const draft of Object.values(file.drafts)) {
         if (draft.status !== "generating" || draft.triggerRunId !== undefined) continue;
+        if (preparingReportDates.has(draft.reportDate)) continue;
         yield* updateDraft(draft.reportDate, (current) =>
           current?.status === "generating" && current.triggerRunId === undefined
             ? { ...current, status: "failed", failure: "thread-unavailable" }
