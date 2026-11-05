@@ -35,6 +35,8 @@ const GetDailyReportDraftTool = Tool.make("assistant_get_daily_report_draft", {
     "Read the current daily report draft, including the user's edits on the card. Call it before revising the draft.",
   parameters: Tool.EmptyParams,
   success: Schema.Struct({
+    /** Set when the draft is an earlier day's; tells the agent how to answer about today. */
+    note: Schema.optional(Schema.String),
     report_date: Schema.String,
     status: AssistantDraftLifecycle,
     version: Schema.Int,

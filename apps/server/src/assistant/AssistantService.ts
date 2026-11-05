@@ -24,6 +24,7 @@ import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { randomUuidV4 } from "@t3tools/provider-core/server/randomUuid";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -108,8 +109,16 @@ export class AssistantAgentDraftError extends Schema.TaggedError<AssistantAgentD
       "stale",
       "unavailable",
     ]),
+    /** The submitted draft's date, for `submitted`. */
+    reportDate: Schema.optional(Schema.String),
   },
 ) {}
+
+export interface AssistantAgentDraft {
+  readonly draft: AssistantDraft;
+  /** Before today's first clock-in the agent still works on an earlier day's unsent draft. */
+  readonly fromEarlierWorkday: boolean;
+}
 
 export interface AssistantProposedDraft {
   readonly items: AssistantDraft["items"];
@@ -141,12 +150,16 @@ export class AssistantService extends Context.Service<
     /** The most recently triggered draft, for the assistant thread's own agent only. */
     readonly getDraftForAgent: (
       callerThreadId: ThreadId,
-    ) => Effect.Effect<AssistantDraft, AssistantAgentDraftError>;
+    ) => Effect.Effect<AssistantAgentDraft, AssistantAgentDraftError>;
     /** Stores the agent's draft as that draft's next version. */
     readonly proposeDraft: (
       input: AssistantProposedDraft & { readonly callerThreadId: ThreadId },
     ) => Effect.Effect<
-      { readonly reportDate: string; readonly version: number },
+      {
+        readonly reportDate: string;
+        readonly version: number;
+        readonly fromEarlierWorkday: boolean;
+      },
       AssistantAgentDraftError
     >;
     /** The assistant thread id and every stored draft, on subscribe and after each change. */
@@ -535,18 +548,24 @@ const make = Effect.gen(function* () {
       closedReportDates.add(reportDate);
       return;
     }
-    // Drafting creates the thread, reads ERP and starts a turn; the clock reply must not wait.
+    // Drafting creates the thread, reads ERP and starts a turn; the clock reply waits only for
+    // the generating draft, so the chip never reads "after clock-in" once the user clocked in.
+    const generatingStored = yield* Deferred.make<void>();
     yield* triggerLock
       .withPermits(1)(
         Effect.gen(function* () {
           if ((yield* readDraft(reportDate)) !== undefined) return;
+          yield* updateDraft(reportDate, (draft) =>
+            draft === undefined ? newDraft(reportDate, status.serverNow) : fail("busy"),
+          );
+          yield* Deferred.succeed(generatingStored, undefined);
           const prepared = yield* prepareDraftMessage(today).pipe(
             Effect.tapError(() =>
-              updateDraft(reportDate, () => ({
-                ...newDraft(reportDate, status.serverNow),
-                status: "failed",
-                failure: "thread-unavailable",
-              })).pipe(Effect.ignore({ log: true })),
+              updateDraft(reportDate, (draft) =>
+                draft === undefined
+                  ? fail("no-draft")
+                  : { ...draft, status: "failed", failure: "thread-unavailable" },
+              ).pipe(Effect.ignore({ log: true })),
             ),
           );
           yield* dispatchDraft({
@@ -554,14 +573,18 @@ const make = Effect.gen(function* () {
             summary: "今天第一次打卡，助理開始擬日報草稿",
             prepared,
             start: (draft) =>
-              draft === undefined ? newDraft(reportDate, status.serverNow) : fail("busy"),
+              draft?.status === "generating" && draft.triggerRunId === undefined
+                ? draft
+                : fail("busy"),
           });
         }),
       )
       .pipe(
         Effect.catch((cause) => Effect.logWarning("assistant draft was not triggered", { cause })),
+        Effect.ensuring(Deferred.succeed(generatingStored, undefined)),
         Effect.forkIn(serviceScope),
       );
+    yield* Deferred.await(generatingStored);
   });
 
   const getDailyReport = Effect.fn("AssistantService.getDailyReport")(function* () {
@@ -665,17 +688,6 @@ const make = Effect.gen(function* () {
   ) {
     const checked = editable(yield* readDraft(input.reportDate), input.revision);
     if (isAssistantError(checked)) return yield* checked;
-    if (yield* runActive()) return yield* fail("busy");
-    const today = yield* erp.getTodayReport();
-    const alreadySubmitted = today.report?.submitted_at ?? null;
-    if (today.server_date === input.reportDate && alreadySubmitted !== null) {
-      yield* updateDraft(input.reportDate, (draft) =>
-        draft === undefined
-          ? fail("no-draft")
-          : { ...draft, status: "submitted", submittedAt: alreadySubmitted },
-      );
-      return yield* fail("submitted");
-    }
     const items = (["yesterday", "today"] as const).flatMap((section) =>
       checked.items
         .filter((item) => item.section === section && item.content.trim() !== "")
@@ -695,6 +707,19 @@ const make = Effect.gen(function* () {
           sort_order: index,
         })),
     );
+    if (yield* runActive()) return yield* fail("busy");
+    const today = yield* erp.getTodayReport();
+    const alreadySubmitted = today.report?.submitted_at ?? null;
+    if (today.server_date === input.reportDate && alreadySubmitted !== null) {
+      yield* updateDraft(input.reportDate, (draft) =>
+        draft === undefined
+          ? fail("no-draft")
+          : { ...draft, status: "submitted", submittedAt: alreadySubmitted },
+      );
+      return yield* fail("submitted");
+    }
+    // ERP would file an empty report and forward it to Slack.
+    if (items.length === 0) return yield* fail("not-editable");
     yield* erp.submitReport({
       date: input.reportDate,
       ...(checked.problemText.trim() === "" ? {} : { problem_text: checked.problemText }),
@@ -863,7 +888,8 @@ const make = Effect.gen(function* () {
 
   /**
    * The draft the agent works on: the newest report date, i.e. the last one triggered. After
-   * midnight that stays yesterday's until today's first clock-in triggers a new draft.
+   * midnight that stays yesterday's until today's first clock-in triggers a new draft; a
+   * submitted one from an earlier day means today's has not started.
    */
   const agentDraft = Effect.fn("AssistantService.agentDraft")(function* (callerThreadId: ThreadId) {
     const threadId = yield* findThread().pipe(Effect.mapError(() => agentRefused("unavailable")));
@@ -872,22 +898,34 @@ const make = Effect.gen(function* () {
     const newest = Object.keys(file.drafts).toSorted().at(-1);
     const draft = newest === undefined ? undefined : file.drafts[newest];
     if (draft === undefined) return yield* agentRefused("no-draft");
-    if (draft.status === "submitted") return yield* agentRefused("submitted");
-    return draft;
+    const today = taipeiDate(DateTime.formatIso(yield* DateTime.now));
+    const fromEarlierWorkday = draft.reportDate < today;
+    if (draft.status === "submitted") {
+      return yield* fromEarlierWorkday
+        ? agentRefused("no-draft")
+        : new AssistantAgentDraftError({ kind: "submitted", reportDate: draft.reportDate });
+    }
+    return { draft, fromEarlierWorkday } satisfies AssistantAgentDraft;
   });
 
   const getDraftForAgent = Effect.fn("AssistantService.getDraftForAgent")(function* (
     callerThreadId: ThreadId,
   ) {
-    const draft = yield* agentDraft(callerThreadId);
-    yield* Ref.set(agentSeenRevision, { reportDate: draft.reportDate, revision: draft.revision });
-    return draft;
+    const found = yield* agentDraft(callerThreadId);
+    yield* Ref.set(agentSeenRevision, {
+      reportDate: found.draft.reportDate,
+      revision: found.draft.revision,
+    });
+    return found;
   });
 
   const proposeDraft = Effect.fn("AssistantService.proposeDraft")(function* (
     input: AssistantProposedDraft & { readonly callerThreadId: ThreadId },
   ) {
-    const { reportDate } = yield* agentDraft(input.callerThreadId);
+    const {
+      draft: { reportDate },
+      fromEarlierWorkday,
+    } = yield* agentDraft(input.callerThreadId);
     const seen = yield* Ref.get(agentSeenRevision);
     const stored = yield* updateDraft(reportDate, (draft) => {
       if (draft === undefined) return fail("no-draft");
@@ -911,15 +949,19 @@ const make = Effect.gen(function* () {
       };
     }).pipe(
       Effect.mapError((error) =>
-        error.reason === "no-draft" || error.reason === "submitted"
-          ? agentRefused(error.reason)
-          : error.reason === "stale-revision"
-            ? agentRefused("stale")
-            : agentRefused("unavailable"),
+        error.reason === "no-draft"
+          ? agentRefused("no-draft")
+          : error.reason === "submitted"
+            ? fromEarlierWorkday
+              ? agentRefused("no-draft")
+              : new AssistantAgentDraftError({ kind: "submitted", reportDate })
+            : error.reason === "stale-revision"
+              ? agentRefused("stale")
+              : agentRefused("unavailable"),
       ),
     );
     yield* Ref.set(agentSeenRevision, { reportDate, revision: stored.revision });
-    return { reportDate: stored.reportDate, version: stored.version };
+    return { reportDate: stored.reportDate, version: stored.version, fromEarlierWorkday };
   });
 
   /** A server that stopped between marking a draft generating and storing its run left it stuck. */

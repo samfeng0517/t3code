@@ -775,7 +775,7 @@ it.effect("builds the assistant cases and lists the daily report tools only in t
       .trim()
       .split("\n")
       .map((line) => decodeDeviceCase(line));
-    assert.equal(new Set(cases.map((c) => c.id)).size, 4);
+    assert.equal(new Set(cases.map((c) => c.id)).size, 5);
     const options = { model: "claude-sonnet-5-5", keepUserInstructions: false } as const;
     const tool = "mcp__t3-code__assistant_propose_daily_report";
     assert.notInclude(

@@ -543,7 +543,11 @@ function LiveCard(props: {
             <Button
               size="sm"
               variant="default"
-              disabled={props.runActive || pending !== null}
+              disabled={
+                props.runActive ||
+                pending !== null ||
+                !local.form.items.some((item) => item.content.trim() !== "")
+              }
               onClick={() => void submit()}
             >
               {pending === "submit" ? <Spinner /> : null}

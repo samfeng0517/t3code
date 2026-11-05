@@ -25,6 +25,7 @@ import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
 import type * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
@@ -177,16 +178,33 @@ const runUpdated = (threadId: ThreadId, runId: string, status: string) =>
     payload: { id: RunId.make(runId), status },
   }) as unknown as OrchestrationV2DomainEvent;
 
+/** Holds a step open: `started` resolves when it begins, `release` lets it finish. */
+interface Gate {
+  readonly started: Deferred.Deferred<void>;
+  readonly release: Deferred.Deferred<void>;
+}
+
+const makeGate = Effect.gen(function* () {
+  return {
+    started: yield* Deferred.make<void>(),
+    release: yield* Deferred.make<void>(),
+  } satisfies Gate;
+});
+
+const passGate = (gate: Gate | undefined) =>
+  gate === undefined
+    ? Effect.void
+    : Deferred.succeed(gate.started, undefined).pipe(Effect.andThen(Deferred.await(gate.release)));
+
 interface HarnessOptions {
   readonly active?: ErpClient.ErpActiveClocking;
   readonly clockings?: ReadonlyArray<ErpClient.ErpClocking>;
   readonly today?: ErpClient.ErpTodayReport;
   readonly settings?: Parameters<typeof ServerSettings.layerTest>[0];
-  /** Holds sendToThread open: `started` resolves when it begins, `release` lets it finish. */
-  readonly sendGate?: {
-    readonly started: Deferred.Deferred<void>;
-    readonly release: Deferred.Deferred<void>;
-  };
+  /** Holds sendToThread open. */
+  readonly sendGate?: Gate;
+  /** Holds ERP listProjects open, i.e. the draft message's preparation. */
+  readonly projectsGate?: Gate;
   readonly scratchUnavailable?: boolean;
 }
 
@@ -240,10 +258,7 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
       })) as unknown as ThreadManagement.ThreadManagementService["Service"]["getThreadRecords"],
     sendToThread: (input) =>
       Effect.gen(function* () {
-        if (options.sendGate !== undefined) {
-          yield* Deferred.succeed(options.sendGate.started, undefined);
-          yield* Deferred.await(options.sendGate.release);
-        }
+        yield* passGate(options.sendGate);
         sends.push(input);
         return {
           run: { id: RunId.make(`run-${sends.length}`) },
@@ -302,7 +317,8 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
       }),
     clockIn: () => Effect.die("unused"),
     clockOut: () => Effect.die("unused"),
-    listProjects: () => Effect.succeed([{ id: 7, name: "Example" }]),
+    listProjects: () =>
+      passGate(options.projectsGate).pipe(Effect.as([{ id: 7, name: "Example" }])),
     getTodayReport: () =>
       Effect.suspend(() =>
         erpState.todayFailure === undefined
@@ -840,10 +856,7 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
     "regenerateDraft should store the run id when the request is interrupted during the send",
     () =>
       Effect.gen(function* () {
-        const sendGate = {
-          started: yield* Deferred.make<void>(),
-          release: yield* Deferred.make<void>(),
-        };
+        const sendGate = yield* makeGate;
         const harness = yield* makeHarness({ sendGate });
         yield* Effect.gen(function* () {
           const assistant = yield* AssistantService.AssistantService;
@@ -1014,8 +1027,12 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
             problemText: "None",
             sources: [{ key: "calendar", status: "failed", note: "No calendar tool" }],
           });
-          assert.deepEqual(saved, { reportDate: "2026-11-05", version: 2 });
-          const draft = yield* assistant.getDraftForAgent(ThreadId.make("existing-assistant"));
+          assert.deepEqual(saved, {
+            reportDate: "2026-11-05",
+            version: 2,
+            fromEarlierWorkday: false,
+          });
+          const { draft } = yield* assistant.getDraftForAgent(ThreadId.make("existing-assistant"));
           assert.equal(draft.status, "ready");
           assert.isFalse(draft.editedByUser);
           assert.isUndefined(draft.failure);
@@ -1064,7 +1081,7 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
             sortOrder: 0,
           } as const;
           yield* seedDraft(storedDraft({ items: [item] }));
-          const read = yield* assistant.getDraftForAgent(callerThreadId);
+          const { draft: read } = yield* assistant.getDraftForAgent(callerThreadId);
           yield* assistant.saveDraft({
             reportDate: "2026-11-05",
             revision: read.revision,
@@ -1083,7 +1100,7 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
           assert.equal(kept?.items[0]?.content, "Fixed item");
           assert.equal(kept?.version, 1);
 
-          const reread = yield* assistant.getDraftForAgent(callerThreadId);
+          const { draft: reread } = yield* assistant.getDraftForAgent(callerThreadId);
           const revised = {
             ...proposal,
             items: reread.items.map((current) => ({ ...current, status: "processing" as const })),
@@ -1096,30 +1113,29 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
   );
 
   it.effect(
-    "getClockStatus should reply before the draft message is sent when the first clocking triggers a draft",
+    "getClockStatus should reply with the draft already generating when the first clocking triggers a draft whose message is still being prepared",
     () =>
       Effect.gen(function* () {
-        const sendGate = {
-          started: yield* Deferred.make<void>(),
-          release: yield* Deferred.make<void>(),
-        };
-        const harness = yield* makeHarness({ clockings: [todaySegment], sendGate });
+        const projectsGate = yield* makeGate;
+        const harness = yield* makeHarness({ clockings: [todaySegment], projectsGate });
         yield* Effect.gen(function* () {
           const assistant = yield* AssistantService.AssistantService;
           const sent = yield* awaitStoredDraft("2026-11-05", (d) => d.triggerRunId !== undefined);
           const status = yield* assistant.getClockStatus();
           assert.lengthOf(status.segments, 1);
-          yield* Deferred.await(sendGate.started);
+          assert.equal((yield* readStoredDraft("2026-11-05"))?.status, "generating");
+          yield* Deferred.await(projectsGate.started);
           assert.lengthOf(harness.sends, 0);
-          yield* Deferred.succeed(sendGate.release, undefined);
+          yield* Deferred.succeed(projectsGate.release, undefined);
           yield* Fiber.join(sent);
           assert.lengthOf(harness.sends, 1);
+          assert.equal((yield* readStoredDraft("2026-11-05"))?.triggerAttempt, 1);
         }).pipe(Effect.provide(harness.layer));
       }).pipe(Effect.scoped),
   );
 
   it.effect(
-    "getDraftForAgent should keep the last triggered draft when the clock read moves to the next workday",
+    "getDraftForAgent should keep the last triggered draft and flag it as an earlier workday when the clock moves to the next day",
     () =>
       Effect.gen(function* () {
         const harness = yield* makeHarness({
@@ -1135,45 +1151,93 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
         yield* Effect.gen(function* () {
           const assistant = yield* AssistantService.AssistantService;
           const callerThreadId = ThreadId.make("existing-assistant");
+          yield* TestClock.setTime(
+            DateTime.toEpochMillis(DateTime.makeUnsafe("2026-11-06T00:30:00+08:00")),
+          );
           yield* seedDraft(storedDraft({ reportDate: "2026-11-04", status: "submitted" }));
           yield* seedDraft(storedDraft());
           assert.equal((yield* assistant.getClockStatus()).reportDate, "2026-11-06");
-          assert.equal(
-            (yield* assistant.getDraftForAgent(callerThreadId)).reportDate,
-            "2026-11-05",
-          );
+          const read = yield* assistant.getDraftForAgent(callerThreadId);
+          assert.equal(read.draft.reportDate, "2026-11-05");
+          assert.isTrue(read.fromEarlierWorkday);
           const saved = yield* assistant.proposeDraft({
             callerThreadId,
             items: [],
             problemText: "",
             sources: [{ key: "erp_prefill", status: "ok" }],
           });
-          assert.deepEqual(saved, { reportDate: "2026-11-05", version: 2 });
+          assert.deepEqual(saved, {
+            reportDate: "2026-11-05",
+            version: 2,
+            fromEarlierWorkday: true,
+          });
 
           yield* seedDraft(storedDraft({ reportDate: "2026-11-06", status: "generating" }));
-          assert.equal(
-            (yield* assistant.getDraftForAgent(callerThreadId)).reportDate,
-            "2026-11-06",
-          );
+          const next = yield* assistant.getDraftForAgent(callerThreadId);
+          assert.equal(next.draft.reportDate, "2026-11-06");
+          assert.isFalse(next.fromEarlierWorkday);
         }).pipe(Effect.provide(harness.layer));
       }).pipe(Effect.scoped),
   );
 
-  it.effect(
-    "getDraftForAgent should reject with submitted when the last triggered draft was submitted before midnight",
-    () =>
+  it.effect.each([
+    { now: "2026-11-06T08:30:00+08:00", kind: "no-draft", reportDate: undefined },
+    { now: "2026-11-05T20:00:00+08:00", kind: "submitted", reportDate: "2026-11-05" },
+  ])(
+    "getDraftForAgent and proposeDraft should reject with $kind when the newest draft is submitted and the clock reads $now",
+    ({ now, kind, reportDate }) =>
       Effect.gen(function* () {
         const harness = yield* makeHarness();
         yield* harness.addShell(assistantShell("existing-assistant", harness.root));
         yield* Effect.gen(function* () {
           const assistant = yield* AssistantService.AssistantService;
+          const callerThreadId = ThreadId.make("existing-assistant");
+          yield* TestClock.setTime(DateTime.toEpochMillis(DateTime.makeUnsafe(now)));
           yield* seedDraft(storedDraft({ status: "submitted" }));
-          const error = yield* Effect.flip(
-            assistant.getDraftForAgent(ThreadId.make("existing-assistant")),
+          const read = yield* Effect.flip(assistant.getDraftForAgent(callerThreadId));
+          assert.equal(read.kind, kind);
+          assert.equal(read.reportDate, reportDate);
+          const proposed = yield* Effect.flip(
+            assistant.proposeDraft({
+              callerThreadId,
+              items: [],
+              problemText: "",
+              sources: [{ key: "erp_prefill", status: "ok" }],
+            }),
           );
-          assert.equal(error.kind, "submitted");
+          assert.equal(proposed.kind, kind);
+          assert.equal((yield* readStoredDraft("2026-11-05"))?.status, "submitted");
         }).pipe(Effect.provide(harness.layer));
       }).pipe(Effect.scoped),
+  );
+
+  it.effect("submitDailyReport should reject with not-editable when every item is blank", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* Effect.gen(function* () {
+        const assistant = yield* AssistantService.AssistantService;
+        const seeded = yield* seedDraft(
+          storedDraft({
+            items: [
+              {
+                section: "today",
+                content: " \n",
+                status: "new",
+                projectId: 7,
+                projectOther: null,
+                sortOrder: 0,
+              },
+            ],
+          }),
+        );
+        const error = yield* Effect.flip(
+          assistant.submitDailyReport({ reportDate: "2026-11-05", revision: seeded.revision }),
+        );
+        assert.equal(error.reason, "not-editable");
+        assert.lengthOf(harness.submitted, 0);
+        assert.equal((yield* readStoredDraft("2026-11-05"))?.status, "ready");
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(Effect.scoped),
   );
 
   it.effect(

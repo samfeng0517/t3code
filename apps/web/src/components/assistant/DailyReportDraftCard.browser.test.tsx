@@ -336,6 +336,17 @@ describe("DailyReportDraftCard", () => {
     await expect.element(submit).toBeEnabled();
   });
 
+  it("DailyReportDraftCard should disable 送出到 ERP when no item has content", async () => {
+    setup({ ...readyDraft, items: [item("  ")] });
+    using _locale = zhTW();
+    await using screen = await render(card());
+    const submit = screen.getByRole("button", { name: "送出到 ERP", exact: true });
+
+    await expect.element(submit).toBeDisabled();
+    await userEvent.fill(screen.getByRole("textbox", { name: "內容" }), "Write the release notes");
+    await expect.element(submit).toBeEnabled();
+  });
+
   it("DailyReportDraftCard should ask before regenerating when the draft was edited by the user", async () => {
     setup({ ...readyDraft, editedByUser: true });
     using _locale = zhTW();
