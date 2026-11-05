@@ -47,6 +47,21 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("should require orchestration:operate for assistant mutations when a client calls them", () => {
+    for (const method of [
+      WS_METHODS.assistantClockIn,
+      WS_METHODS.assistantClockOut,
+      WS_METHODS.assistantGetOrCreateThread,
+      WS_METHODS.assistantReadMemory,
+      WS_METHODS.assistantWriteMemory,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationOperateScope);
+    }
+    for (const method of [WS_METHODS.assistantGetClockStatus, WS_METHODS.assistantListProjects]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
+    }
+  });
+
   it("keeps triage, which seeds an agent that reads logs and the database, behind operate scope", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.serverPrepareTriage)).toBe(
       AuthOrchestrationOperateScope,

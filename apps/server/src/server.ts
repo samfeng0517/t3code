@@ -75,6 +75,9 @@ import * as TerminalManager from "./terminal/Manager.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
 import * as PeerForwarding from "./peer/PeerForwarding.ts";
 import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
+import * as AssistantDraftStore from "./assistant/AssistantDraftStore.ts";
+import * as AssistantService from "./assistant/AssistantService.ts";
+import * as ErpClient from "./assistant/ErpClient.ts";
 import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
 import * as PeerLinks from "./peer/PeerLinks.ts";
 import * as PeerMcpClient from "./peer/PeerMcpClient.ts";
@@ -806,7 +809,16 @@ const layerMakeRoutes = Layer.mergeAll(
   Layer.effectDiscard(
     RemoteDelegation.RemoteDelegation.pipe(Effect.flatMap((remote) => remote.start())),
   ),
+  // Keeps the assistant thread's model and permission mode in step with Settings.
+  Layer.effectDiscard(
+    AssistantService.AssistantService.pipe(Effect.flatMap((assistant) => assistant.start())),
+  ),
 ).pipe(
+  Layer.provide(
+    AssistantService.layer.pipe(
+      Layer.provide(Layer.mergeAll(ErpClient.layer, AssistantDraftStore.layer)),
+    ),
+  ),
   Layer.provide(
     PullRequestReviewGuideService.layer.pipe(Layer.provide(PullRequestReviewGuides.layer)),
   ),

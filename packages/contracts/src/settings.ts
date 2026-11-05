@@ -1257,6 +1257,11 @@ export const AssistantSettings = Schema.Struct({
 });
 export type AssistantSettings = typeof AssistantSettings.Type;
 
+export const DEFAULT_ASSISTANT_MODEL_SELECTION: ModelSelection = {
+  instanceId: ProviderInstanceId.make("claudeAgent"),
+  model: "claude-opus-5-5",
+};
+
 export const ServerSettings = Schema.Struct({
   // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
   favorites: Schema.NullOr(ModelFavorites).pipe(Schema.withDecodingDefault(Effect.succeed(null))),

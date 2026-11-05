@@ -77,6 +77,12 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.scheduledTasksDelete]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksRunNow]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksRotateWebhookToken]: AuthOrchestrationOperateScope,
+  // Clocking and the daily report write to the user's ERP account.
+  [WS_METHODS.assistantClockIn]: AuthOrchestrationOperateScope,
+  [WS_METHODS.assistantClockOut]: AuthOrchestrationOperateScope,
+  [WS_METHODS.assistantGetOrCreateThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.assistantReadMemory]: AuthOrchestrationOperateScope,
+  [WS_METHODS.assistantWriteMemory]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.stopWorkflow]: AuthOrchestrationOperateScope,
   // A mod button can start work in the agent session that drew it.
   [WS_METHODS.modsAct]: AuthOrchestrationOperateScope,

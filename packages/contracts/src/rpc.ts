@@ -44,7 +44,7 @@ import * as Schema from "effect/Schema";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
-import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { NonNegativeInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import {
   ProviderAuthCancelInput,
   ProviderAuthCompleteInput,
@@ -423,6 +423,12 @@ import {
   ScheduledTaskUpsertInput,
   ScheduledTaskMutationResult,
 } from "./scheduledTask.ts";
+import {
+  AssistantClockStatus,
+  AssistantError,
+  AssistantMemory,
+  AssistantProject,
+} from "./assistant.ts";
 import { SecretRequestAnswerInput, SecretRequestError } from "./secretRequest.ts";
 import {
   ProjectCloneActionInput,
@@ -621,6 +627,14 @@ export const WS_METHODS = {
   guestShareCreate: "guestShare.create",
   scheduledTasksListWebhookDeliveries: "scheduledTasks.listWebhookDeliveries",
   scheduledTasksGetWebhookDelivery: "scheduledTasks.getWebhookDelivery",
+
+  assistantGetClockStatus: "assistant.getClockStatus",
+  assistantListProjects: "assistant.listProjects",
+  assistantClockIn: "assistant.clockIn",
+  assistantClockOut: "assistant.clockOut",
+  assistantGetOrCreateThread: "assistant.getOrCreateThread",
+  assistantReadMemory: "assistant.readMemory",
+  assistantWriteMemory: "assistant.writeMemory",
 
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
   cloudInstallRelayClient: "cloud.installRelayClient",
@@ -2196,6 +2210,49 @@ const WsScheduledTasksGetWebhookDeliveryRpc = Rpc.make(
   },
 );
 
+const AssistantRpcError = Schema.Union([AssistantError, EnvironmentAuthorizationError]);
+
+const WsAssistantGetClockStatusRpc = Rpc.make(WS_METHODS.assistantGetClockStatus, {
+  payload: Schema.Struct({}),
+  success: AssistantClockStatus,
+  error: AssistantRpcError,
+});
+
+const WsAssistantListProjectsRpc = Rpc.make(WS_METHODS.assistantListProjects, {
+  payload: Schema.Struct({}),
+  success: Schema.Array(AssistantProject),
+  error: AssistantRpcError,
+});
+
+const WsAssistantClockInRpc = Rpc.make(WS_METHODS.assistantClockIn, {
+  payload: Schema.Struct({}),
+  success: AssistantClockStatus,
+  error: AssistantRpcError,
+});
+
+const WsAssistantClockOutRpc = Rpc.make(WS_METHODS.assistantClockOut, {
+  payload: Schema.Struct({}),
+  success: AssistantClockStatus,
+  error: AssistantRpcError,
+});
+
+const WsAssistantGetOrCreateThreadRpc = Rpc.make(WS_METHODS.assistantGetOrCreateThread, {
+  payload: Schema.Struct({}),
+  success: Schema.Struct({ threadId: ThreadId }),
+  error: AssistantRpcError,
+});
+
+const WsAssistantReadMemoryRpc = Rpc.make(WS_METHODS.assistantReadMemory, {
+  payload: Schema.Struct({}),
+  success: AssistantMemory,
+  error: AssistantRpcError,
+});
+
+const WsAssistantWriteMemoryRpc = Rpc.make(WS_METHODS.assistantWriteMemory, {
+  payload: AssistantMemory,
+  error: AssistantRpcError,
+});
+
 const WsSubscribeAuthAccessRpc = Rpc.make(WS_METHODS.subscribeAuthAccess, {
   payload: Schema.Struct({}),
   success: AuthAccessStreamEvent,
@@ -2281,6 +2338,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsSecretsAnswerRequestRpc,
   WsScheduledTasksListWebhookDeliveriesRpc,
   WsScheduledTasksGetWebhookDeliveryRpc,
+  WsAssistantGetClockStatusRpc,
+  WsAssistantListProjectsRpc,
+  WsAssistantClockInRpc,
+  WsAssistantClockOutRpc,
+  WsAssistantGetOrCreateThreadRpc,
+  WsAssistantReadMemoryRpc,
+  WsAssistantWriteMemoryRpc,
   WsServerReportClientActivityRpc,
   WsCloudGetRelayClientStatusRpc,
   WsCloudInstallRelayClientRpc,
