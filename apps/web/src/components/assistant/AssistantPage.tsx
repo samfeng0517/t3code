@@ -1,10 +1,10 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { Navigate } from "@tanstack/react-router";
-import { AsyncResult, type Atom, type AtomRegistry } from "effect/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { useContext, useEffect, useEffectEvent, useRef } from "react";
 
-import { assistantEnvironment } from "../../state/assistant";
+import { assistantEnvironment, refreshSettled } from "../../state/assistant";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { expectsPrimaryEnvironment } from "../../state/shell";
@@ -12,15 +12,6 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import ChatView from "../ChatView";
 import { SidebarInset } from "../ui/sidebar";
 import { AssistantClockBar } from "./AssistantClockBar";
-
-/** Refetches a query that already settled; one still loading is fresh enough. */
-function refreshSettled<A, E>(
-  registry: AtomRegistry.AtomRegistry,
-  atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>,
-) {
-  const current = registry.get(atom);
-  if (current._tag !== "Initial" && !current.waiting) registry.refresh(atom);
-}
 
 /** The assistant lives on the primary environment only. */
 export function AssistantPage() {
