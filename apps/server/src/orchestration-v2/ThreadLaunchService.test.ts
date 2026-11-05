@@ -538,6 +538,45 @@ it.effect("retains automation and sender attribution while a message waits in th
   }).pipe(Effect.provide(harness.layer));
 });
 
+it.effect(
+  "sendToThread should put the notification on the dispatched message when one is given",
+  () => {
+    const harness = makeHarness({ runSetup: () => Effect.never });
+    return Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const launched = yield* launches.launch(
+        launchInput({
+          command: "command:notification:queue",
+          thread: "thread:notification:queue",
+          message: "First message",
+          workspace: { type: "worktree", baseRef: "main" },
+        }),
+      );
+      const notification = {
+        source: { kind: "system" },
+        outcome: "updated",
+        summary: "Draft requested",
+      } as const;
+      const queued = yield* threads.sendToThread({
+        projectId,
+        commandId: CommandId.make("command:notification:queued"),
+        threadId: launched.threadId,
+        messageId: MessageId.make("message:notification:queued"),
+        text: "Draft the report",
+        attachments: [],
+        mode: "queue",
+        createdBy: "agent",
+        creationSource: "server",
+        notification,
+      });
+      const projection = yield* threads.getThreadProjection(launched.threadId);
+      const message = projection.messages.find((item) => item.id === queued.message.id);
+      assert.deepEqual(message?.notification, notification);
+    }).pipe(Effect.provide(harness.layer));
+  },
+);
+
 it.effect("provisions independent launches concurrently instead of behind a global semaphore", () =>
   Effect.gen(function* () {
     const setupCount = yield* Ref.make(0);

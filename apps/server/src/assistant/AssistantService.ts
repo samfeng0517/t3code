@@ -1,15 +1,23 @@
 import {
   type AssistantClockStatus,
+  type AssistantDailyReportStatus,
+  type AssistantDraft,
+  type AssistantDraftFailure,
+  type AssistantDraftRefInput,
   AssistantError,
   type AssistantMemory,
   type AssistantProject,
+  type AssistantSaveDraftInput,
   type AssistantSettings,
+  type AssistantState,
   CommandId,
   DEFAULT_ASSISTANT_MODEL_SELECTION,
   DEFAULT_PROVIDER_INTERACTION_MODE,
+  MessageId,
   ModelSelection,
   type OrchestrationV2DomainEvent,
   type ProviderSessionId,
+  type RunId,
   type ThreadId,
 } from "@t3tools/contracts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
@@ -26,6 +34,7 @@ import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import * as ProviderSessionManager from "../orchestration-v2/ProviderSessionManager.ts";
 import * as ThreadLaunch from "../orchestration-v2/ThreadLaunchService.ts";
@@ -34,10 +43,12 @@ import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as AssistantDraftStore from "./AssistantDraftStore.ts";
+import { buildDailyDraftMessage } from "./assistantDraftMessage.ts";
 import { DEFAULT_ASSISTANT_MEMORY } from "./assistantMemory.ts";
 import * as ErpClient from "./ErpClient.ts";
 
 const MEMORY_FILE = "CLAUDE.md";
+const isAssistantError = Schema.is(AssistantError);
 const TERMINAL_RUN_STATUSES = new Set([
   "completed",
   "interrupted",
@@ -97,6 +108,18 @@ export class AssistantService extends Context.Service<
     readonly clockIn: () => Effect.Effect<AssistantClockStatus, AssistantError>;
     readonly clockOut: () => Effect.Effect<AssistantClockStatus, AssistantError>;
     readonly listProjects: () => Effect.Effect<ReadonlyArray<AssistantProject>, AssistantError>;
+    readonly getDailyReport: () => Effect.Effect<AssistantDailyReportStatus, AssistantError>;
+    readonly saveDraft: (
+      input: AssistantSaveDraftInput,
+    ) => Effect.Effect<AssistantDraft, AssistantError>;
+    readonly regenerateDraft: (
+      input: AssistantDraftRefInput,
+    ) => Effect.Effect<AssistantDraft, AssistantError>;
+    readonly submitDailyReport: (
+      input: AssistantDraftRefInput,
+    ) => Effect.Effect<AssistantDraft, AssistantError>;
+    /** The assistant thread id and every stored draft, on subscribe and after each change. */
+    readonly streamState: () => Stream.Stream<AssistantState>;
     /** Forks the settings watcher and the domain-event loop for the server's lifetime. */
     readonly start: () => Effect.Effect<void, never, Scope.Scope>;
   }
@@ -114,7 +137,13 @@ const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const fileContext = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
 
-  const cachedThreadId = yield* Ref.make<ThreadId | null>(null);
+  const cachedThreadId = yield* SubscriptionRef.make<ThreadId | null>(null);
+  const rememberThread = (threadId: ThreadId | null) =>
+    SubscriptionRef.get(cachedThreadId).pipe(
+      Effect.flatMap((current) =>
+        current === threadId ? Effect.void : SubscriptionRef.set(cachedThreadId, threadId),
+      ),
+    );
   const createLock = yield* Semaphore.make(1);
   // The provider re-reads CLAUDE.md only when its session restarts.
   const memoryReloadPending = yield* Ref.make(false);
@@ -129,10 +158,10 @@ const make = Effect.gen(function* () {
     );
 
   const findThread = Effect.fn("AssistantService.findThread")(function* () {
-    const cached = yield* Ref.get(cachedThreadId);
+    const cached = yield* SubscriptionRef.get(cachedThreadId);
     if (cached !== null) {
       if ((yield* liveShell(cached)) !== null) return cached;
-      yield* Ref.set(cachedThreadId, null);
+      yield* rememberThread(null);
     }
     // Archived assistant threads count too: archiving must not fork the chat or reset its memory.
     const candidates = yield* threads
@@ -141,7 +170,7 @@ const make = Effect.gen(function* () {
     for (const threadId of candidates) {
       const shell = yield* liveShell(threadId);
       if (shell === null || !(yield* managedFolders.isScratchProject(shell.projectId))) continue;
-      yield* Ref.set(cachedThreadId, threadId);
+      yield* rememberThread(threadId);
       return threadId;
     }
     return null;
@@ -192,7 +221,7 @@ const make = Effect.gen(function* () {
         creationSource: "server",
       })
       .pipe(Effect.mapError(threadUnavailable));
-    yield* Ref.set(cachedThreadId, launched.threadId);
+    yield* rememberThread(launched.threadId);
     yield* ensureMemoryFile(launched.threadId);
     return launched.threadId;
   }, createLock.withPermits(1));
@@ -249,6 +278,351 @@ const make = Effect.gen(function* () {
     yield* Ref.set(memoryReloadPending, !released);
   });
 
+  const triggerLock = yield* Semaphore.make(1);
+  const submitLock = yield* Semaphore.make(1);
+  const draftsUnavailable = () => new AssistantError({ reason: "unavailable" });
+  const fail = (reason: AssistantError["reason"]) => new AssistantError({ reason });
+
+  const readDrafts = drafts.read().pipe(Effect.mapError(draftsUnavailable));
+  const readDraft = (reportDate: string) =>
+    readDrafts.pipe(Effect.map((file) => file.drafts[reportDate]));
+
+  /** Replaces one draft under the store lock; `f` returns an error to leave the file as it is. */
+  const updateDraft = Effect.fn("AssistantService.updateDraft")(function* (
+    reportDate: string,
+    f: (draft: AssistantDraft | undefined) => AssistantDraft | AssistantError,
+  ) {
+    const refused = yield* drafts
+      .update((file) => {
+        const next = f(file.drafts[reportDate]);
+        return isAssistantError(next)
+          ? ([next, file] as const)
+          : ([null, { ...file, drafts: { ...file.drafts, [reportDate]: next } }] as const);
+      })
+      .pipe(Effect.mapError(draftsUnavailable));
+    if (refused !== null) return yield* refused;
+    const stored = yield* readDraft(reportDate);
+    if (stored === undefined) return yield* draftsUnavailable();
+    return stored;
+  });
+
+  const runActive = Effect.fn("AssistantService.runActive")(function* () {
+    const threadId = yield* findThread();
+    if (threadId === null) return false;
+    return ((yield* liveShell(threadId))?.activeRunId ?? null) !== null;
+  });
+
+  const composeDraftMessage = Effect.fn("AssistantService.composeDraftMessage")(function* (
+    today: ErpClient.ErpTodayReport,
+  ) {
+    const projects = yield* erp.listProjects().pipe(Effect.option);
+    const projectName = (item: ErpClient.ErpPrefillItem) => {
+      const projectId = item.project_id;
+      if (projectId === null) return item.project_other;
+      const found = Option.getOrUndefined(projects)?.find((project) => project.id === projectId);
+      return found?.name ?? `#${projectId}`;
+    };
+    const activities = yield* erp.listActivities().pipe(Effect.option);
+    return buildDailyDraftMessage({
+      reportDate: today.server_date,
+      prefill: today.prefill_items.map((item) => ({
+        section: item.section,
+        status: item.status,
+        project: projectName(item),
+        content: item.content,
+      })),
+      activities: Option.match(activities, {
+        onNone: () => null,
+        onSome: (list) =>
+          list.map((activity) => ({
+            status: activity.status ?? "",
+            project: activity.project_name,
+            title: activity.title,
+          })),
+      }),
+    });
+  });
+
+  const failureOfRun = (status: string): AssistantDraftFailure | null =>
+    !TERMINAL_RUN_STATUSES.has(status) ? null : status === "failed" ? "run-failed" : "no-proposal";
+
+  /** A generating draft whose trigger run ended got no proposal; the proposal tool sets ready. */
+  const failDraftForRun = Effect.fn("AssistantService.failDraftForRun")(function* (
+    runId: RunId,
+    failure: AssistantDraftFailure,
+  ) {
+    const file = yield* readDrafts;
+    for (const draft of Object.values(file.drafts)) {
+      if (draft.status !== "generating" || draft.triggerRunId !== runId) continue;
+      yield* updateDraft(draft.reportDate, (current) =>
+        current?.status === "generating" && current.triggerRunId === runId
+          ? { ...current, status: "failed", failure }
+          : (current ?? fail("no-draft")),
+      );
+    }
+  });
+
+  const reconcileGenerating = Effect.fn("AssistantService.reconcileGenerating")(function* (
+    threadId: ThreadId,
+  ) {
+    const generating = Object.values((yield* readDrafts).drafts).filter(
+      (draft) => draft.status === "generating" && draft.triggerRunId !== undefined,
+    );
+    if (generating.length === 0) return;
+    const { runs } = yield* threads
+      .getThreadRecords(threadId, ["runs"])
+      .pipe(Effect.mapError(threadUnavailable));
+    for (const draft of generating) {
+      const run = runs.find((candidate) => candidate.id === draft.triggerRunId);
+      const failure = run === undefined ? null : failureOfRun(run.status);
+      if (run !== undefined && failure !== null) yield* failDraftForRun(run.id, failure);
+    }
+  });
+
+  /** Sends the draft request to the assistant thread; a failure marks the draft failed. */
+  const dispatchDraft = Effect.fn("AssistantService.dispatchDraft")(function* (input: {
+    readonly reportDate: string;
+    readonly attempt: number;
+    readonly summary: string;
+    readonly today: ErpClient.ErpTodayReport;
+  }) {
+    const sent = yield* Effect.gen(function* () {
+      const threadId = yield* getOrCreateThread();
+      const shell = yield* liveShell(threadId);
+      if (shell === null) return yield* threadUnavailable();
+      // An archived thread refuses messages; the assistant chat stays usable.
+      if (shell.archivedAt !== null) {
+        yield* threads
+          .dispatch({
+            type: "thread.unarchive",
+            commandId: CommandId.make(`assistant-thread:unarchive:${yield* randomUuidV4}`),
+            threadId,
+          })
+          .pipe(Effect.mapError(threadUnavailable));
+      }
+      const settings = yield* settingsService.getSettings.pipe(Effect.mapError(threadUnavailable));
+      const id = `assistant-daily-draft:${input.reportDate}:${input.attempt}`;
+      const result = yield* threads
+        .sendToThread({
+          projectId: shell.projectId,
+          threadId,
+          commandId: CommandId.make(id),
+          messageId: MessageId.make(id),
+          text: yield* composeDraftMessage(input.today),
+          attachments: [],
+          modelSelection: threadSettingsOf(settings.assistant).modelSelection,
+          mode: "queue",
+          // The orchestrator only accepts notifications on agent-attributed, server-sent queued messages.
+          createdBy: "agent",
+          creationSource: "server",
+          notification: { source: { kind: "system" }, outcome: "updated", summary: input.summary },
+        })
+        .pipe(Effect.mapError(threadUnavailable));
+      return { threadId, runId: result.run.id };
+    }).pipe(
+      Effect.tapError(() =>
+        updateDraft(input.reportDate, (draft) =>
+          draft === undefined
+            ? fail("no-draft")
+            : { ...draft, status: "failed", failure: "thread-unavailable" },
+        ).pipe(Effect.ignore({ log: true })),
+      ),
+    );
+    yield* updateDraft(input.reportDate, (draft) =>
+      draft === undefined ? fail("no-draft") : { ...draft, triggerRunId: sent.runId },
+    );
+    // The run may have ended before its id was stored, so the event loop could not match it.
+    yield* reconcileGenerating(sent.threadId).pipe(Effect.ignore({ log: true }));
+    const stored = yield* readDraft(input.reportDate);
+    if (stored === undefined) return yield* draftsUnavailable();
+    return stored;
+  });
+
+  const maybeTriggerDraft = Effect.fn("AssistantService.maybeTriggerDraft")(function* (
+    status: AssistantClockStatus,
+  ) {
+    const reportDate = status.reportDate;
+    if (status.segments.length === 0) return;
+    if ((yield* readDraft(reportDate)) !== undefined) return;
+    const today = yield* erp.getTodayReport();
+    if (
+      today.server_date !== reportDate ||
+      today.daily_report_exempt ||
+      (today.report?.submitted_at ?? null) !== null
+    ) {
+      return;
+    }
+    yield* triggerLock.withPermits(1)(
+      Effect.gen(function* () {
+        if ((yield* readDraft(reportDate)) !== undefined) return;
+        yield* updateDraft(reportDate, () => ({
+          reportDate,
+          status: "generating",
+          items: [],
+          problemText: "",
+          revision: 0,
+          version: 0,
+          sources: [],
+          editedByUser: false,
+          triggerAttempt: 1,
+          updatedAt: status.serverNow,
+        }));
+        yield* dispatchDraft({
+          reportDate,
+          attempt: 1,
+          summary: "今天第一次打卡，助理開始擬日報草稿",
+          today,
+        });
+      }),
+    );
+  });
+
+  const getDailyReport = Effect.fn("AssistantService.getDailyReport")(function* () {
+    const today = yield* erp.getTodayReport();
+    const settings = yield* settingsService.getSettings.pipe(Effect.mapError(draftsUnavailable));
+    const submittedAt = today.report?.submitted_at ?? null;
+    if (submittedAt !== null) {
+      const stored = yield* readDraft(today.server_date);
+      // ERP is the record: a report sent from its own page still closes the draft here.
+      if (stored !== undefined && stored.status !== "submitted") {
+        yield* updateDraft(today.server_date, (draft) =>
+          draft === undefined ? fail("no-draft") : { ...draft, status: "submitted", submittedAt },
+        );
+      }
+    }
+    return {
+      reportDate: today.server_date,
+      exempt: today.daily_report_exempt,
+      submittedAt,
+      erpDailyReportUrl: `${settings.assistant.erpBaseUrl.replace(/\/+$/u, "")}/profile/daily-report`,
+    } satisfies AssistantDailyReportStatus;
+  });
+
+  const editable = (draft: AssistantDraft | undefined, revision: number) =>
+    draft === undefined
+      ? fail("no-draft")
+      : draft.status !== "ready"
+        ? fail("not-editable")
+        : draft.revision !== revision
+          ? fail("stale-revision")
+          : draft;
+
+  const saveDraft = Effect.fn("AssistantService.saveDraft")(function* (
+    input: AssistantSaveDraftInput,
+  ) {
+    return yield* updateDraft(input.reportDate, (draft) => {
+      const checked = editable(draft, input.revision);
+      return isAssistantError(checked)
+        ? checked
+        : { ...checked, items: input.items, problemText: input.problemText, editedByUser: true };
+    });
+  });
+
+  const regenerateDraft = Effect.fn("AssistantService.regenerateDraft")(function* (
+    input: AssistantDraftRefInput,
+  ) {
+    const check = (draft: AssistantDraft | undefined) =>
+      draft === undefined
+        ? fail("no-draft")
+        : draft.status === "submitted"
+          ? fail("submitted")
+          : draft.status === "generating"
+            ? fail("busy")
+            : draft.revision !== input.revision
+              ? fail("stale-revision")
+              : draft;
+    const checked = check(yield* readDraft(input.reportDate));
+    if (isAssistantError(checked)) return yield* checked;
+    if (yield* runActive()) return yield* fail("busy");
+    const today = yield* erp.getTodayReport();
+    return yield* triggerLock.withPermits(1)(
+      Effect.gen(function* () {
+        const restarted = yield* updateDraft(input.reportDate, (draft) => {
+          const current = check(draft);
+          if (isAssistantError(current)) return current;
+          const { failure: _failure, triggerRunId: _triggerRunId, ...rest } = current;
+          return { ...rest, status: "generating", triggerAttempt: current.triggerAttempt + 1 };
+        });
+        return yield* dispatchDraft({
+          reportDate: input.reportDate,
+          attempt: restarted.triggerAttempt,
+          summary: "重新產生日報草稿",
+          today,
+        });
+      }),
+    );
+  });
+
+  const submitDailyReport = Effect.fn("AssistantService.submitDailyReport")(function* (
+    input: AssistantDraftRefInput,
+  ) {
+    const checked = editable(yield* readDraft(input.reportDate), input.revision);
+    if (isAssistantError(checked)) return yield* checked;
+    if (yield* runActive()) return yield* fail("busy");
+    const today = yield* erp.getTodayReport();
+    const alreadySubmitted = today.report?.submitted_at ?? null;
+    if (today.server_date === input.reportDate && alreadySubmitted !== null) {
+      yield* updateDraft(input.reportDate, (draft) =>
+        draft === undefined
+          ? fail("no-draft")
+          : { ...draft, status: "submitted", submittedAt: alreadySubmitted },
+      );
+      return yield* fail("submitted");
+    }
+    const items = (["yesterday", "today"] as const).flatMap((section) =>
+      checked.items
+        .filter((item) => item.section === section)
+        .toSorted((left, right) => left.sortOrder - right.sortOrder)
+        .map((item, index) => ({
+          section,
+          ...(item.projectOther !== null
+            ? { project_other: item.projectOther }
+            : item.projectId !== null
+              ? { project_id: item.projectId }
+              : {}),
+          content: item.content,
+          status: item.status,
+          sort_order: index,
+        })),
+    );
+    yield* erp.submitReport({
+      date: input.reportDate,
+      ...(checked.problemText.trim() === "" ? {} : { problem_text: checked.problemText }),
+      items,
+    });
+    const submittedAt = DateTime.formatIso(yield* DateTime.now);
+    return yield* updateDraft(input.reportDate, (draft) =>
+      draft === undefined ? fail("no-draft") : { ...draft, status: "submitted", submittedAt },
+    );
+  }, submitLock.withPermits(1));
+
+  const currentState = Effect.gen(function* () {
+    const file = yield* drafts.read().pipe(Effect.option);
+    return {
+      assistantThreadId: yield* SubscriptionRef.get(cachedThreadId),
+      drafts: Option.match(file, {
+        onNone: () => [],
+        onSome: ({ drafts: stored }) =>
+          Object.values(stored).toSorted((left, right) =>
+            right.reportDate.localeCompare(left.reportDate),
+          ),
+      }),
+    } satisfies AssistantState;
+  });
+
+  const streamState = () =>
+    Stream.unwrap(
+      findThread().pipe(
+        Effect.ignore,
+        Effect.as(
+          Stream.merge(
+            SubscriptionRef.changes(cachedThreadId).pipe(Stream.map(() => undefined)),
+            drafts.changes.pipe(Stream.map(() => undefined)),
+          ).pipe(Stream.mapEffect(() => currentState)),
+        ),
+      ),
+    );
+
   const getClockStatus = Effect.fn("AssistantService.getClockStatus")(function* () {
     const active = yield* erp.getActiveClocking();
     const workday = active.data?.date ?? taipeiDate(active.meta.server_now);
@@ -277,7 +651,7 @@ const make = Effect.gen(function* () {
           ),
         );
     }
-    return {
+    const status = {
       reportDate: workday,
       serverNow: active.meta.server_now,
       segments,
@@ -286,6 +660,11 @@ const make = Effect.gen(function* () {
       requiredHours,
       expectedEnd: expectedEndOf(activeStart, requiredHours, completedHours),
     } satisfies AssistantClockStatus;
+    // The first ordinary clocking of the day asks the assistant for the draft; never fails the clock.
+    yield* maybeTriggerDraft(status).pipe(
+      Effect.catch((cause) => Effect.logWarning("assistant draft was not triggered", { cause })),
+    );
+    return status;
   });
 
   const clockIn = Effect.fn("AssistantService.clockIn")(function* () {
@@ -347,14 +726,27 @@ const make = Effect.gen(function* () {
 
   // Untraced: it sees every domain event on the server; releaseSessions keeps its own span.
   const handleDomainEvent = Effect.fnUntraced(function* (event: OrchestrationV2DomainEvent) {
-    if (event.type !== "run.updated" || !TERMINAL_RUN_STATUSES.has(event.payload.status)) return;
-    if (event.threadId !== (yield* Ref.get(cachedThreadId))) return;
-    if (!(yield* Ref.getAndSet(memoryReloadPending, false))) return;
-    yield* releaseSessions(event.threadId).pipe(Effect.ignore({ log: true }));
+    if (event.type !== "run.updated") return;
+    const failure = failureOfRun(event.payload.status);
+    if (failure === null) return;
+    if (event.threadId !== (yield* SubscriptionRef.get(cachedThreadId))) return;
+    yield* failDraftForRun(event.payload.id, failure).pipe(Effect.ignore({ log: true }));
+    if (yield* Ref.getAndSet(memoryReloadPending, false)) {
+      yield* releaseSessions(event.threadId).pipe(Effect.ignore({ log: true }));
+    }
   });
 
   const start = Effect.fn("AssistantService.start")(function* () {
     yield* forkParked(watchSettings);
+    // Trigger runs that ended while the server was down left their drafts generating.
+    yield* forkParked(
+      findThread().pipe(
+        Effect.flatMap((threadId) =>
+          threadId === null ? Effect.void : reconcileGenerating(threadId),
+        ),
+        Effect.ignore({ log: true }),
+      ),
+    );
     yield* forkParked(
       Stream.runForEach(threads.streamDomainEvents, handleDomainEvent).pipe(
         Effect.catch((cause) => Effect.logWarning("assistant event loop stopped", { cause })),
@@ -371,6 +763,11 @@ const make = Effect.gen(function* () {
     clockIn,
     clockOut,
     listProjects,
+    getDailyReport,
+    saveDraft,
+    regenerateDraft,
+    submitDailyReport,
+    streamState,
     start,
   });
 });

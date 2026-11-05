@@ -2312,6 +2312,11 @@ export const layerWsRpc = (
           assistant.getOrCreateThread().pipe(Effect.map((threadId) => ({ threadId }))),
         [WS_METHODS.assistantReadMemory]: () => assistant.readMemory(),
         [WS_METHODS.assistantWriteMemory]: (input) => assistant.writeMemory(input),
+        [WS_METHODS.assistantGetDailyReport]: () => assistant.getDailyReport(),
+        [WS_METHODS.assistantSubscribeState]: () => assistant.streamState(),
+        [WS_METHODS.assistantSaveDraft]: (input) => assistant.saveDraft(input),
+        [WS_METHODS.assistantRegenerateDraft]: (input) => assistant.regenerateDraft(input),
+        [WS_METHODS.assistantSubmitDailyReport]: (input) => assistant.submitDailyReport(input),
         [WS_METHODS.guestShareCreate]: (input) =>
           Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
             Effect.andThen(guestShares.create(input)),

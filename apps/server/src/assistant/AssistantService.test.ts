@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
+  type AssistantDraft,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ServerCommand,
   type OrchestrationV2ThreadShell,
@@ -15,6 +16,7 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
@@ -92,9 +94,76 @@ const activeClocking = (overrides: Partial<ErpClient.ErpActiveClocking> = {}) =>
     ...overrides,
   }) satisfies ErpClient.ErpActiveClocking;
 
+const todaySegment: ErpClient.ErpClocking = {
+  id: 1,
+  date: "2026-11-05",
+  type: "ordinary",
+  start_time: "2026-11-05T09:00:00+08:00",
+  end_time: null,
+  hours: 0,
+};
+
+const todayReport = (
+  overrides: Partial<ErpClient.ErpTodayReport> = {},
+): ErpClient.ErpTodayReport => ({
+  server_date: "2026-11-05",
+  report: null,
+  prefill_items: [
+    {
+      section: "yesterday",
+      project_id: 7,
+      project_other: null,
+      content: "Ship the release",
+      status: "finished",
+      sort_order: 0,
+    },
+  ],
+  daily_report_exempt: false,
+  ...overrides,
+});
+
+const storedDraft = (overrides: Partial<AssistantDraft> = {}): AssistantDraft => ({
+  reportDate: "2026-11-05",
+  status: "ready",
+  items: [],
+  problemText: "",
+  revision: 0,
+  version: 1,
+  sources: [],
+  editedByUser: false,
+  triggerAttempt: 1,
+  updatedAt: "2026-11-05T00:00:00.000Z",
+  ...overrides,
+});
+
+/** Writes a draft through the real store and returns it with the revision the store gave it. */
+const seedDraft = (draft: AssistantDraft) =>
+  Effect.gen(function* () {
+    const store = yield* AssistantDraftStore.AssistantDraftStore;
+    yield* store.update((file) => [
+      undefined,
+      { ...file, drafts: { ...file.drafts, [draft.reportDate]: draft } },
+    ]);
+    return (yield* store.read()).drafts[draft.reportDate]!;
+  });
+
+const readStoredDraft = (reportDate: string) =>
+  AssistantDraftStore.AssistantDraftStore.pipe(
+    Effect.flatMap((store) => store.read()),
+    Effect.map((file) => file.drafts[reportDate]),
+  );
+
+const runUpdated = (threadId: ThreadId, runId: string, status: string) =>
+  ({
+    type: "run.updated",
+    threadId,
+    payload: { id: RunId.make(runId), status },
+  }) as unknown as OrchestrationV2DomainEvent;
+
 interface HarnessOptions {
   readonly active?: ErpClient.ErpActiveClocking;
   readonly clockings?: ReadonlyArray<ErpClient.ErpClocking>;
+  readonly today?: ErpClient.ErpTodayReport;
   readonly settings?: Parameters<typeof ServerSettings.layerTest>[0];
 }
 
@@ -111,6 +180,9 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
   const settingsChanges = yield* Queue.unbounded<ServerSettingsValue>();
   const domainEvents = yield* Queue.unbounded<OrchestrationV2DomainEvent>();
   const listedMonths: Array<string> = [];
+  const sends: Array<ThreadManagement.ThreadManagementSendInput> = [];
+  const submitted: Array<ErpClient.ErpDailyReportBody> = [];
+  const erpState = { today: options.today ?? todayReport() };
 
   const addShell = (shell: OrchestrationV2ThreadShell) =>
     Ref.update(shells, (current) => new Map(current).set(shell.id, shell));
@@ -139,7 +211,15 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
             providerSessionId: ProviderSessionId.make("session-1"),
           },
         ],
+        runs: [],
       })) as unknown as ThreadManagement.ThreadManagementService["Service"]["getThreadRecords"],
+    sendToThread: (input) =>
+      Effect.sync(() => {
+        sends.push(input);
+        return {
+          run: { id: RunId.make(`run-${sends.length}`) },
+        } as unknown as ThreadManagement.ThreadManagementSendResult;
+      }),
     dispatch: (command) =>
       Effect.sync(() => dispatched.push(command)).pipe(
         Effect.andThen(Deferred.succeed(dispatchedOnce, undefined)),
@@ -191,6 +271,12 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
     clockIn: () => Effect.die("unused"),
     clockOut: () => Effect.die("unused"),
     listProjects: () => Effect.succeed([{ id: 7, name: "Example" }]),
+    getTodayReport: () => Effect.sync(() => erpState.today),
+    listActivities: () =>
+      Effect.succeed([
+        { title: "Review MR", status: "processing", project_id: 7, project_name: "Example" },
+      ]),
+    submitReport: (body) => Effect.sync(() => void submitted.push(body)),
   });
 
   const settings = Layer.effect(
@@ -227,6 +313,9 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
     domainEvents,
     listedMonths,
     addShell,
+    sends,
+    submitted,
+    erpState,
   };
 });
 
@@ -456,5 +545,254 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
         assert.equal(yield* Ref.get(harness.releaseCalls), 1);
       }).pipe(Effect.provide(harness.layer));
     }).pipe(Effect.scoped),
+  );
+  it.effect(
+    "maybeTriggerDraft should send one draft message with fixed ids when the first ordinary clocking of the day exists",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({ clockings: [todaySegment] });
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          yield* assistant.getClockStatus();
+          assert.lengthOf(harness.sends, 1);
+          const [send] = harness.sends;
+          assert.equal(send?.commandId, "assistant-daily-draft:2026-11-05:1");
+          assert.equal(send?.messageId, "assistant-daily-draft:2026-11-05:1");
+          assert.equal(send?.mode, "queue");
+          assert.equal(send?.notification?.summary, "今天第一次打卡，助理開始擬日報草稿");
+          assert.include(send?.text, "prefill: yesterday | finished | Example | Ship the release");
+          const draft = yield* readStoredDraft("2026-11-05");
+          assert.equal(draft?.status, "generating");
+          assert.equal(draft?.triggerAttempt, 1);
+          assert.equal(draft?.triggerRunId, "run-1");
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    { reason: "exempt", today: todayReport({ daily_report_exempt: true }) },
+    {
+      reason: "submitted",
+      today: todayReport({ report: { submitted_at: "2026-11-05T09:30:00+08:00" } }),
+    },
+  ])("maybeTriggerDraft should not send when the daily report is $reason", ({ today }) =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ clockings: [todaySegment], today });
+      yield* Effect.gen(function* () {
+        const assistant = yield* AssistantService.AssistantService;
+        yield* assistant.getClockStatus();
+        assert.lengthOf(harness.sends, 0);
+        assert.isUndefined(yield* readStoredDraft("2026-11-05"));
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "maybeTriggerDraft should not send twice when getClockStatus is called again the same day",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({ clockings: [todaySegment] });
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          yield* assistant.getClockStatus();
+          yield* assistant.getClockStatus();
+          assert.lengthOf(harness.sends, 1);
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    { runStatus: "completed", failure: "no-proposal" },
+    { runStatus: "failed", failure: "run-failed" },
+  ])(
+    "failure watcher should mark the draft failed with $failure when the trigger run is $runStatus",
+    ({ runStatus, failure }) =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({ clockings: [todaySegment] });
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          const store = yield* AssistantDraftStore.AssistantDraftStore;
+          yield* assistant.getClockStatus();
+          yield* assistant.start();
+          const failed = yield* store.changes.pipe(
+            Stream.filter((file) => file.drafts["2026-11-05"]?.status === "failed"),
+            Stream.runHead,
+            Effect.forkChild({ startImmediately: true }),
+          );
+          const threadId = harness.sends[0]!.threadId;
+          // A waiting run (approval) is not terminal and leaves the draft generating.
+          yield* Queue.offer(harness.domainEvents, runUpdated(threadId, "run-1", "waiting"));
+          yield* Queue.offer(harness.domainEvents, runUpdated(threadId, "run-1", runStatus));
+          yield* Fiber.join(failed);
+          const draft = yield* readStoredDraft("2026-11-05");
+          assert.equal(draft?.status, "failed");
+          assert.equal(draft?.failure, failure);
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("saveDraft should reject when revision is stale", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* Effect.gen(function* () {
+        const assistant = yield* AssistantService.AssistantService;
+        const seeded = yield* seedDraft(storedDraft());
+        const input = { reportDate: "2026-11-05", items: [], problemText: "blocked" };
+        const stale = yield* Effect.flip(
+          assistant.saveDraft({ ...input, revision: seeded.revision + 1 }),
+        );
+        assert.equal(stale.reason, "stale-revision");
+        const saved = yield* assistant.saveDraft({ ...input, revision: seeded.revision });
+        assert.equal(saved.problemText, "blocked");
+        assert.isTrue(saved.editedByUser);
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("submitDailyReport should reject when revision is stale", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* Effect.gen(function* () {
+        const assistant = yield* AssistantService.AssistantService;
+        const seeded = yield* seedDraft(storedDraft());
+        const error = yield* Effect.flip(
+          assistant.submitDailyReport({ reportDate: "2026-11-05", revision: seeded.revision + 1 }),
+        );
+        assert.equal(error.reason, "stale-revision");
+        assert.lengthOf(harness.submitted, 0);
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("submitDailyReport should reject when the assistant run is active", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* harness.addShell({
+        ...assistantShell("existing-assistant", harness.root),
+        activeRunId: RunId.make("run-active"),
+      });
+      yield* Effect.gen(function* () {
+        const assistant = yield* AssistantService.AssistantService;
+        const seeded = yield* seedDraft(storedDraft());
+        const error = yield* Effect.flip(
+          assistant.submitDailyReport({ reportDate: "2026-11-05", revision: seeded.revision }),
+        );
+        assert.equal(error.reason, "busy");
+        assert.lengthOf(harness.submitted, 0);
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "submitDailyReport should post project_other instead of project_id when the item has free text",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          const item = {
+            section: "today",
+            content: "Plan the sprint",
+            status: "new",
+            projectId: 7,
+            projectOther: null,
+            sortOrder: 0,
+          } as const;
+          const seeded = yield* seedDraft(
+            storedDraft({
+              problemText: "  ",
+              items: [
+                { ...item, sortOrder: 4, projectOther: "Side work" },
+                item,
+                { ...item, section: "yesterday", projectId: null, sortOrder: 9 },
+              ],
+            }),
+          );
+          const result = yield* assistant.submitDailyReport({
+            reportDate: "2026-11-05",
+            revision: seeded.revision,
+          });
+          assert.deepEqual(harness.submitted, [
+            {
+              date: "2026-11-05",
+              items: [
+                {
+                  section: "yesterday",
+                  content: "Plan the sprint",
+                  status: "new",
+                  sort_order: 0,
+                },
+                {
+                  section: "today",
+                  project_id: 7,
+                  content: "Plan the sprint",
+                  status: "new",
+                  sort_order: 0,
+                },
+                {
+                  section: "today",
+                  project_other: "Side work",
+                  content: "Plan the sprint",
+                  status: "new",
+                  sort_order: 1,
+                },
+              ],
+            },
+          ]);
+          assert.equal(result.status, "submitted");
+          assert.isDefined(result.submittedAt);
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("regenerateDraft should send attempt 2 ids when called after a failure", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* Effect.gen(function* () {
+        const assistant = yield* AssistantService.AssistantService;
+        const seeded = yield* seedDraft(
+          storedDraft({
+            status: "failed",
+            failure: "no-proposal",
+            triggerRunId: RunId.make("run-0"),
+          }),
+        );
+        const draft = yield* assistant.regenerateDraft({
+          reportDate: "2026-11-05",
+          revision: seeded.revision,
+        });
+        assert.lengthOf(harness.sends, 1);
+        assert.equal(harness.sends[0]?.commandId, "assistant-daily-draft:2026-11-05:2");
+        assert.equal(harness.sends[0]?.notification?.summary, "重新產生日報草稿");
+        assert.equal(draft.status, "generating");
+        assert.equal(draft.triggerAttempt, 2);
+        assert.equal(draft.triggerRunId, "run-1");
+        assert.isUndefined(draft.failure);
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "getDailyReport should mark the stored draft submitted when ERP reports submitted_at",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({
+          settings: { assistant: { erpBaseUrl: "https://erp.example.com" } },
+          today: todayReport({ report: { submitted_at: "2026-11-05T18:00:00+08:00" } }),
+        });
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          yield* seedDraft(storedDraft());
+          assert.deepEqual(yield* assistant.getDailyReport(), {
+            reportDate: "2026-11-05",
+            exempt: false,
+            submittedAt: "2026-11-05T18:00:00+08:00",
+            erpDailyReportUrl: "https://erp.example.com/profile/daily-report",
+          });
+          const draft = yield* readStoredDraft("2026-11-05");
+          assert.equal(draft?.status, "submitted");
+          assert.equal(draft?.submittedAt, "2026-11-05T18:00:00+08:00");
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
   );
 });

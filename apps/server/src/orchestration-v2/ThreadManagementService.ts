@@ -25,6 +25,7 @@ import {
   type OrchestrationV2ServerCommand,
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2CreationSource,
+  type OrchestrationV2Notification,
   type OrchestrationV2Run,
   type OrchestrationV2ThreadShellSnapshot,
   type OrchestrationV2ThreadProjection,
@@ -153,6 +154,8 @@ export interface ThreadManagementSendInput {
   readonly mode: ThreadManagementSendMode;
   readonly createdBy: OrchestrationV2Actor;
   readonly creationSource: OrchestrationV2CreationSource;
+  /** Shown on the message and delivered like an agent notification, e.g. for server-sent prompts. */
+  readonly notification?: OrchestrationV2Notification;
 }
 
 export interface ThreadManagementSendResult {
@@ -859,6 +862,7 @@ const make = Effect.gen(function* () {
       attachments: input.attachments,
       ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
       dispatchMode,
+      ...(input.notification === undefined ? {} : { notification: input.notification }),
       createdBy: input.createdBy,
       creationSource: input.creationSource,
     });

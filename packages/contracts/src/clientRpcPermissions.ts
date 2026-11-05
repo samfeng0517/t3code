@@ -83,6 +83,9 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.assistantGetOrCreateThread]: AuthOrchestrationOperateScope,
   [WS_METHODS.assistantReadMemory]: AuthOrchestrationOperateScope,
   [WS_METHODS.assistantWriteMemory]: AuthOrchestrationOperateScope,
+  [WS_METHODS.assistantSaveDraft]: AuthOrchestrationOperateScope,
+  [WS_METHODS.assistantRegenerateDraft]: AuthOrchestrationOperateScope,
+  [WS_METHODS.assistantSubmitDailyReport]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.stopWorkflow]: AuthOrchestrationOperateScope,
   // A mod button can start work in the agent session that drew it.
   [WS_METHODS.modsAct]: AuthOrchestrationOperateScope,

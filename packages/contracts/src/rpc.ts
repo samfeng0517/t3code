@@ -425,9 +425,14 @@ import {
 } from "./scheduledTask.ts";
 import {
   AssistantClockStatus,
+  AssistantDailyReportStatus,
+  AssistantDraft,
+  AssistantDraftRefInput,
   AssistantError,
   AssistantMemory,
   AssistantProject,
+  AssistantSaveDraftInput,
+  AssistantState,
 } from "./assistant.ts";
 import { SecretRequestAnswerInput, SecretRequestError } from "./secretRequest.ts";
 import {
@@ -635,6 +640,11 @@ export const WS_METHODS = {
   assistantGetOrCreateThread: "assistant.getOrCreateThread",
   assistantReadMemory: "assistant.readMemory",
   assistantWriteMemory: "assistant.writeMemory",
+  assistantGetDailyReport: "assistant.getDailyReport",
+  assistantSubscribeState: "assistant.subscribeState",
+  assistantSaveDraft: "assistant.saveDraft",
+  assistantRegenerateDraft: "assistant.regenerateDraft",
+  assistantSubmitDailyReport: "assistant.submitDailyReport",
 
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
   cloudInstallRelayClient: "cloud.installRelayClient",
@@ -2253,6 +2263,37 @@ const WsAssistantWriteMemoryRpc = Rpc.make(WS_METHODS.assistantWriteMemory, {
   error: AssistantRpcError,
 });
 
+const WsAssistantGetDailyReportRpc = Rpc.make(WS_METHODS.assistantGetDailyReport, {
+  payload: Schema.Struct({}),
+  success: AssistantDailyReportStatus,
+  error: AssistantRpcError,
+});
+
+const WsAssistantSubscribeStateRpc = Rpc.make(WS_METHODS.assistantSubscribeState, {
+  payload: Schema.Struct({}),
+  success: AssistantState,
+  error: AssistantRpcError,
+  stream: true,
+});
+
+const WsAssistantSaveDraftRpc = Rpc.make(WS_METHODS.assistantSaveDraft, {
+  payload: AssistantSaveDraftInput,
+  success: AssistantDraft,
+  error: AssistantRpcError,
+});
+
+const WsAssistantRegenerateDraftRpc = Rpc.make(WS_METHODS.assistantRegenerateDraft, {
+  payload: AssistantDraftRefInput,
+  success: AssistantDraft,
+  error: AssistantRpcError,
+});
+
+const WsAssistantSubmitDailyReportRpc = Rpc.make(WS_METHODS.assistantSubmitDailyReport, {
+  payload: AssistantDraftRefInput,
+  success: AssistantDraft,
+  error: AssistantRpcError,
+});
+
 const WsSubscribeAuthAccessRpc = Rpc.make(WS_METHODS.subscribeAuthAccess, {
   payload: Schema.Struct({}),
   success: AuthAccessStreamEvent,
@@ -2345,6 +2386,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsAssistantGetOrCreateThreadRpc,
   WsAssistantReadMemoryRpc,
   WsAssistantWriteMemoryRpc,
+  WsAssistantGetDailyReportRpc,
+  WsAssistantSubscribeStateRpc,
+  WsAssistantSaveDraftRpc,
+  WsAssistantRegenerateDraftRpc,
+  WsAssistantSubmitDailyReportRpc,
   WsServerReportClientActivityRpc,
   WsCloudGetRelayClientStatusRpc,
   WsCloudInstallRelayClientRpc,

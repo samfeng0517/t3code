@@ -54,10 +54,18 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.assistantGetOrCreateThread,
       WS_METHODS.assistantReadMemory,
       WS_METHODS.assistantWriteMemory,
+      WS_METHODS.assistantSaveDraft,
+      WS_METHODS.assistantRegenerateDraft,
+      WS_METHODS.assistantSubmitDailyReport,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationOperateScope);
     }
-    for (const method of [WS_METHODS.assistantGetClockStatus, WS_METHODS.assistantListProjects]) {
+    for (const method of [
+      WS_METHODS.assistantGetClockStatus,
+      WS_METHODS.assistantListProjects,
+      WS_METHODS.assistantGetDailyReport,
+      WS_METHODS.assistantSubscribeState,
+    ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
     }
   });
