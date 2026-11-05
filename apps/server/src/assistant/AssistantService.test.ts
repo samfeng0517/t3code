@@ -148,6 +148,11 @@ const seedDraft = (draft: AssistantDraft) =>
     return (yield* store.read()).drafts[draft.reportDate]!;
   });
 
+const seedWorkday = (workday: string) =>
+  AssistantDraftStore.AssistantDraftStore.pipe(
+    Effect.flatMap((store) => store.update((file) => [undefined, { ...file, workday }])),
+  );
+
 const readStoredDraft = (reportDate: string) =>
   AssistantDraftStore.AssistantDraftStore.pipe(
     Effect.flatMap((store) => store.read()),
@@ -924,6 +929,92 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
           Option.getOrThrow(state).drafts.map((draft) => draft.reportDate),
           ["2026-11-05", "2026-11-04"],
         );
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(Effect.scoped),
+  );
+  it.effect(
+    "proposeDraft should fail with the no-trigger message when no draft exists for the workday",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
+        yield* harness.addShell(assistantShell("existing-assistant", harness.root));
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          yield* seedWorkday("2026-11-05");
+          const error = yield* Effect.flip(
+            assistant.proposeDraft({
+              callerThreadId: ThreadId.make("existing-assistant"),
+              items: [],
+              problemText: "",
+              sources: [{ key: "erp_prefill", status: "ok" }],
+            }),
+          );
+          assert.equal(error.kind, "no-draft");
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "proposeDraft should bump version and reset editedByUser when the assistant proposes",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
+        yield* harness.addShell(assistantShell("existing-assistant", harness.root));
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          yield* seedDraft(
+            storedDraft({
+              status: "failed",
+              failure: "no-proposal",
+              version: 1,
+              editedByUser: true,
+            }),
+          );
+          yield* seedWorkday("2026-11-05");
+          const saved = yield* assistant.proposeDraft({
+            callerThreadId: ThreadId.make("existing-assistant"),
+            items: [
+              {
+                section: "today",
+                content: "  Plan the sprint  ",
+                status: "new",
+                projectId: 7,
+                projectOther: null,
+                sortOrder: 0,
+              },
+            ],
+            problemText: "None",
+            sources: [{ key: "calendar", status: "failed", note: "No calendar tool" }],
+          });
+          assert.deepEqual(saved, { reportDate: "2026-11-05", version: 2 });
+          const draft = yield* assistant.getDraftForAgent(ThreadId.make("existing-assistant"));
+          assert.equal(draft.status, "ready");
+          assert.isFalse(draft.editedByUser);
+          assert.isUndefined(draft.failure);
+          assert.equal(draft.items[0]?.content, "Plan the sprint");
+          assert.equal(draft.sources[0]?.note, "No calendar tool");
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("proposeDraft should reject when the caller thread is not the assistant thread", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* harness.addShell(assistantShell("existing-assistant", harness.root));
+      yield* Effect.gen(function* () {
+        const assistant = yield* AssistantService.AssistantService;
+        yield* seedDraft(storedDraft());
+        yield* seedWorkday("2026-11-05");
+        const error = yield* Effect.flip(
+          assistant.proposeDraft({
+            callerThreadId: ThreadId.make("some-other-thread"),
+            items: [],
+            problemText: "",
+            sources: [{ key: "erp_prefill", status: "ok" }],
+          }),
+        );
+        assert.equal(error.kind, "not-assistant-thread");
+        assert.equal((yield* readStoredDraft("2026-11-05"))?.version, 1);
       }).pipe(Effect.provide(harness.layer));
     }).pipe(Effect.scoped),
   );

@@ -97,6 +97,18 @@ const threadSettingsOf = (assistant: AssistantSettings): ThreadSettings => ({
   runtimeMode: assistant.runtimeMode,
 });
 
+/** Why the assistant's draft tools refused; the MCP handlers turn each into the agent's message. */
+export class AssistantAgentDraftError extends Schema.TaggedError<AssistantAgentDraftError>()(
+  "AssistantAgentDraftError",
+  { kind: Schema.Literals(["not-assistant-thread", "no-draft", "submitted", "unavailable"]) },
+) {}
+
+export interface AssistantProposedDraft {
+  readonly items: AssistantDraft["items"];
+  readonly problemText: string;
+  readonly sources: AssistantDraft["sources"];
+}
+
 export class AssistantService extends Context.Service<
   AssistantService,
   {
@@ -118,6 +130,17 @@ export class AssistantService extends Context.Service<
     readonly submitDailyReport: (
       input: AssistantDraftRefInput,
     ) => Effect.Effect<AssistantDraft, AssistantError>;
+    /** The workday's draft, for the assistant thread's own agent only. */
+    readonly getDraftForAgent: (
+      callerThreadId: ThreadId,
+    ) => Effect.Effect<AssistantDraft, AssistantAgentDraftError>;
+    /** Stores the agent's draft as the workday's next version. */
+    readonly proposeDraft: (
+      input: AssistantProposedDraft & { readonly callerThreadId: ThreadId },
+    ) => Effect.Effect<
+      { readonly reportDate: string; readonly version: number },
+      AssistantAgentDraftError
+    >;
     /** The assistant thread id and every stored draft, on subscribe and after each change. */
     readonly streamState: () => Stream.Stream<AssistantState>;
     /** Forks the settings watcher and the domain-event loop for the server's lifetime. */
@@ -787,6 +810,60 @@ const make = Effect.gen(function* () {
     }
   });
 
+  const agentRefused = (kind: AssistantAgentDraftError["kind"]) =>
+    new AssistantAgentDraftError({ kind });
+
+  /** The draft the agent works on: the one for the workday the last clock status recorded. */
+  const agentDraftDate = Effect.fn("AssistantService.agentDraftDate")(function* (
+    callerThreadId: ThreadId,
+  ) {
+    const threadId = yield* findThread().pipe(Effect.mapError(() => agentRefused("unavailable")));
+    if (threadId !== callerThreadId) return yield* agentRefused("not-assistant-thread");
+    const file = yield* drafts.read().pipe(Effect.mapError(() => agentRefused("unavailable")));
+    const draft = file.workday === null ? undefined : file.drafts[file.workday];
+    if (draft === undefined) return yield* agentRefused("no-draft");
+    if (draft.status === "submitted") return yield* agentRefused("submitted");
+    return draft.reportDate;
+  });
+
+  const getDraftForAgent = Effect.fn("AssistantService.getDraftForAgent")(function* (
+    callerThreadId: ThreadId,
+  ) {
+    const reportDate = yield* agentDraftDate(callerThreadId);
+    const draft = yield* readDraft(reportDate).pipe(
+      Effect.mapError(() => agentRefused("unavailable")),
+    );
+    if (draft === undefined) return yield* agentRefused("no-draft");
+    return draft;
+  });
+
+  const proposeDraft = Effect.fn("AssistantService.proposeDraft")(function* (
+    input: AssistantProposedDraft & { readonly callerThreadId: ThreadId },
+  ) {
+    const reportDate = yield* agentDraftDate(input.callerThreadId);
+    const stored = yield* updateDraft(reportDate, (draft) => {
+      if (draft === undefined) return fail("no-draft");
+      if (draft.status === "submitted") return fail("submitted");
+      const { failure: _failure, ...rest } = draft;
+      return {
+        ...rest,
+        items: input.items.map((item) => ({ ...item, content: item.content.trim() })),
+        problemText: input.problemText,
+        sources: input.sources,
+        version: draft.version + 1,
+        status: "ready",
+        editedByUser: false,
+      };
+    }).pipe(
+      Effect.mapError((error) =>
+        error.reason === "no-draft" || error.reason === "submitted"
+          ? agentRefused(error.reason)
+          : agentRefused("unavailable"),
+      ),
+    );
+    return { reportDate: stored.reportDate, version: stored.version };
+  });
+
   /** A server that stopped between marking a draft generating and storing its run left it stuck. */
   const recoverUnsentDrafts = triggerLock.withPermits(1)(
     Effect.gen(function* () {
@@ -834,6 +911,8 @@ const make = Effect.gen(function* () {
     saveDraft,
     regenerateDraft,
     submitDailyReport,
+    getDraftForAgent,
+    proposeDraft,
     streamState,
     start,
   });

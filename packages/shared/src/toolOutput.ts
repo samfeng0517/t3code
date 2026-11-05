@@ -32,6 +32,21 @@ interface ResultEnvelope {
   failed: boolean;
 }
 
+/** The draft version `assistant_propose_daily_report` saved; the timeline shows it as a card. */
+export interface DailyReportDraftReference {
+  readonly reportDate: string;
+  readonly version: number;
+}
+
+function readDailyReportDraftReference(value: unknown): DailyReportDraftReference | undefined {
+  if (!Predicate.isObject(value)) return undefined;
+  const { reportDate, version } = value;
+  if (typeof reportDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/u.test(reportDate)) return undefined;
+  if (typeof version !== "number" || !Number.isSafeInteger(version) || version < 0)
+    return undefined;
+  return { reportDate, version };
+}
+
 interface CompactToolOutput {
   isError?: true;
   threadId?: string;
@@ -40,6 +55,7 @@ interface CompactToolOutput {
   scheduledTaskId?: string;
   status?: "rolled_back";
   htmlRender?: HtmlRenderReference;
+  dailyReportDraft?: DailyReportDraftReference;
   [MCP_APP_OUTPUT_KEY]?: McpAppReference;
   thread?: { threadId: string };
   threads?: Array<{ threadId?: string; status?: "rolled_back" }>;
@@ -131,6 +147,8 @@ export function compactDynamicToolOutput(value: unknown): CompactToolOutput | un
     }
     const htmlRender = readHtmlRenderReference(data.htmlRender);
     if (htmlRender !== undefined) output.htmlRender = htmlRender;
+    const dailyReportDraft = readDailyReportDraftReference(data.dailyReportDraft);
+    if (dailyReportDraft !== undefined) output.dailyReportDraft = dailyReportDraft;
     const mcpApp = readMcpAppReference(data[MCP_APP_OUTPUT_KEY]);
     if (mcpApp !== undefined) output[MCP_APP_OUTPUT_KEY] = mcpApp;
     const nestedThreadId = Predicate.isObject(data.thread)
@@ -189,6 +207,15 @@ export function htmlRenderFromToolItem(item: {
   if (resolveT3McpToolId(item.toolName) !== HTML_RENDER_TOOL_NAME) return undefined;
   const output = compactDynamicToolOutput(item.output);
   return output?.isError ? undefined : output?.htmlRender;
+}
+
+export function dailyReportDraftFromToolItem(item: {
+  readonly toolName: string | null | undefined;
+  readonly output?: unknown;
+}): DailyReportDraftReference | undefined {
+  if (resolveT3McpToolId(item.toolName) !== "assistant_propose_daily_report") return undefined;
+  const output = compactDynamicToolOutput(item.output);
+  return output?.isError ? undefined : output?.dailyReportDraft;
 }
 
 /** The thread-owned file `preview_recording_stop` stored for the agent. */

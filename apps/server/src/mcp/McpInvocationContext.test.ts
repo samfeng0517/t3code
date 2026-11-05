@@ -95,3 +95,53 @@ it("acts at an administrator's ceiling for a client approved above it", () => {
   expect(modes(scope("auto-accept-edits"), "auto").runtimeMode).toBe("auto-accept-edits");
   expect(modes(scope("full-access")).runtimeMode).toBe("full-access");
 });
+
+const callerScope = (
+  overrides: Partial<McpInvocationContext.McpInvocationScope>,
+): McpInvocationContext.McpInvocationScope => ({
+  environmentId: EnvironmentId.make("environment-1"),
+  requestNamespace: "provider-session-1",
+  thread: {
+    threadId: ThreadId.make("thread-1"),
+    providerSessionId: "provider-session-1",
+    providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+  },
+  client: undefined,
+  capabilities: new Set(["orchestration"]),
+  issuedAt: 1,
+  ...overrides,
+});
+
+const assistantThread = {
+  threadId: ThreadId.make("thread-assistant"),
+  providerSessionId: "provider-session-1",
+  providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+  assistant: true,
+};
+
+const enabledFor = (scope: McpInvocationContext.McpInvocationScope) =>
+  Effect.sync(McpInvocationContext.assistantThreadOnly).pipe(
+    Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+  );
+
+it.effect.each([
+  { caller: "a normal thread", scope: callerScope({}) },
+  { caller: "a subagent", scope: callerScope({ thread: { ...assistantThread, subagent: true } }) },
+  {
+    caller: "an external client",
+    scope: callerScope({
+      thread: assistantThread,
+      client: { sessionId: "session-1", label: "Example client", access: "auto" },
+    }),
+  },
+])("assistantThreadOnly should return false when the caller is $caller", ({ scope }) =>
+  Effect.gen(function* () {
+    expect(yield* enabledFor(scope)).toBe(false);
+  }),
+);
+
+it.effect("assistantThreadOnly should return true when the caller is the assistant thread", () =>
+  Effect.gen(function* () {
+    expect(yield* enabledFor(callerScope({ thread: assistantThread }))).toBe(true);
+  }),
+);

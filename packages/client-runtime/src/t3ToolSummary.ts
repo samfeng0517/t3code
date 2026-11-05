@@ -472,6 +472,12 @@ export function summarizeT3ToolCalls(
     case "html-render":
       label = phrase("Rendered", "render", quantity(selected.length, "HTML page"));
       break;
+    case "daily-report-read":
+      label = phrase("Read", "read", `the daily report draft ${times}`);
+      break;
+    case "daily-report-propose":
+      label = phrase("Drafted", "draft", quantity(selected.length, "daily report version"));
+      break;
     case "capabilities":
       label = phrase("Checked", "check", `orchestration capabilities ${times}`);
       break;

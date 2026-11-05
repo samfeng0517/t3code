@@ -68,7 +68,9 @@ export type T3McpToolSummaryAction =
   | "browser"
   | "device"
   | "html-preview"
-  | "html-render";
+  | "html-render"
+  | "daily-report-read"
+  | "daily-report-propose";
 
 export interface T3McpToolDefinition {
   readonly displayName: string;
@@ -372,6 +374,14 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_thread_send_attachments: tool(["Send", "Sending", "Sent", "attachments"], "attachment-send"),
   html_preview: tool(["Preview", "Previewing", "Previewed", "an HTML page"], "html-preview"),
   html_render: tool(["Render", "Rendering", "Rendered", "an HTML page"], "html-render"),
+  assistant_get_daily_report_draft: tool(
+    ["Read", "Reading", "Read", "the daily report draft"],
+    "daily-report-read",
+  ),
+  assistant_propose_daily_report: tool(
+    ["Draft", "Drafting", "Drafted", "the daily report"],
+    "daily-report-propose",
+  ),
 };
 
 export const T3_MCP_TOOL_NAMES: ReadonlySet<string> = new Set(Object.keys(T3_MCP_TOOLS));
