@@ -99,6 +99,20 @@ describe("AssistantSettings", () => {
     });
   });
 
+  it("AssistantSettings should show the https message and not save when the ERP URL is not https", async () => {
+    setup({ erpBaseUrl: "https://erp.example.com", erpToken: SETTINGS_SECRET_REDACTED });
+    using _locale = zhTW();
+    await using screen = await render(<AssistantSettingsPanel />);
+
+    const url = screen.getByRole("textbox", { name: "ERP 網址" });
+    await userEvent.clear(url);
+    await userEvent.type(url, "http://erp.example.com");
+    await userEvent.click(screen.getByRole("button", { name: "儲存" }));
+
+    await expect.element(screen.getByText("ERP 網址要用 https:// 開頭")).toBeVisible();
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
   it("AssistantSettings should load the memory and call writeMemory with the edited text when saved", async () => {
     setup({ erpBaseUrl: "https://erp.example.com", erpToken: SETTINGS_SECRET_REDACTED });
     using _locale = zhTW();
@@ -140,5 +154,23 @@ describe("AssistantSettings", () => {
 
     await expect.element(page.getByText("助理記憶存不進去，你的修改還在視窗裡")).toBeVisible();
     await expect.element(editor).toHaveValue("日報用條列");
+  });
+
+  it("AssistantSettings should show the read failure in the dialog when readMemory fails with memory-io", async () => {
+    setup({ erpBaseUrl: "https://erp.example.com", erpToken: SETTINGS_SECRET_REDACTED });
+    using _locale = zhTW();
+    readMemory.mockResolvedValue(
+      AsyncResult.failure(Cause.fail(new AssistantError({ reason: "memory-io" }))),
+    );
+    await using screen = await render(<AssistantSettingsPanel />);
+
+    await userEvent.click(screen.getByRole("button", { name: "編輯助理記憶" }));
+
+    await expect
+      .element(page.getByRole("dialog").getByText("讀不到助理記憶，請稍後再試"))
+      .toBeVisible();
+    await expect
+      .element(page.getByRole("dialog").getByRole("button", { name: "儲存" }))
+      .toBeDisabled();
   });
 });

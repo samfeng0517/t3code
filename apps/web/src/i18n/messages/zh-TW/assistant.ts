@@ -70,6 +70,7 @@ export const assistantZhTW: Readonly<Record<keyof typeof assistantEn, string>> =
   "assistantPage.draftCard.staleRevision": "草稿已更新，請確認後再送出",
   "assistantPage.draftCard.editInErp": "到 ERP 修改",
   "assistantPage.settings.erpUrl": "ERP 網址",
+  "assistantPage.settings.erpUrlNotHttps": "ERP 網址要用 https:// 開頭",
   "assistantPage.settings.erpToken": "ERP token",
   "assistantPage.settings.erpTokenHelp":
     "到 ERP「我的帳號 › API Tokens」建立 token，勾選這四個範圍：",

@@ -4,10 +4,12 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import {
+  AssistantErpBaseUrl,
   AssistantError,
   AuthSettingsWriteScope,
   DEFAULT_ASSISTANT_MODEL_SELECTION,
   type EnvironmentId,
+  ProviderDriverKind,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { Navigate } from "@tanstack/react-router";
@@ -57,6 +59,10 @@ const ERP_TOKEN_SCOPE_KEYS = [
   "assistantPage.settings.scope.directory",
 ] as const;
 const isAssistantError = Schema.is(AssistantError);
+const isAssistantErpBaseUrl = Schema.is(AssistantErpBaseUrl);
+// Only Claude reads the assistant memory (CLAUDE.md). The default selection uses Claude's
+// default instance, whose id is its driver kind (see `defaultInstanceIdForDriver`).
+const ASSISTANT_PROVIDER = ProviderDriverKind.make(DEFAULT_ASSISTANT_MODEL_SELECTION.instanceId);
 
 // Mirrors the server, which stores the URL without trailing slashes.
 const normalizeErpBaseUrl = (value: string) => value.trim().replace(/\/+$/u, "");
@@ -105,7 +111,7 @@ function AssistantSettingsContent({ environmentId }: { readonly environmentId: E
               disabled={!canWrite}
               activeInstanceId={selection.instanceId}
               model={selection.model}
-              lockedProvider={null}
+              lockedProvider={ASSISTANT_PROVIDER}
               instanceEntries={instanceEntries}
               modelOptionsByInstance={modelOptionsByInstance}
               triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
@@ -187,6 +193,11 @@ function ErpConnectionRows(props: {
   const disabled = !props.canWrite || saving;
 
   const submit = async () => {
+    // The same contract schema the server decodes with, checked here so the message is localized.
+    if (!isAssistantErpBaseUrl(url.trim())) {
+      setError(t("assistantPage.settings.erpUrlNotHttps"));
+      return;
+    }
     setSaving(true);
     setError(null);
     const result = await save({
