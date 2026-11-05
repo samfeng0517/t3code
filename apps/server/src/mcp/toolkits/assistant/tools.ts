@@ -1,6 +1,7 @@
 import {
+  AssistantDraftLifecycle,
   AssistantDraftSection,
-  AssistantDraftSourceKey,
+  AssistantDraftSource,
   AssistantDraftStatusValue,
   NonNegativeInt,
   OrchestratorMcpFailure,
@@ -22,17 +23,11 @@ const dependencies = [
 
 const DraftItem = Schema.Struct({
   section: AssistantDraftSection,
-  content: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2000)),
+  content: Schema.String.check(Schema.isPattern(/\S/u), Schema.isMaxLength(2000)),
   status: AssistantDraftStatusValue,
   project_id: Schema.optional(Schema.Int),
   project_other: Schema.optional(Schema.String.check(Schema.isMaxLength(255))),
   sort_order: NonNegativeInt,
-});
-
-const DraftSource = Schema.Struct({
-  key: AssistantDraftSourceKey,
-  status: Schema.Literals(["ok", "partial", "failed"]),
-  note: Schema.optional(Schema.String.check(Schema.isMaxLength(200))),
 });
 
 const GetDailyReportDraftTool = Tool.make("assistant_get_daily_report_draft", {
@@ -41,7 +36,7 @@ const GetDailyReportDraftTool = Tool.make("assistant_get_daily_report_draft", {
   parameters: Tool.EmptyParams,
   success: Schema.Struct({
     report_date: Schema.String,
-    status: Schema.Literals(["generating", "ready", "failed", "submitted"]),
+    status: AssistantDraftLifecycle,
     version: Schema.Int,
     items: Schema.Array(
       Schema.Struct({
@@ -54,7 +49,7 @@ const GetDailyReportDraftTool = Tool.make("assistant_get_daily_report_draft", {
       }),
     ),
     problem_text: Schema.String,
-    sources: Schema.Array(DraftSource),
+    sources: Schema.Array(AssistantDraftSource),
     edited_by_user: Schema.Boolean,
   }),
   failure: OrchestratorMcpFailure,
@@ -74,7 +69,7 @@ const ProposeDailyReportTool = Tool.make("assistant_propose_daily_report", {
   parameters: Schema.Struct({
     items: Schema.Array(DraftItem),
     problem_text: Schema.optional(Schema.String.check(Schema.isMaxLength(2000))),
-    sources: Schema.Array(DraftSource).check(Schema.isMinLength(1)),
+    sources: Schema.Array(AssistantDraftSource).check(Schema.isMinLength(1)),
   }),
   success: Schema.Struct({
     dailyReportDraft: Schema.Struct({ reportDate: Schema.String, version: Schema.Int }),

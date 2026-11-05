@@ -833,7 +833,7 @@ const make = Effect.gen(function* () {
     new AssistantAgentDraftError({ kind });
 
   /** The draft the agent works on: the one for the workday the last clock status recorded. */
-  const agentDraftDate = Effect.fn("AssistantService.agentDraftDate")(function* (
+  const getDraftForAgent = Effect.fn("AssistantService.getDraftForAgent")(function* (
     callerThreadId: ThreadId,
   ) {
     const threadId = yield* findThread().pipe(Effect.mapError(() => agentRefused("unavailable")));
@@ -842,24 +842,13 @@ const make = Effect.gen(function* () {
     const draft = file.workday === null ? undefined : file.drafts[file.workday];
     if (draft === undefined) return yield* agentRefused("no-draft");
     if (draft.status === "submitted") return yield* agentRefused("submitted");
-    return draft.reportDate;
-  });
-
-  const getDraftForAgent = Effect.fn("AssistantService.getDraftForAgent")(function* (
-    callerThreadId: ThreadId,
-  ) {
-    const reportDate = yield* agentDraftDate(callerThreadId);
-    const draft = yield* readDraft(reportDate).pipe(
-      Effect.mapError(() => agentRefused("unavailable")),
-    );
-    if (draft === undefined) return yield* agentRefused("no-draft");
     return draft;
   });
 
   const proposeDraft = Effect.fn("AssistantService.proposeDraft")(function* (
     input: AssistantProposedDraft & { readonly callerThreadId: ThreadId },
   ) {
-    const reportDate = yield* agentDraftDate(input.callerThreadId);
+    const { reportDate } = yield* getDraftForAgent(input.callerThreadId);
     const stored = yield* updateDraft(reportDate, (draft) => {
       if (draft === undefined) return fail("no-draft");
       if (draft.status === "submitted") return fail("submitted");
