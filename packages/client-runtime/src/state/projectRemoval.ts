@@ -1,4 +1,4 @@
-import { isListedThreadLineage } from "@t3tools/contracts";
+import { isShownInThreadLists } from "@t3tools/contracts";
 
 import type { EnvironmentProject, EnvironmentThreadShell } from "./models.ts";
 
@@ -24,7 +24,7 @@ export function planProjectRemoval<
   );
   // Side chats and subagents go with their parent but never show in thread lists.
   const threadCount =
-    projectThreads.filter((thread) => isListedThreadLineage(thread.lineage)).length +
+    projectThreads.filter((thread) => isShownInThreadLists(thread.lineage)).length +
     (options.unloadedThreadCount ?? 0);
   const isWholeGroup = members.length === groupMemberCount;
   const targetKind = hasOtherMembers || !isWholeGroup ? "checkout" : "project";

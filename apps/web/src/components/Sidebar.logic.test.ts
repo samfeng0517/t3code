@@ -10,6 +10,7 @@ import {
   deleteSelectedThreadEntries,
   getFallbackThreadIdAfterDelete,
   hasUnseenCompletion,
+  isSidebarHiddenThread,
   resolveSidebarRowThreadId,
   belongsInSidebarWorkingShelf,
   isSidebarEnvironmentDisconnected,
@@ -139,6 +140,13 @@ describe("deleteSelectedThreadEntries", () => {
 });
 
 describe("sidebar thread lineage helpers", () => {
+  it("isSidebarHiddenThread should hide the assistant thread when lineage.assistant is true", () => {
+    const id = ThreadId.make("thread-assistant");
+    const lineage = { rootThreadId: id, parentThreadId: null, relationshipToParent: null };
+    expect(isSidebarHiddenThread({ lineage: { ...lineage, assistant: true } })).toBe(true);
+    expect(isSidebarHiddenThread({ lineage })).toBe(false);
+  });
+
   it("maps an open subagent to its nearest visible ancestor's sidebar row", () => {
     const environmentId = EnvironmentId.make("environment-row");
     const otherEnvironmentId = EnvironmentId.make("environment-other");

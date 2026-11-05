@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
 
-import { NodeId, RunAttemptId, TrimmedNonEmptyString } from "./index.ts";
+import { NodeId, RunAttemptId, ThreadId, TrimmedNonEmptyString } from "./index.ts";
 import {
   latestProviderTurnForAttempt,
   OrchestrationV2ProviderCapabilities,
@@ -15,6 +15,7 @@ import {
   OrchestrationV2ThreadHistoryPage,
   OrchestrationV2TurnItem,
   OrchestrationV2TurnItemJson,
+  isShownInThreadLists,
 } from "./orchestrationV2.ts";
 
 const now = DateTime.makeUnsafe("2026-04-20T00:00:00.000Z");
@@ -637,5 +638,18 @@ describe("latestProviderTurnForAttempt", () => {
     ];
     expect(latestProviderTurnForAttempt(turns, RunAttemptId.make("goal-attempt"))?.id).toBe("last");
     expect(latestProviderTurnForAttempt(turns, null)).toBeUndefined();
+  });
+});
+
+describe("isShownInThreadLists", () => {
+  it("should return false when lineage.assistant is true", () => {
+    const lineage = {
+      parentThreadId: null,
+      relationshipToParent: null,
+      rootThreadId: ThreadId.make("thread:assistant"),
+    };
+    expect(isShownInThreadLists({ ...lineage, assistant: true })).toBe(false);
+    expect(isShownInThreadLists(lineage)).toBe(true);
+    expect(isShownInThreadLists({ ...lineage, sideChat: true })).toBe(false);
   });
 });

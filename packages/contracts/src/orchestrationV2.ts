@@ -156,12 +156,17 @@ export const OrchestrationV2AppThreadLineage = Schema.Struct({
   relationshipToParent: Schema.NullOr(Schema.Literals(["fork", "subagent"])),
   rootThreadId: ThreadId,
   sideChat: Schema.optional(Schema.Boolean),
+  assistant: Schema.optional(Schema.Boolean),
 });
 export type OrchestrationV2AppThreadLineage = typeof OrchestrationV2AppThreadLineage.Type;
 
 /** Subagents and side chats live inside their parent's view, never in thread lists. */
 export const isListedThreadLineage = (lineage: OrchestrationV2AppThreadLineage): boolean =>
   lineage.relationshipToParent !== "subagent" && lineage.sideChat !== true;
+
+/** The assistant thread is hidden from lists only; `isListedThreadLineage` also gates notifications and compaction. */
+export const isShownInThreadLists = (lineage: OrchestrationV2AppThreadLineage): boolean =>
+  isListedThreadLineage(lineage) && lineage.assistant !== true;
 
 export const OrchestrationV2ContextTransferType = Schema.Literals([
   "fork",
@@ -2208,7 +2213,7 @@ export function isOlderSettledThreadShell(
   beforeMs: number,
 ): boolean {
   return (
-    isListedThreadLineage(thread.lineage) &&
+    isShownInThreadLists(thread.lineage) &&
     thread.settledOverride === "settled" &&
     thread.settledAt !== null &&
     DateTime.toEpochMillis(thread.settledAt) < beforeMs
@@ -2941,6 +2946,8 @@ export const OrchestrationV2Command = Schema.Union([
     linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
     /** Only the server sets this, with `linkOrigin`, for a linked environment's delegated task. */
     delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+    /** Only the server sets this; a client's thread.create never carries one. */
+    assistant: Schema.optional(Schema.Boolean),
     importedNativeThread: Schema.optional(
       Schema.Struct({
         ref: Schema.Struct({

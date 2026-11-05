@@ -11,7 +11,7 @@ import type {
 import {
   type ChatAttachment,
   CommandId,
-  isListedThreadLineage,
+  isShownInThreadLists,
   MessageId,
   OrchestrationV2StopWorkflowError,
   type OrchestrationV2StopWorkflowInput,
@@ -80,8 +80,13 @@ export function withCreationProvenance(
 ): OrchestrationV2Command {
   switch (command.type) {
     case "thread.create": {
-      // Only the server stamps a link's origin, so a client cannot set one.
-      const { linkOrigin: _linkOrigin, delegatedFrom: _delegatedFrom, ...rest } = command;
+      // Only the server stamps a link's origin or the assistant marker, so a client cannot set one.
+      const {
+        linkOrigin: _linkOrigin,
+        delegatedFrom: _delegatedFrom,
+        assistant: _assistant,
+        ...rest
+      } = command;
       return { ...rest, ...provenance };
     }
     case "message.dispatch":
@@ -798,8 +803,8 @@ const make = Effect.gen(function* () {
           snapshot.threads
             .filter((thread) =>
               input.includeSubagents
-                ? thread.lineage.sideChat !== true
-                : isListedThreadLineage(thread.lineage),
+                ? thread.lineage.sideChat !== true && thread.lineage.assistant !== true
+                : isShownInThreadLists(thread.lineage),
             )
             .toSorted(
               (left, right) =>

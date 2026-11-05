@@ -1009,6 +1009,35 @@ it.effect("launches a worktree request for Scratch at the root, in its own folde
   }).pipe(Effect.provide(harness.layer));
 });
 
+it.effect(
+  "launch should create the thread with lineage.assistant and keep it out of project thread lists when the input sets assistant",
+  () => {
+    const harness = scratchHarness();
+    return Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const launched = yield* launches.launch({
+        ...launchInput({ command: "command:launch:assistant", thread: "thread:launch:assistant" }),
+        assistant: true,
+      });
+      const regular = yield* launches.launch(
+        launchInput({ command: "command:launch:regular", thread: "thread:launch:regular" }),
+      );
+      const projection = yield* threads.getThreadProjection(launched.threadId);
+      assert.equal(projection.thread.lineage.assistant, true);
+      const regularProjection = yield* threads.getThreadProjection(regular.threadId);
+      assert.notProperty(regularProjection.thread.lineage, "assistant");
+      for (const includeSubagents of [false, true]) {
+        const listed = yield* threads.listProjectThreads({ projectId, includeSubagents });
+        assert.deepEqual(
+          listed.map((thread) => thread.id),
+          [regular.threadId],
+        );
+      }
+    }).pipe(Effect.provide(harness.layer));
+  },
+);
+
 it.effect("stores a Scratch scheduled task at the root and keeps worktrees elsewhere", () => {
   const harness = scratchHarness();
   return Effect.gen(function* () {
