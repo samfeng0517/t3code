@@ -138,13 +138,16 @@ describe("draftRejectionMessageKey", () => {
     ["not-editable", "assistantPage.draftRejected.notEditable"],
     ["no-draft", "assistantPage.draftRejected.noDraft"],
     ["thread-unavailable", "assistantPage.draftRejected.threadUnavailable"],
-    ["unavailable", null],
-    ["unauthorized", null],
-    ["rejected", null],
   ] as const)(
-    "draftRejectionMessageKey should return the matching copy when the reason is %s",
+    "draftRejectionMessageKey should return the draft rejection copy when the reason is %s",
     (reason, key) => {
       expect(draftRejectionMessageKey(reason)).toBe(key);
+    },
+  );
+  it.each(["unavailable", "unauthorized", "rejected"] as const)(
+    "draftRejectionMessageKey should return null when the reason is the ERP error %s",
+    (reason) => {
+      expect(draftRejectionMessageKey(reason)).toBeNull();
     },
   );
 });
