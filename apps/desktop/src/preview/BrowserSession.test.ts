@@ -92,6 +92,7 @@ const layerMediaAccess = Layer.succeed(BrowserMediaAccess.BrowserMediaAccess, {
   installDisplayMediaHandler: (browserSession) => {
     mediaAccessCalls.push(["installDisplayMediaHandler", browserSession]);
   },
+  attachGuest: () => () => {},
 });
 const layer = BrowserSession.layer.pipe(
   Layer.provide(

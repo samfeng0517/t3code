@@ -15,6 +15,7 @@ import * as Layer from "effect/Layer";
 
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import { BrowserMediaPermissions } from "./BrowserMediaPermissions.ts";
+import { MEDIA_PERMISSION_STATE_CHANNEL } from "./GuestProtocol.ts";
 import { previewHostWindow } from "./PreviewHostWindow.ts";
 
 interface MediaRequestDetails {
@@ -52,6 +53,8 @@ export class BrowserMediaAccess extends Context.Service<
     ) => boolean;
     readonly allowDisplayCapture: (details: DisplayCaptureDetails) => boolean;
     readonly installDisplayMediaHandler: (browserSession: Session) => void;
+    /** Answers the guest preload's Permissions API queries; returns the detach function. */
+    readonly attachGuest: (guest: WebContents) => () => void;
   }
 >()("@t3tools/desktop/preview/BrowserMediaAccess") {}
 
@@ -377,6 +380,23 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
     );
   };
 
+  // Electron's check handler can only grant or deny, so the page sees "denied" for an undecided
+  // device and sites like Meet show their blocked help instead of asking.
+  const attachGuest = (guest: WebContents): (() => void) => {
+    const detach = () => guest.ipc.removeHandler(MEDIA_PERMISSION_STATE_CHANNEL);
+    detach();
+    guest.ipc.handle(MEDIA_PERMISSION_STATE_CHANNEL, (event, device: unknown): PermissionState => {
+      const frame = event.senderFrame;
+      const origin = frame && frame === guest.mainFrame ? httpOrigin(frame.origin) : null;
+      if (origin === null || (device !== "camera" && device !== "microphone")) return "denied";
+      // After "Not now" a request is refused without a prompt, as in Chrome's embargo.
+      if (isDeferred(guest, origin, false)) return "denied";
+      const decision = rememberedDecision(origin, device, guest.session.isPersistent());
+      return decision === "allow" ? "granted" : decision === "block" ? "denied" : "prompt";
+    });
+    return detach;
+  };
+
   const allowDisplayCapture = (details: DisplayCaptureDetails): boolean =>
     details.isMainFrame === true && httpOrigin(details.requestingUrl) !== null;
 
@@ -459,6 +479,7 @@ export const make = Effect.gen(function* BrowserMediaAccessMake() {
     checkMedia,
     allowDisplayCapture,
     installDisplayMediaHandler,
+    attachGuest,
   });
 }).pipe(Effect.withSpan("BrowserMediaAccess.make"));
 

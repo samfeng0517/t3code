@@ -30,6 +30,7 @@ import * as BrowserSession from "./BrowserSession.ts";
 import * as DesktopBrowserHost from "./DesktopBrowserHost.ts";
 import * as PreviewManager from "./Manager.ts";
 import * as PreviewPasskeys from "./Passkeys.ts";
+import * as BrowserMediaAccess from "./BrowserMediaAccess.ts";
 
 describe("fitPictureInPictureContentSize", () => {
   it("does not collapse toward the minimum size when orientation changes repeatedly", () => {
@@ -240,6 +241,15 @@ const managerLayer = (platform: NodeJS.Platform = "darwin") =>
     ),
     Layer.provideMerge(DesktopBrowserHost.layer),
     Layer.provideMerge(layerBrowserSession),
+    Layer.provideMerge(
+      Layer.mock(BrowserMediaAccess.BrowserMediaAccess)({
+        requestMedia: (_requester, _details, _persistent, callback) => callback(false),
+        checkMedia: () => false,
+        allowDisplayCapture: () => false,
+        installDisplayMediaHandler: () => {},
+        attachGuest: () => () => {},
+      }),
+    ),
     Layer.provideMerge(
       Layer.mock(PreviewPasskeys.PreviewPasskeys)({
         bridgeEnabled: false,

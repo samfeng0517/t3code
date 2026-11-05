@@ -819,4 +819,44 @@ describe("BrowserMediaAccess", () => {
         assert.strictEqual(repeatedCallbacks.count, 0);
       }).pipe(Effect.provide(layer), Effect.provideService(HostProcess.Platform, "darwin")),
   );
+
+  it.effect(
+    "attachGuest should report prompt for undecided devices, denied after Not now and the remembered decision otherwise when the main frame queries",
+    () =>
+      Effect.gen(function* () {
+        const access = yield* BrowserMediaAccess.BrowserMediaAccess;
+        const mainFrame = { origin: MEET };
+        const handlers = new Map<string, (event: unknown, device: unknown) => unknown>();
+        const { webContents: guest, emit } = makeRequester(`${MEET}/abc`);
+        Object.assign(guest, {
+          mainFrame,
+          session: { isPersistent: () => true },
+          ipc: {
+            handle: (channel: string, handler: (event: unknown, device: unknown) => unknown) =>
+              void handlers.set(channel, handler),
+            removeHandler: (channel: string) => void handlers.delete(channel),
+          },
+        });
+        const detach = access.attachGuest(guest);
+        const query = (device: unknown, senderFrame: unknown = mainFrame) =>
+          handlers.get("preview:media-permission-state")?.({ senderFrame }, device);
+
+        assert.strictEqual(query("camera"), "prompt");
+        assert.isFalse(
+          yield* Effect.promise(() => requestWith(access)(guest, camAndMic(`${MEET}/abc`))),
+        );
+        assert.strictEqual(query("camera"), "denied");
+        emit("did-navigate");
+        assert.strictEqual(query("camera"), "prompt");
+        storedDecisions.set(storeKey(MEET, "camera"), "allow");
+        storedDecisions.set(storeKey(MEET, "microphone"), "block");
+        assert.strictEqual(query("camera"), "granted");
+        assert.strictEqual(query("microphone"), "denied");
+        assert.strictEqual(query("camera", { origin: "https://ads.example.com" }), "denied");
+        assert.strictEqual(query("geolocation"), "denied");
+
+        detach();
+        assert.isFalse(handlers.has("preview:media-permission-state"));
+      }).pipe(Effect.provide(layer)),
+  );
 });
