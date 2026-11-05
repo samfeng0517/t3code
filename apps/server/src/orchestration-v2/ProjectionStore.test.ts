@@ -1932,6 +1932,7 @@ it.effect("SQL list older settled threads below a cursor", () =>
       readonly assistant?: boolean;
       readonly archived?: boolean;
       readonly snoozedUntilDay?: number;
+      readonly createdDay?: number;
     }) =>
       store.apply({
         id: EventId.make(`event:older:${input.name}`),
@@ -1958,7 +1959,7 @@ it.effect("SQL list older settled threads below a cursor", () =>
             ...(input.assistant === true ? { assistant: true } : {}),
           },
           forkedFrom: null,
-          createdAt: now,
+          createdAt: input.createdDay === undefined ? now : at(input.createdDay),
           updatedAt: now,
           archivedAt: input.archived === true ? now : null,
           settledOverride: input.settledDay === null ? null : "settled",
@@ -1977,17 +1978,18 @@ it.effect("SQL list older settled threads below a cursor", () =>
     yield* createThread({ name: "unsettled", settledDay: null });
     yield* createThread({ name: "child", settledDay: 1, subagent: true });
     yield* createThread({ name: "archived", settledDay: 1, archived: true });
-    yield* createThread({ name: "assistant", settledDay: 1, assistant: true });
+    yield* createThread({ name: "assistant", settledDay: 1, assistant: true, createdDay: 2 });
     yield* createThread({
       name: "archived-assistant",
       settledDay: 1,
       assistant: true,
       archived: true,
+      createdDay: 3,
     });
-    // An archived assistant thread keeps its memory, so lookups still find it.
-    assert.sameMembers(
+    // Newest first, and an archived assistant thread keeps its memory, so lookups still find it.
+    assert.deepEqual(
       [...(yield* store.listAssistantThreadIds())],
-      [id("assistant"), id("archived-assistant")],
+      [id("archived-assistant"), id("assistant")],
     );
 
     const list = (

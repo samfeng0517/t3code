@@ -124,6 +124,14 @@ const subagentLineage: OrchestrationV2AppThread["lineage"] = {
   relationshipToParent: "subagent",
 };
 
+// The assistant thread is hidden and long-lived; archiving would start its auto-delete clock.
+const assistantLineage: OrchestrationV2AppThread["lineage"] = {
+  rootThreadId: ThreadId.make("thread:auto-cleanup:assistant"),
+  parentThreadId: null,
+  relationshipToParent: null,
+  assistant: true,
+};
+
 const bindScheduledTask = Effect.fn(function* (threadId: ThreadId) {
   const sql = yield* SqlClient.SqlClient;
   yield* sql`
@@ -164,6 +172,7 @@ it.effect.each(layers)(
       yield* createThread("archived", { ...settled, archivedAt: daysAgo(31) });
       yield* createThread("deleted", { ...settled, deletedAt: daysAgo(31) });
       yield* createThread("subagent", { ...settled, lineage: subagentLineage });
+      yield* createThread("assistant", { ...settled, lineage: assistantLineage });
       yield* createRun((yield* createThread("running", settled)).threadId, "running");
       yield* createRun((yield* createThread("queued", settled)).threadId, "queued");
       yield* createPendingRequest((yield* createThread("pending-request", settled)).threadId);

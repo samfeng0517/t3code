@@ -6759,6 +6759,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               WHERE request.thread_id = t.thread_id AND request.status = 'pending'
             )
             AND json_extract(t.payload_json, '$.lineage.relationshipToParent') IS NOT 'subagent'
+            AND json_extract(t.payload_json, '$.lineage.assistant') IS NOT 1
             AND NOT EXISTS (
               SELECT 1 FROM scheduled_tasks task WHERE task.thread_id = t.thread_id
             )
