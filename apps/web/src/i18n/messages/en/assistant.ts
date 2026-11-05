@@ -67,4 +67,21 @@ export const assistantEn = {
   "assistantPage.draftCard.submit": "Submit to ERP",
   "assistantPage.draftCard.staleRevision": "The draft was updated; check it before submitting",
   "assistantPage.draftCard.editInErp": "Edit it on ERP",
+  "assistantPage.settings.erpUrl": "ERP URL",
+  "assistantPage.settings.erpToken": "ERP token",
+  "assistantPage.settings.erpTokenHelp":
+    "Create a token in ERP under “My account › API Tokens” with these four scopes:",
+  "assistantPage.settings.scope.attendance": "Your own clockings, clock in and out",
+  "assistantPage.settings.scope.dailyReports": "Daily reports and the team dashboard",
+  "assistantPage.settings.scope.dailyReportsWrite":
+    "Submit or update daily reports, sync activities",
+  "assistantPage.settings.scope.directory":
+    "Directory, coworker profiles, dropdown data, pending review counts",
+  "assistantPage.settings.model": "Model",
+  "assistantPage.settings.runtimeMode": "Permission mode",
+  "assistantPage.settings.memory": "Edit assistant memory",
+  "assistantPage.settings.save": "Save",
+  "assistantPage.memory.readFailed": "Couldn't read the assistant memory. Try again later.",
+  "assistantPage.memory.writeFailed":
+    "Couldn't save the assistant memory. Your edits are still in the window.",
 } as const;

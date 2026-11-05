@@ -23,6 +23,7 @@ export const settingsZhTW: Readonly<Record<keyof typeof settingsEn, string>> = {
   "settings.section.maintenance": "維護",
   "settings.section.labs": "實驗室",
   "settings.section.about": "關於",
+  "settings.section.assistant": "助理",
 
   "settings.language.section": "語言",
   "settings.language.title": "顯示語言",

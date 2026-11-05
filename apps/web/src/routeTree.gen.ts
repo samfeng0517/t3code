@@ -47,6 +47,7 @@ import { Route as ChatSettingsConnectionsRouteImport } from './routes/_chat.sett
 import { Route as ChatSettingsChatRouteImport } from './routes/_chat.settings.chat'
 import { Route as ChatSettingsBrowserRouteImport } from './routes/_chat.settings.browser'
 import { Route as ChatSettingsBetaRouteImport } from './routes/_chat.settings.beta'
+import { Route as ChatSettingsAssistantRouteImport } from './routes/_chat.settings.assistant'
 import { Route as ChatSettingsArchivedRouteImport } from './routes/_chat.settings.archived'
 import { Route as ChatSettingsAppearanceRouteImport } from './routes/_chat.settings.appearance'
 import { Route as ChatSettingsAccessRouteImport } from './routes/_chat.settings.access'
@@ -248,6 +249,11 @@ const ChatSettingsBetaRoute = ChatSettingsBetaRouteImport.update({
   path: '/beta',
   getParentRoute: () => ChatSettingsRoute,
 } as any)
+const ChatSettingsAssistantRoute = ChatSettingsAssistantRouteImport.update({
+  id: '/assistant',
+  path: '/assistant',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
 const ChatSettingsArchivedRoute = ChatSettingsArchivedRouteImport.update({
   id: '/archived',
   path: '/archived',
@@ -301,6 +307,7 @@ export interface FileRoutesByFullPath {
   '/settings/access': typeof ChatSettingsAccessRoute
   '/settings/appearance': typeof ChatSettingsAppearanceRoute
   '/settings/archived': typeof ChatSettingsArchivedRoute
+  '/settings/assistant': typeof ChatSettingsAssistantRoute
   '/settings/beta': typeof ChatSettingsBetaRoute
   '/settings/browser': typeof ChatSettingsBrowserRoute
   '/settings/chat': typeof ChatSettingsChatRoute
@@ -346,6 +353,7 @@ export interface FileRoutesByTo {
   '/settings/access': typeof ChatSettingsAccessRoute
   '/settings/appearance': typeof ChatSettingsAppearanceRoute
   '/settings/archived': typeof ChatSettingsArchivedRoute
+  '/settings/assistant': typeof ChatSettingsAssistantRoute
   '/settings/beta': typeof ChatSettingsBetaRoute
   '/settings/browser': typeof ChatSettingsBrowserRoute
   '/settings/chat': typeof ChatSettingsChatRoute
@@ -393,6 +401,7 @@ export interface FileRoutesById {
   '/_chat/settings/access': typeof ChatSettingsAccessRoute
   '/_chat/settings/appearance': typeof ChatSettingsAppearanceRoute
   '/_chat/settings/archived': typeof ChatSettingsArchivedRoute
+  '/_chat/settings/assistant': typeof ChatSettingsAssistantRoute
   '/_chat/settings/beta': typeof ChatSettingsBetaRoute
   '/_chat/settings/browser': typeof ChatSettingsBrowserRoute
   '/_chat/settings/chat': typeof ChatSettingsChatRoute
@@ -440,6 +449,7 @@ export interface FileRouteTypes {
     | '/settings/access'
     | '/settings/appearance'
     | '/settings/archived'
+    | '/settings/assistant'
     | '/settings/beta'
     | '/settings/browser'
     | '/settings/chat'
@@ -485,6 +495,7 @@ export interface FileRouteTypes {
     | '/settings/access'
     | '/settings/appearance'
     | '/settings/archived'
+    | '/settings/assistant'
     | '/settings/beta'
     | '/settings/browser'
     | '/settings/chat'
@@ -531,6 +542,7 @@ export interface FileRouteTypes {
     | '/_chat/settings/access'
     | '/_chat/settings/appearance'
     | '/_chat/settings/archived'
+    | '/_chat/settings/assistant'
     | '/_chat/settings/beta'
     | '/_chat/settings/browser'
     | '/_chat/settings/chat'
@@ -835,6 +847,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatSettingsBetaRouteImport
       parentRoute: typeof ChatSettingsRoute
     }
+    '/_chat/settings/assistant': {
+      id: '/_chat/settings/assistant'
+      path: '/assistant'
+      fullPath: '/settings/assistant'
+      preLoaderRoute: typeof ChatSettingsAssistantRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
     '/_chat/settings/archived': {
       id: '/_chat/settings/archived'
       path: '/archived'
@@ -885,6 +904,7 @@ interface ChatSettingsRouteChildren {
   ChatSettingsAccessRoute: typeof ChatSettingsAccessRoute
   ChatSettingsAppearanceRoute: typeof ChatSettingsAppearanceRoute
   ChatSettingsArchivedRoute: typeof ChatSettingsArchivedRoute
+  ChatSettingsAssistantRoute: typeof ChatSettingsAssistantRoute
   ChatSettingsBetaRoute: typeof ChatSettingsBetaRoute
   ChatSettingsBrowserRoute: typeof ChatSettingsBrowserRoute
   ChatSettingsChatRoute: typeof ChatSettingsChatRoute
@@ -914,6 +934,7 @@ const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
   ChatSettingsAccessRoute: ChatSettingsAccessRoute,
   ChatSettingsAppearanceRoute: ChatSettingsAppearanceRoute,
   ChatSettingsArchivedRoute: ChatSettingsArchivedRoute,
+  ChatSettingsAssistantRoute: ChatSettingsAssistantRoute,
   ChatSettingsBetaRoute: ChatSettingsBetaRoute,
   ChatSettingsBrowserRoute: ChatSettingsBrowserRoute,
   ChatSettingsChatRoute: ChatSettingsChatRoute,

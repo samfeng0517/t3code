@@ -29,6 +29,7 @@ import {
   Settings2Icon,
   ShieldCheckIcon,
   SmartphoneIcon,
+  SparklesIcon,
   WrenchIcon,
   XIcon,
 } from "lucide-react";
@@ -61,6 +62,7 @@ import { useAvailableSettingsSearchItems } from "./useAvailableSettingsSearchIte
 import { validateSettingsScopeSearch } from "./settingsScope";
 import { useSettingsSectionNavigation } from "./useSettingsSectionNavigation";
 import { workspaceAreaProps } from "../../lib/workspaceFocus";
+import { usePrimaryEnvironmentId } from "../../state/environments";
 
 const SnapShotIcon = createLucideIcon("snap-shot", [
   [
@@ -101,6 +103,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/browser": GlobeIcon,
   "/settings/devices": SmartphoneIcon,
   "/settings/scheduled-tasks": CalendarClockIcon,
+  "/settings/assistant": SparklesIcon,
   "/settings/source-control": GitBranchIcon,
   "/settings/worktrees": FolderTreeIcon,
   "/settings/connections": ServerIcon,
@@ -143,7 +146,13 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   const currentSearch = useLocation({ select: (location) => location.search });
   const scopeSearch = validateSettingsScopeSearch(currentSearch);
   const activePath = SETTINGS_DETAIL_PAGE_PARENTS[pathname] ?? pathname;
-  const navPaths = SETTINGS_NAV_GROUPS.flatMap((group) => group.paths);
+  // The assistant lives on the primary environment only.
+  const hasPrimaryEnvironment = usePrimaryEnvironmentId() !== null;
+  const navGroups = SETTINGS_NAV_GROUPS.map((group) => ({
+    ...group,
+    paths: group.paths.filter((to) => to !== "/settings/assistant" || hasPrimaryEnvironment),
+  }));
+  const navPaths = navGroups.flatMap((group) => group.paths);
   const sectionNavigation = useSettingsSectionNavigation(
     navPaths.find((to) => activePath === to || activePath.startsWith(`${to}/`)) ??
       navPaths[0] ??
@@ -394,7 +403,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                   aria-label={t("settingsMisc.nav.sectionsAria")}
                   className="flex flex-col gap-4"
                 >
-                  {SETTINGS_NAV_GROUPS.map((group, index) => {
+                  {navGroups.map((group, index) => {
                     const headingKey = group.heading
                       ? SETTINGS_NAV_GROUP_HEADING_KEYS[group.heading]
                       : undefined;

@@ -74,5 +74,6 @@ export function useAvailableSettingsSearchItems(scopeSearch: SettingsScopeSearch
     hasThreadAutoCleanup,
     managedTunnelActive,
     hasPeerLinkHost,
+    hasPrimaryEnvironment: primaryEnvironmentId !== null,
   });
 }

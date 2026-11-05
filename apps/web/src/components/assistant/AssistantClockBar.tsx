@@ -38,8 +38,6 @@ import { requestDraftReveal } from "./draftReveal";
 
 const CONFIRM_CLOCK_OUT_MS = 3_000;
 const isAssistantError = Schema.is(AssistantError);
-// The settings route lands with the assistant settings page; until then this is an untyped href.
-const ASSISTANT_SETTINGS_HREF = "/settings/assistant";
 
 const CHIP_VARIANT = {
   idle: "outline",
@@ -77,6 +75,8 @@ function describeAssistantFailure(
         }),
         fix: "settings",
       };
+    case "memory-io":
+      return { message: t("assistantPage.memory.readFailed"), fix: "refresh" };
     default:
       return {
         message: t("assistantPage.error.unavailable"),
@@ -188,7 +188,7 @@ function StatusError(props: { readonly failure: unknown; readonly onRefresh: () 
         size="sm"
         variant="outline"
         onClick={() =>
-          fix === "settings" ? void navigate({ href: ASSISTANT_SETTINGS_HREF }) : props.onRefresh()
+          fix === "settings" ? void navigate({ to: "/settings/assistant" }) : props.onRefresh()
         }
       >
         {fix === "settings" ? t("assistantPage.openSettings") : t("assistantPage.refresh")}

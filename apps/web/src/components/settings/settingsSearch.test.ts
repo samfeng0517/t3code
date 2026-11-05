@@ -148,6 +148,11 @@ describe("searchSettings", () => {
       "auto-settle-merged-threads",
       "days-before-auto-settle",
       "linked-environments",
+      "assistant-erp-url",
+      "assistant-erp-token",
+      "assistant-model",
+      "assistant-runtime-mode",
+      "assistant-memory",
     ]);
     expect(available.map((item) => item.id).filter((id) => gatedIds.has(id))).toEqual([]);
   });

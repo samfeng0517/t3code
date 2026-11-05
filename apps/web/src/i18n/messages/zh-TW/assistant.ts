@@ -69,4 +69,18 @@ export const assistantZhTW: Readonly<Record<keyof typeof assistantEn, string>> =
   "assistantPage.draftCard.submit": "送出到 ERP",
   "assistantPage.draftCard.staleRevision": "草稿已更新，請確認後再送出",
   "assistantPage.draftCard.editInErp": "到 ERP 修改",
+  "assistantPage.settings.erpUrl": "ERP 網址",
+  "assistantPage.settings.erpToken": "ERP token",
+  "assistantPage.settings.erpTokenHelp":
+    "到 ERP「我的帳號 › API Tokens」建立 token，勾選這四個範圍：",
+  "assistantPage.settings.scope.attendance": "自己的打卡、上下班打卡",
+  "assistantPage.settings.scope.dailyReports": "日報與團隊 dashboard",
+  "assistantPage.settings.scope.dailyReportsWrite": "送出／更新日報、同步活動",
+  "assistantPage.settings.scope.directory": "名冊、同事個人頁、下拉選單資料、待審數",
+  "assistantPage.settings.model": "模型",
+  "assistantPage.settings.runtimeMode": "權限模式",
+  "assistantPage.settings.memory": "編輯助理記憶",
+  "assistantPage.settings.save": "儲存",
+  "assistantPage.memory.readFailed": "讀不到助理記憶，請稍後再試",
+  "assistantPage.memory.writeFailed": "助理記憶存不進去，你的修改還在視窗裡",
 };
