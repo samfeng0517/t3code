@@ -19,6 +19,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
@@ -165,6 +166,12 @@ interface HarnessOptions {
   readonly clockings?: ReadonlyArray<ErpClient.ErpClocking>;
   readonly today?: ErpClient.ErpTodayReport;
   readonly settings?: Parameters<typeof ServerSettings.layerTest>[0];
+  /** Holds sendToThread open: `started` resolves when it begins, `release` lets it finish. */
+  readonly sendGate?: {
+    readonly started: Deferred.Deferred<void>;
+    readonly release: Deferred.Deferred<void>;
+  };
+  readonly scratchUnavailable?: boolean;
 }
 
 const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions = {}) {
@@ -214,7 +221,11 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
         runs: [],
       })) as unknown as ThreadManagement.ThreadManagementService["Service"]["getThreadRecords"],
     sendToThread: (input) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
+        if (options.sendGate !== undefined) {
+          yield* Deferred.succeed(options.sendGate.started, undefined);
+          yield* Deferred.await(options.sendGate.release);
+        }
         sends.push(input);
         return {
           run: { id: RunId.make(`run-${sends.length}`) },
@@ -246,7 +257,10 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
   });
 
   const folders = Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
-    ensureScratchProject: Effect.succeed({ projectId: SCRATCH }),
+    ensureScratchProject:
+      options.scratchUnavailable === true
+        ? Effect.fail(new ManagedProjectFolders.ScratchUnavailableError())
+        : Effect.succeed({ projectId: SCRATCH }),
     isScratchProject: (projectId) => Effect.succeed(projectId === SCRATCH),
     namedProjectsRoot: root,
   });
@@ -794,5 +808,123 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
           assert.equal(draft?.submittedAt, "2026-11-05T18:00:00+08:00");
         }).pipe(Effect.provide(harness.layer));
       }).pipe(Effect.scoped),
+  );
+  it.effect(
+    "maybeTriggerDraft should store the run id when the clock request is interrupted during the send",
+    () =>
+      Effect.gen(function* () {
+        const sendGate = {
+          started: yield* Deferred.make<void>(),
+          release: yield* Deferred.make<void>(),
+        };
+        const harness = yield* makeHarness({ clockings: [todaySegment], sendGate });
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          const request = yield* assistant.getClockStatus().pipe(Effect.forkChild);
+          yield* Deferred.await(sendGate.started);
+          const interrupted = yield* Fiber.interrupt(request).pipe(
+            Effect.forkChild({ startImmediately: true }),
+          );
+          yield* Deferred.succeed(sendGate.release, undefined);
+          yield* Fiber.join(interrupted);
+          const draft = yield* readStoredDraft("2026-11-05");
+          assert.equal(draft?.status, "generating");
+          assert.equal(draft?.triggerRunId, "run-1");
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "maybeTriggerDraft should store a failed draft with thread-unavailable when the assistant thread cannot be created",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({ clockings: [todaySegment], scratchUnavailable: true });
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          yield* assistant.getClockStatus();
+          assert.lengthOf(harness.sends, 0);
+          const draft = yield* readStoredDraft("2026-11-05");
+          assert.equal(draft?.status, "failed");
+          assert.equal(draft?.failure, "thread-unavailable");
+          assert.equal(draft?.triggerAttempt, 1);
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "start should mark a generating draft failed when the server stopped before its message was sent",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          const store = yield* AssistantDraftStore.AssistantDraftStore;
+          yield* seedDraft(storedDraft({ status: "generating" }));
+          const failed = yield* store.changes.pipe(
+            Stream.filter((file) => file.drafts["2026-11-05"]?.status === "failed"),
+            Stream.runHead,
+            Effect.forkChild({ startImmediately: true }),
+          );
+          yield* assistant.start();
+          yield* Fiber.join(failed);
+          assert.equal((yield* readStoredDraft("2026-11-05"))?.failure, "thread-unavailable");
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "submitDailyReport should mark the draft submitted and fail with submitted when ERP already has the report",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({
+          today: todayReport({ report: { submitted_at: "2026-11-05T17:00:00+08:00" } }),
+        });
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          const seeded = yield* seedDraft(storedDraft());
+          const error = yield* Effect.flip(
+            assistant.submitDailyReport({ reportDate: "2026-11-05", revision: seeded.revision }),
+          );
+          assert.equal(error.reason, "submitted");
+          assert.lengthOf(harness.submitted, 0);
+          const draft = yield* readStoredDraft("2026-11-05");
+          assert.equal(draft?.status, "submitted");
+          assert.equal(draft?.submittedAt, "2026-11-05T17:00:00+08:00");
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "regenerateDraft should reject with not-editable when the draft is not for ERP's current day",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          const seeded = yield* seedDraft(storedDraft({ reportDate: "2026-11-04" }));
+          const error = yield* Effect.flip(
+            assistant.regenerateDraft({ reportDate: "2026-11-04", revision: seeded.revision }),
+          );
+          assert.equal(error.reason, "not-editable");
+          assert.lengthOf(harness.sends, 0);
+          assert.equal((yield* readStoredDraft("2026-11-04"))?.status, "ready");
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("streamState should push the stored drafts newest first when a client subscribes", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* Effect.gen(function* () {
+        const assistant = yield* AssistantService.AssistantService;
+        yield* seedDraft(storedDraft({ reportDate: "2026-11-04" }));
+        yield* seedDraft(storedDraft());
+        const state = yield* assistant.streamState().pipe(Stream.runHead);
+        assert.deepEqual(
+          Option.getOrThrow(state).drafts.map((draft) => draft.reportDate),
+          ["2026-11-05", "2026-11-04"],
+        );
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(Effect.scoped),
   );
 });

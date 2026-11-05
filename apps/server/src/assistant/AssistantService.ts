@@ -370,7 +370,11 @@ const make = Effect.gen(function* () {
     );
     if (generating.length === 0) return;
     const { runs } = yield* threads
-      .getThreadRecords(threadId, ["runs"])
+      .getThreadRecords(threadId, ["runs"], {
+        runIds: generating.flatMap((draft) =>
+          draft.triggerRunId === undefined ? [] : [draft.triggerRunId],
+        ),
+      })
       .pipe(Effect.mapError(threadUnavailable));
     for (const draft of generating) {
       const run = runs.find((candidate) => candidate.id === draft.triggerRunId);
@@ -379,99 +383,134 @@ const make = Effect.gen(function* () {
     }
   });
 
-  /** Sends the draft request to the assistant thread; a failure marks the draft failed. */
-  const dispatchDraft = Effect.fn("AssistantService.dispatchDraft")(function* (input: {
-    readonly reportDate: string;
-    readonly attempt: number;
-    readonly summary: string;
-    readonly today: ErpClient.ErpTodayReport;
-  }) {
-    const sent = yield* Effect.gen(function* () {
-      const threadId = yield* getOrCreateThread();
-      const shell = yield* liveShell(threadId);
-      if (shell === null) return yield* threadUnavailable();
-      // An archived thread refuses messages; the assistant chat stays usable.
-      if (shell.archivedAt !== null) {
-        yield* threads
-          .dispatch({
-            type: "thread.unarchive",
-            commandId: CommandId.make(`assistant-thread:unarchive:${yield* randomUuidV4}`),
-            threadId,
-          })
-          .pipe(Effect.mapError(threadUnavailable));
-      }
-      const settings = yield* settingsService.getSettings.pipe(Effect.mapError(threadUnavailable));
-      const id = `assistant-daily-draft:${input.reportDate}:${input.attempt}`;
-      const result = yield* threads
-        .sendToThread({
-          projectId: shell.projectId,
+  /** The assistant thread and message text, gathered before the draft turns generating. */
+  const prepareDraftMessage = Effect.fn("AssistantService.prepareDraftMessage")(function* (
+    today: ErpClient.ErpTodayReport,
+  ) {
+    const threadId = yield* getOrCreateThread();
+    const shell = yield* liveShell(threadId);
+    if (shell === null) return yield* threadUnavailable();
+    // An archived thread refuses messages; the assistant chat stays usable.
+    if (shell.archivedAt !== null) {
+      yield* threads
+        .dispatch({
+          type: "thread.unarchive",
+          commandId: CommandId.make(`assistant-thread:unarchive:${yield* randomUuidV4}`),
           threadId,
-          commandId: CommandId.make(id),
-          messageId: MessageId.make(id),
-          text: yield* composeDraftMessage(input.today),
-          attachments: [],
-          modelSelection: threadSettingsOf(settings.assistant).modelSelection,
-          mode: "queue",
-          // The orchestrator only accepts notifications on agent-attributed, server-sent queued messages.
-          createdBy: "agent",
-          creationSource: "server",
-          notification: { source: { kind: "system" }, outcome: "updated", summary: input.summary },
         })
         .pipe(Effect.mapError(threadUnavailable));
-      return { threadId, runId: result.run.id };
-    }).pipe(
-      Effect.tapError(() =>
-        updateDraft(input.reportDate, (draft) =>
-          draft === undefined
-            ? fail("no-draft")
-            : { ...draft, status: "failed", failure: "thread-unavailable" },
-        ).pipe(Effect.ignore({ log: true })),
-      ),
-    );
-    yield* updateDraft(input.reportDate, (draft) =>
-      draft === undefined ? fail("no-draft") : { ...draft, triggerRunId: sent.runId },
+    }
+    const settings = yield* settingsService.getSettings.pipe(Effect.mapError(threadUnavailable));
+    return {
+      threadId,
+      projectId: shell.projectId,
+      modelSelection: threadSettingsOf(settings.assistant).modelSelection,
+      text: yield* composeDraftMessage(today),
+    };
+  });
+
+  const newDraft = (reportDate: string, updatedAt: string): AssistantDraft => ({
+    reportDate,
+    status: "generating",
+    items: [],
+    problemText: "",
+    revision: 0,
+    version: 0,
+    sources: [],
+    editedByUser: false,
+    triggerAttempt: 1,
+    updatedAt,
+  });
+
+  /**
+   * Marks the draft generating, sends the request and stores its run id as one step. A client
+   * that disconnects in between would otherwise leave a generating draft that no run settles.
+   */
+  const dispatchDraft = Effect.fn("AssistantService.dispatchDraft")(function* (input: {
+    readonly reportDate: string;
+    readonly summary: string;
+    readonly prepared: Effect.Success<ReturnType<typeof prepareDraftMessage>>;
+    readonly start: (draft: AssistantDraft | undefined) => AssistantDraft | AssistantError;
+  }) {
+    const { prepared } = input;
+    yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        const started = yield* updateDraft(input.reportDate, input.start);
+        const id = `assistant-daily-draft:${input.reportDate}:${started.triggerAttempt}`;
+        const result = yield* threads
+          .sendToThread({
+            projectId: prepared.projectId,
+            threadId: prepared.threadId,
+            commandId: CommandId.make(id),
+            messageId: MessageId.make(id),
+            text: prepared.text,
+            attachments: [],
+            modelSelection: prepared.modelSelection,
+            mode: "queue",
+            // The orchestrator only accepts notifications on agent-attributed, server-sent queued messages.
+            createdBy: "agent",
+            creationSource: "server",
+            notification: {
+              source: { kind: "system" },
+              outcome: "updated",
+              summary: input.summary,
+            },
+          })
+          .pipe(
+            Effect.mapError(threadUnavailable),
+            Effect.tapError(() =>
+              updateDraft(input.reportDate, (draft) =>
+                draft === undefined
+                  ? fail("no-draft")
+                  : { ...draft, status: "failed", failure: "thread-unavailable" },
+              ).pipe(Effect.ignore({ log: true })),
+            ),
+          );
+        yield* updateDraft(input.reportDate, (draft) =>
+          draft === undefined ? fail("no-draft") : { ...draft, triggerRunId: result.run.id },
+        );
+      }),
     );
     // The run may have ended before its id was stored, so the event loop could not match it.
-    yield* reconcileGenerating(sent.threadId).pipe(Effect.ignore({ log: true }));
+    yield* reconcileGenerating(prepared.threadId).pipe(Effect.ignore({ log: true }));
     const stored = yield* readDraft(input.reportDate);
     if (stored === undefined) return yield* draftsUnavailable();
     return stored;
   });
 
+  /** Report dates ERP already closed (exempt or submitted); they never trigger a draft. */
+  const closedReportDates = new Set<string>();
+
   const maybeTriggerDraft = Effect.fn("AssistantService.maybeTriggerDraft")(function* (
     status: AssistantClockStatus,
   ) {
     const reportDate = status.reportDate;
-    if (status.segments.length === 0) return;
+    if (status.segments.length === 0 || closedReportDates.has(reportDate)) return;
     if ((yield* readDraft(reportDate)) !== undefined) return;
     const today = yield* erp.getTodayReport();
-    if (
-      today.server_date !== reportDate ||
-      today.daily_report_exempt ||
-      (today.report?.submitted_at ?? null) !== null
-    ) {
+    if (today.server_date !== reportDate) return;
+    if (today.daily_report_exempt || (today.report?.submitted_at ?? null) !== null) {
+      closedReportDates.add(reportDate);
       return;
     }
     yield* triggerLock.withPermits(1)(
       Effect.gen(function* () {
         if ((yield* readDraft(reportDate)) !== undefined) return;
-        yield* updateDraft(reportDate, () => ({
-          reportDate,
-          status: "generating",
-          items: [],
-          problemText: "",
-          revision: 0,
-          version: 0,
-          sources: [],
-          editedByUser: false,
-          triggerAttempt: 1,
-          updatedAt: status.serverNow,
-        }));
+        const prepared = yield* prepareDraftMessage(today).pipe(
+          Effect.tapError(() =>
+            updateDraft(reportDate, () => ({
+              ...newDraft(reportDate, status.serverNow),
+              status: "failed",
+              failure: "thread-unavailable",
+            })).pipe(Effect.ignore({ log: true })),
+          ),
+        );
         yield* dispatchDraft({
           reportDate,
-          attempt: 1,
           summary: "今天第一次打卡，助理開始擬日報草稿",
-          today,
+          prepared,
+          start: (draft) =>
+            draft === undefined ? newDraft(reportDate, status.serverNow) : fail("busy"),
         });
       }),
     );
@@ -535,19 +574,21 @@ const make = Effect.gen(function* () {
     if (isAssistantError(checked)) return yield* checked;
     if (yield* runActive()) return yield* fail("busy");
     const today = yield* erp.getTodayReport();
+    // The message carries ERP's current day, so only that day's draft can be redrafted.
+    if (today.server_date !== input.reportDate) return yield* fail("not-editable");
     return yield* triggerLock.withPermits(1)(
       Effect.gen(function* () {
-        const restarted = yield* updateDraft(input.reportDate, (draft) => {
-          const current = check(draft);
-          if (isAssistantError(current)) return current;
-          const { failure: _failure, triggerRunId: _triggerRunId, ...rest } = current;
-          return { ...rest, status: "generating", triggerAttempt: current.triggerAttempt + 1 };
-        });
+        const prepared = yield* prepareDraftMessage(today);
         return yield* dispatchDraft({
           reportDate: input.reportDate,
-          attempt: restarted.triggerAttempt,
           summary: "重新產生日報草稿",
-          today,
+          prepared,
+          start: (draft) => {
+            const current = check(draft);
+            if (isAssistantError(current)) return current;
+            const { failure: _failure, triggerRunId: _triggerRunId, ...rest } = current;
+            return { ...rest, status: "generating", triggerAttempt: current.triggerAttempt + 1 };
+          },
         });
       }),
     );
@@ -591,22 +632,27 @@ const make = Effect.gen(function* () {
       items,
     });
     const submittedAt = DateTime.formatIso(yield* DateTime.now);
+    // An edit saved while the POST ran never reached ERP, so keep what was sent.
     return yield* updateDraft(input.reportDate, (draft) =>
-      draft === undefined ? fail("no-draft") : { ...draft, status: "submitted", submittedAt },
+      draft === undefined
+        ? fail("no-draft")
+        : {
+            ...draft,
+            items: checked.items,
+            problemText: checked.problemText,
+            status: "submitted",
+            submittedAt,
+          },
     );
   }, submitLock.withPermits(1));
 
   const currentState = Effect.gen(function* () {
-    const file = yield* drafts.read().pipe(Effect.option);
+    const { drafts: stored } = yield* drafts.read();
     return {
       assistantThreadId: yield* SubscriptionRef.get(cachedThreadId),
-      drafts: Option.match(file, {
-        onNone: () => [],
-        onSome: ({ drafts: stored }) =>
-          Object.values(stored).toSorted((left, right) =>
-            right.reportDate.localeCompare(left.reportDate),
-          ),
-      }),
+      drafts: Object.values(stored).toSorted((left, right) =>
+        right.reportDate.localeCompare(left.reportDate),
+      ),
     } satisfies AssistantState;
   });
 
@@ -618,7 +664,12 @@ const make = Effect.gen(function* () {
           Stream.merge(
             SubscriptionRef.changes(cachedThreadId).pipe(Stream.map(() => undefined)),
             drafts.changes.pipe(Stream.map(() => undefined)),
-          ).pipe(Stream.mapEffect(() => currentState)),
+          ).pipe(
+            // A failed read skips the push; an empty list would tell clients the drafts are gone.
+            Stream.mapEffect(() => Effect.option(currentState)),
+            Stream.filter(Option.isSome),
+            Stream.map((state) => state.value),
+          ),
         ),
       ),
     );
@@ -736,8 +787,24 @@ const make = Effect.gen(function* () {
     }
   });
 
+  /** A server that stopped between marking a draft generating and storing its run left it stuck. */
+  const recoverUnsentDrafts = triggerLock.withPermits(1)(
+    Effect.gen(function* () {
+      const file = yield* readDrafts;
+      for (const draft of Object.values(file.drafts)) {
+        if (draft.status !== "generating" || draft.triggerRunId !== undefined) continue;
+        yield* updateDraft(draft.reportDate, (current) =>
+          current?.status === "generating" && current.triggerRunId === undefined
+            ? { ...current, status: "failed", failure: "thread-unavailable" }
+            : (current ?? fail("no-draft")),
+        );
+      }
+    }),
+  );
+
   const start = Effect.fn("AssistantService.start")(function* () {
     yield* forkParked(watchSettings);
+    yield* forkParked(recoverUnsentDrafts.pipe(Effect.ignore({ log: true })));
     // Trigger runs that ended while the server was down left their drafts generating.
     yield* forkParked(
       findThread().pipe(
