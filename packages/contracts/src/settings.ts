@@ -1244,7 +1244,8 @@ export const AssistantErpBaseUrl = TrimmedString.check(
 export type AssistantErpBaseUrl = typeof AssistantErpBaseUrl.Type;
 
 export const AssistantSettings = Schema.Struct({
-  erpBaseUrl: AssistantErpBaseUrl.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  // Only patches are validated: a hand-edited bad URL must not fail the whole settings file.
+  erpBaseUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   erpToken: TrimmedString.pipe(secretSetting, Schema.withDecodingDefault(Effect.succeed(""))),
   /** Null means the assistant default model. */
   modelSelection: Schema.NullOr(ModelSelection).pipe(

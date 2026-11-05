@@ -234,10 +234,10 @@ function mapSecretFieldGroups(
   );
 
   // A fixed name: the token belongs to whichever ERP URL is saved, and changing the URL clears it.
-  const assistant = mapFields(settings.assistant, assistantSecretFields, (field, serverHost) =>
-    field === "erpToken" && serverHost === null
-      ? "assistant-erp-token"
-      : `assistant-${encode(field)}${serverHost === null ? "" : `-${encode(serverHost)}`}`,
+  const assistant = mapFields(
+    settings.assistant,
+    assistantSecretFields,
+    () => "assistant-erp-token",
   ) as ServerSettings["assistant"];
 
   return {

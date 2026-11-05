@@ -7,6 +7,7 @@ import {
   SecretProviderKind,
   ServerSettings,
   ServerSettingsPatch,
+  SETTINGS_SECRET_REDACTED,
   UsageLimitSourceId,
   type ServerProvider,
 } from "@t3tools/contracts";
@@ -152,7 +153,7 @@ describe("serverSettings helpers", () => {
     });
 
     it("should clear erpToken when erpBaseUrl changes without a new token", () => {
-      for (const erpToken of [undefined, "\u2022\u2022\u2022\u2022\u2022\u2022"]) {
+      for (const erpToken of [undefined, SETTINGS_SECRET_REDACTED]) {
         const moved = applyServerSettingsPatch(configured, {
           assistant: {
             erpBaseUrl: "https://erp2.example.com/",
