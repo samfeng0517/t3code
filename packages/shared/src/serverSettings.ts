@@ -20,6 +20,7 @@ import {
   type ServerProvider,
   ServerSettings,
   type ServerSettingsPatch,
+  SETTINGS_SECRET_REDACTED,
   withIdleCompaction,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
@@ -365,6 +366,22 @@ function patchedIdleCompaction(
   return globalIdleCompaction(current) === "off" ? "off" : "onReturn";
 }
 
+function mergeAssistantSettings(
+  current: ServerSettings["assistant"],
+  patch: NonNullable<ServerSettingsPatch["assistant"]>,
+): ServerSettings["assistant"] {
+  const merged = { ...current, ...patch };
+  if (patch.erpBaseUrl === undefined) return merged;
+  const erpBaseUrl = patch.erpBaseUrl.replace(/\/+$/u, "");
+  // The saved token belongs to the old ERP; never send it to a new host.
+  const keepsNewToken = patch.erpToken !== undefined && patch.erpToken !== SETTINGS_SECRET_REDACTED;
+  return {
+    ...merged,
+    erpBaseUrl,
+    ...(erpBaseUrl !== current.erpBaseUrl && !keepsNewToken ? { erpToken: "" } : {}),
+  };
+}
+
 export function applyServerSettingsPatch(
   current: ServerSettings,
   rawPatch: ServerSettingsPatch,
@@ -393,6 +410,8 @@ export function applyServerSettingsPatch(
     projectAgentBrowserAccessOverrides: _legacyBrowserAccess,
     projectAutoPullOverrides: _legacyAutoPull,
     projectScriptOverrides: _legacyScripts,
+    // Shallow per field: deepMerge would merge a replaced model selection's options.
+    assistant: assistantPatch,
     ...patchForMerge
   } = patch;
   const currentBackgroundActivity = normalizeServerBackgroundActivitySettings(current);
@@ -485,6 +504,9 @@ export function applyServerSettingsPatch(
   const next = deepMerge(current, patchForMerge);
   const nextWithReplacementsBase = {
     ...next,
+    ...(assistantPatch === undefined
+      ? {}
+      : { assistant: mergeAssistantSettings(current.assistant, assistantPatch) }),
     favorites,
     providerModelPreferences: nextModelPreferences,
     ...(worktreeCleanupPatch === undefined

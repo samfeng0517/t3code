@@ -556,3 +556,26 @@ describe("server model preferences", () => {
     expect(decodeServerSettingsPatch(input)).toEqual(input);
   });
 });
+
+describe("AssistantSettings", () => {
+  it("should decode defaults when assistant is missing from settings.json", () => {
+    expect(decodeServerSettings({}).assistant).toEqual({
+      erpBaseUrl: "",
+      erpToken: "",
+      modelSelection: null,
+      runtimeMode: "approval-required",
+    });
+  });
+
+  it("ServerSettingsPatch should reject erpBaseUrl when protocol is http or carries credentials", () => {
+    for (const erpBaseUrl of ["http://erp.example.com", "https://me:pw@erp.example.com", "erp"]) {
+      expect(() => decodeServerSettingsPatch({ assistant: { erpBaseUrl } })).toThrow();
+    }
+    expect(decodeServerSettingsPatch({ assistant: { erpBaseUrl: "" } }).assistant).toEqual({
+      erpBaseUrl: "",
+    });
+    expect(
+      decodeServerSettingsPatch({ assistant: { erpBaseUrl: "https://erp.example.com" } }).assistant,
+    ).toEqual({ erpBaseUrl: "https://erp.example.com" });
+  });
+});
