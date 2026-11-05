@@ -49,6 +49,13 @@ import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import { buildCodexAdditionalContext } from "../../apps/server/src/provider/CodexDeveloperInstructions.ts";
 import { makeSideChatContext } from "../../apps/server/src/orchestration-v2/ContextHandoffService.ts";
 import { withInlineContext } from "../../apps/server/src/orchestration-v2/ContextHandoffDelivery.ts";
+import { buildDailyDraftMessage } from "../../apps/server/src/assistant/assistantDraftMessage.ts";
+import { DEFAULT_ASSISTANT_MEMORY } from "../../apps/server/src/assistant/assistantMemory.ts";
+import {
+  ASSISTANT_NO_TRIGGER_MESSAGE,
+  proposedDraftMessage,
+} from "../../apps/server/src/mcp/toolkits/assistant/handlers.ts";
+import { AssistantToolkit } from "../../apps/server/src/mcp/toolkits/assistant/tools.ts";
 import { AttachmentToolkit } from "../../apps/server/src/mcp/toolkits/attachment/tools.ts";
 import { DeviceToolkit } from "../../apps/server/src/mcp/toolkits/device/tools.ts";
 import { EnvironmentToolkit } from "../../apps/server/src/mcp/toolkits/environment/tools.ts";
@@ -261,6 +268,28 @@ const McpToolUseWorld = Schema.StructWithRest(
 );
 
 /** One fake thread, one JSON object per line in a case file. */
+/** The ERP data T3 puts in the assistant's daily-draft message; `buildDailyDraftMessage` input. */
+const AssistantDraftInput = Schema.Struct({
+  reportDate: Schema.String,
+  prefill: Schema.Array(
+    Schema.Struct({
+      section: Schema.Literals(["yesterday", "today"]),
+      status: Schema.String,
+      project: Schema.NullOr(Schema.String),
+      content: Schema.String,
+    }),
+  ),
+  activities: Schema.NullOr(
+    Schema.Array(
+      Schema.Struct({
+        status: Schema.String,
+        project: Schema.NullOr(Schema.String),
+        title: Schema.String,
+      }),
+    ),
+  ),
+});
+
 export const McpToolUseCase = Schema.Struct({
   id: Schema.String,
   area: Schema.String,
@@ -296,6 +325,18 @@ export const McpToolUseCase = Schema.Struct({
     /** Regexes on one part of a shell command. A match wins over the shell simulator. */
     shellMocks: Schema.optional(
       Schema.Array(Schema.Struct({ match: Schema.String, output: Schema.String })),
+    ),
+    /**
+     * The personal assistant's thread: T3 lists its daily report tools and loads its memory.
+     * `draftInput` builds the daily-draft message when `prompt` is empty; `draft` is the get tool's
+     * result; `triggered: false` means no draft was started today.
+     */
+    assistant: Schema.optional(
+      Schema.Struct({
+        draftInput: Schema.optional(AssistantDraftInput),
+        draft: Schema.optional(Schema.Unknown),
+        triggered: Schema.optional(Schema.Boolean),
+      }),
     ),
     /** The thread is a side chat's first turn: T3 puts the parent's digest ahead of `prompt`. */
     sideChat: Schema.optional(
@@ -422,6 +463,7 @@ const t3SourceTools: ReadonlyArray<Tool.Any> = [
   PreviewToolkit,
   DeviceToolkit,
   HtmlToolkit,
+  AssistantToolkit,
 ].flatMap((toolkit): ReadonlyArray<Tool.Any> => Object.values(toolkit.tools));
 // McpHttpServer decodes arguments with each tool's JSON codec, which drops undeclared keys.
 const t3InputDecoders = new Map(
@@ -469,12 +511,36 @@ const pastedSecret = (name: string, input: Readonly<Record<string, unknown>>) =>
 const hiddenFromSubagents = enabledWhen(McpInvocationContext.hiddenFromSubagents);
 // The Linked environments beta starts off, and T3 lists its tools only while it is on.
 const hiddenWhileLinksOff = enabledWhen(McpInvocationContext.hiddenWhileLinksOff);
-const visibleT3Tools = (options: { readonly subagent?: boolean; readonly links?: boolean }) =>
+// T3 lists the daily report tools only in the personal assistant's own thread.
+const assistantThreadOnly = enabledWhen(McpInvocationContext.assistantThreadOnly);
+const visibleT3Tools = (options: {
+  readonly subagent?: boolean;
+  readonly links?: boolean;
+  readonly assistant?: boolean;
+}) =>
   t3Tools.filter(
     (tool) =>
       (options.links === true || !hiddenWhileLinksOff.has(tool.name)) &&
-      !(options.subagent === true && hiddenFromSubagents.has(tool.name)),
+      !(options.subagent === true && hiddenFromSubagents.has(tool.name)) &&
+      (options.assistant === true || !assistantThreadOnly.has(tool.name)),
   );
+
+/** The case's user message: an assistant case with an empty prompt gets T3's daily-draft message. */
+const casePrompt = ({ prompt, setup }: Pick<McpToolUseCase, "prompt" | "setup">) =>
+  prompt === "" && setup.assistant?.draftInput !== undefined
+    ? buildDailyDraftMessage(setup.assistant.draftInput)
+    : prompt;
+
+/** The case's context; the assistant's memory is its project instructions (CLAUDE.md). */
+const caseContext = ({ setup }: Pick<McpToolUseCase, "setup">) =>
+  setup.assistant === undefined
+    ? setup.context
+    : [
+        setup.context,
+        `Contents of /home/user/assistant/CLAUDE.md (project instructions):\n\n${DEFAULT_ASSISTANT_MEMORY}`,
+      ]
+        .filter((part) => part !== undefined)
+        .join("\n\n");
 
 /**
  * T3's Claude Code options for an eval thread: its system prompt append and its hooks. `device` says
@@ -580,6 +646,7 @@ export const buildBase = (
     readonly keepUserInstructions: boolean;
     readonly subagent?: boolean;
     readonly links?: boolean;
+    readonly assistant?: boolean;
     /** A native subagent starts from its task: T3 appends nothing to its system prompt. */
     readonly nativeSubagent?: boolean;
     /** false: the thread has no agent device access, so T3's text leaves devices out. */
@@ -672,6 +739,7 @@ const buildCodexBase = (
     readonly effort?: string | undefined;
     readonly subagent?: boolean;
     readonly links?: boolean;
+    readonly assistant?: boolean;
     /** false: the thread has no agent device access, so T3's text leaves devices out. */
     readonly deviceAccess?: boolean;
   },
@@ -814,6 +882,8 @@ type Sample = {
   /** Files T3's request_secret saved in this sample, in call order. */
   readonly secretFiles: Array<string>;
   secretRequests: number;
+  /** assistant_propose_daily_report calls in this sample, for the draft version T3 returns. */
+  assistantProposals: number;
   /** T3's device tools, once `withDevices` builds them for a world with devices. */
   devices?: DeviceTools;
   /** T3's results for prior device calls whose case result is "default". */
@@ -861,6 +931,7 @@ export const makeSample = (testCase: McpToolUseCase, base: Base): Sample => {
     threads: new Map(),
     secretFiles: [],
     secretRequests: 0,
+    assistantProposals: 0,
     priorResults: new Map(),
   };
 };
@@ -942,9 +1013,11 @@ export const buildMessages = (sample: Sample) => {
     if (last?.role !== role) messages.push({ role, content: blocks });
     else messages[messages.length - 1] = { role, content: [...last.content, ...blocks] };
   };
-  const { role, context, delegateRole, priorTurns = [] } = testCase.setup;
+  const { role, delegateRole, priorTurns = [] } = testCase.setup;
+  const context = caseContext(testCase);
+  const casePromptText = casePrompt(testCase);
   const sideChat = testCase.setup.sideChat;
-  if (testCase.prompt === "" && (role !== "top" || sideChat !== undefined)) {
+  if (casePromptText === "" && (role !== "top" || sideChat !== undefined)) {
     throw new Error(
       `${testCase.id}: Empty-prompt replay requires a top-level thread without side-chat context.`,
     );
@@ -1000,12 +1073,12 @@ export const buildMessages = (sample: Sample) => {
   }
   const userText =
     testCase.promptContext === undefined
-      ? testCase.prompt
-      : projectComposerContextForProvider({ text: testCase.prompt, ...testCase.promptContext });
+      ? casePromptText
+      : projectComposerContextForProvider({ text: casePromptText, ...testCase.promptContext });
   const prompt =
     sideChatContext === undefined ? userText : withInlineContext(sideChatContext, userText);
   const childPrompt = () => taskPrompt({ task: prompt, role: delegateRole });
-  if (testCase.prompt !== "")
+  if (casePromptText !== "")
     push("user", text(role === "delegated-child" ? childPrompt() : prompt));
   // Claude Code gives a subagent its SubagentStart hooks' context as a reminder after the task.
   if (native && base.subagentContext) {
@@ -1078,6 +1151,37 @@ const linkedEntry = (sample: Sample, url: string) => {
 };
 
 /** A believable T3 result for a tool the case does not mock. */
+/** T3's daily report tool results for an assistant case; errors carry T3's failure fields. */
+const assistantDefault = (
+  sample: Sample,
+  name: string,
+):
+  | { readonly value: unknown }
+  | { readonly error: { readonly code: string; readonly message: string } } => {
+  const assistant = sample.testCase.setup.assistant;
+  const noTrigger = { error: { code: "invalid_request", message: ASSISTANT_NO_TRIGGER_MESSAGE } };
+  if (name === "assistant_get_daily_report_draft") {
+    return assistant?.draft === undefined ? noTrigger : { value: assistant.draft };
+  }
+  if (assistant?.triggered === false) return noTrigger;
+  sample.assistantProposals++;
+  const draft = isRecord(assistant?.draft) ? assistant.draft : {};
+  const version =
+    (typeof draft.version === "number" ? draft.version : 0) + sample.assistantProposals;
+  return {
+    value: {
+      dailyReportDraft: {
+        reportDate:
+          typeof draft.report_date === "string"
+            ? draft.report_date
+            : (assistant?.draftInput?.reportDate ?? "2026-11-05"),
+        version,
+      },
+      message: proposedDraftMessage(version),
+    },
+  };
+};
+
 export const t3Default = (
   sample: Sample,
   name: string,
@@ -1428,7 +1532,7 @@ export const shellRequest = (sample: Sample, call: Omit<ShellEntry, "output">, m
         ]
       : []),
     ...(context ? [`The agent was told: ${context}`] : []),
-    `The agent's task: ${testCase.prompt}`,
+    `The agent's task: ${casePrompt(testCase)}`,
     ...namedPathsLine(testCase),
   ];
   const history = shell.map((entry) => `${callText(entry)}\n<output>\n${entry.output}\n</output>`);
@@ -1575,6 +1679,15 @@ export const answerToolCall = Effect.fn("evaluateMcpToolUse.answerToolCall")(fun
         ? capabilities(sample, mock)
         : withProductFields(name, mock, testCase.setup.role === "delegated-child"),
     );
+  }
+  if (isT3Name(call.name) && name.startsWith("assistant_")) {
+    const result = assistantDefault(sample, name);
+    return "error" in result
+      ? {
+          ...toolResult(call.id, { _tag: "OrchestratorMcpFailure", ...result.error }),
+          is_error: true,
+        }
+      : toolResult(call.id, result.value);
   }
   if (isT3Name(call.name)) {
     // T3 refuses a watch from a delegated child.
@@ -2342,6 +2455,7 @@ const main = Effect.gen(function* () {
     role: McpToolUseCase["setup"]["role"],
     deviceAccess: boolean,
     links: boolean,
+    assistant = false,
   ): Effect.Effect<Base, Schema.SchemaError> =>
     codex
       ? decodeCodexCapture(template).pipe(
@@ -2352,6 +2466,7 @@ const main = Effect.gen(function* () {
               effort: flags.effort,
               subagent: role === "delegated-child",
               links,
+              assistant,
               deviceAccess,
             }),
           ),
@@ -2364,6 +2479,7 @@ const main = Effect.gen(function* () {
               subagent: role === "delegated-child",
               nativeSubagent: role === "native-subagent",
               links,
+              assistant,
               deviceAccess,
             });
             return role === "native-subagent"
@@ -2375,18 +2491,22 @@ const main = Effect.gen(function* () {
         );
   // Codex has no native subagents; its cases with that role run as top-level threads.
   const baseKey = ({ setup }: McpToolUseCase) =>
-    `${codex && setup.role === "native-subagent" ? "top" : setup.role}:${setup.world?.deviceAgentAccess !== false}:${setup.linkedEnvironments === true}`;
+    `${codex && setup.role === "native-subagent" ? "top" : setup.role}:${setup.world?.deviceAgentAccess !== false}:${setup.linkedEnvironments === true}:${setup.assistant !== undefined}`;
   const base = yield* buildFor("top", true, false);
-  const bases = new Map<string, Base>([["top:true:false", base]]);
+  const bases = new Map<string, Base>([["top:true:false:false", base]]);
   for (const testCase of selected) {
     const key = baseKey(testCase);
     if (bases.has(key)) continue;
-    const [role = "top", access, links] = key.split(":") as [
+    const [role = "top", access, links, assistant] = key.split(":") as [
       McpToolUseCase["setup"]["role"],
       string,
       string,
+      string,
     ];
-    bases.set(key, yield* buildFor(role, access === "true", links === "true"));
+    bases.set(
+      key,
+      yield* buildFor(role, access === "true", links === "true", assistant === "true"),
+    );
   }
   const baseFor = (testCase: McpToolUseCase) => bases.get(baseKey(testCase)) ?? base;
   const effort = flags.effort ?? base.codex?.reasoning.effort ?? "high";

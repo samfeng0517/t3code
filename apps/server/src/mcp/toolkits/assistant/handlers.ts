@@ -6,8 +6,11 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { AssistantToolkit } from "./tools.ts";
 
-const ASSISTANT_NO_TRIGGER_MESSAGE =
+export const ASSISTANT_NO_TRIGGER_MESSAGE =
   "No daily report draft has been started for today. Drafting starts automatically after the user's first clock-in of the day. Tell the user: 草稿會在今天第一次打卡後自動擬";
+
+export const proposedDraftMessage = (version: number) =>
+  `Saved draft version ${version}. The user sees it as an editable card and submits it; do not repeat the items in chat.`;
 
 const toFailure = (error: AssistantService.AssistantAgentDraftError) => {
   switch (error.kind) {
@@ -91,7 +94,7 @@ const handlers = {
         .pipe(Effect.mapError(toFailure));
       return {
         dailyReportDraft: saved,
-        message: `Saved draft version ${saved.version}. The user sees it as an editable card and submits it; do not repeat the items in chat.`,
+        message: proposedDraftMessage(saved.version),
       };
     }),
   ),
