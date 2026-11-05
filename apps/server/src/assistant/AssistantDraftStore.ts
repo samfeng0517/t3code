@@ -28,13 +28,11 @@ export class AssistantDraftStoreError extends Schema.TaggedError<AssistantDraftS
 
 export const AssistantDraftFile = Schema.Struct({
   version: Schema.Literal(1),
-  /** The ERP workday the daily draft was last triggered for. */
-  workday: Schema.NullOr(AssistantReportDate),
   drafts: Schema.Record(AssistantReportDate, AssistantDraft),
 });
 export type AssistantDraftFile = typeof AssistantDraftFile.Type;
 
-const EMPTY_FILE: AssistantDraftFile = { version: 1, workday: null, drafts: {} };
+const EMPTY_FILE: AssistantDraftFile = { version: 1, drafts: {} };
 const KEEP_DAYS = 14;
 const FILE_NAME = "assistant-drafts.json";
 

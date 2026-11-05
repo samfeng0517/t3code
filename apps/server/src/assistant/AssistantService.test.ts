@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
   type AssistantDraft,
+  AssistantError,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ServerCommand,
   type OrchestrationV2ThreadShell,
@@ -148,15 +149,25 @@ const seedDraft = (draft: AssistantDraft) =>
     return (yield* store.read()).drafts[draft.reportDate]!;
   });
 
-const seedWorkday = (workday: string) =>
-  AssistantDraftStore.AssistantDraftStore.pipe(
-    Effect.flatMap((store) => store.update((file) => [undefined, { ...file, workday }])),
-  );
-
 const readStoredDraft = (reportDate: string) =>
   AssistantDraftStore.AssistantDraftStore.pipe(
     Effect.flatMap((store) => store.read()),
     Effect.map((file) => file.drafts[reportDate]),
+  );
+
+/** Forks a wait for the stored draft to match; fork it before the step that changes the draft. */
+const awaitStoredDraft = (reportDate: string, matches: (draft: AssistantDraft) => boolean) =>
+  AssistantDraftStore.AssistantDraftStore.pipe(
+    Effect.flatMap((store) =>
+      store.changes.pipe(
+        Stream.filter((file) => {
+          const draft = file.drafts[reportDate];
+          return draft !== undefined && matches(draft);
+        }),
+        Stream.runHead,
+        Effect.forkChild({ startImmediately: true }),
+      ),
+    ),
   );
 
 const runUpdated = (threadId: ThreadId, runId: string, status: string) =>
@@ -194,7 +205,9 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
   const listedMonths: Array<string> = [];
   const sends: Array<ThreadManagement.ThreadManagementSendInput> = [];
   const submitted: Array<ErpClient.ErpDailyReportBody> = [];
-  const erpState = { today: options.today ?? todayReport() };
+  const erpState: { today: ErpClient.ErpTodayReport; todayFailure?: AssistantError } = {
+    today: options.today ?? todayReport(),
+  };
 
   const addShell = (shell: OrchestrationV2ThreadShell) =>
     Ref.update(shells, (current) => new Map(current).set(shell.id, shell));
@@ -290,7 +303,12 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
     clockIn: () => Effect.die("unused"),
     clockOut: () => Effect.die("unused"),
     listProjects: () => Effect.succeed([{ id: 7, name: "Example" }]),
-    getTodayReport: () => Effect.sync(() => erpState.today),
+    getTodayReport: () =>
+      Effect.suspend(() =>
+        erpState.todayFailure === undefined
+          ? Effect.succeed(erpState.today)
+          : Effect.fail(erpState.todayFailure),
+      ),
     listActivities: () =>
       Effect.succeed([
         { title: "Review MR", status: "processing", project_id: 7, project_name: "Example" },
@@ -435,8 +453,6 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
             status.segments.map((segment) => segment.start),
             ["2026-11-05T09:00:00+08:00", "2026-11-05T13:05:00+08:00"],
           );
-          const drafts = yield* AssistantDraftStore.AssistantDraftStore;
-          assert.equal((yield* drafts.read()).workday, "2026-11-05");
         }).pipe(Effect.provide(harness.layer));
       }).pipe(Effect.scoped),
   );
@@ -572,7 +588,9 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
         const harness = yield* makeHarness({ clockings: [todaySegment] });
         yield* Effect.gen(function* () {
           const assistant = yield* AssistantService.AssistantService;
+          const sent = yield* awaitStoredDraft("2026-11-05", (d) => d.triggerRunId !== undefined);
           yield* assistant.getClockStatus();
+          yield* Fiber.join(sent);
           assert.lengthOf(harness.sends, 1);
           const [send] = harness.sends;
           assert.equal(send?.commandId, "assistant-daily-draft:2026-11-05:1");
@@ -613,7 +631,9 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
         const harness = yield* makeHarness({ clockings: [todaySegment] });
         yield* Effect.gen(function* () {
           const assistant = yield* AssistantService.AssistantService;
+          const sent = yield* awaitStoredDraft("2026-11-05", (d) => d.triggerRunId !== undefined);
           yield* assistant.getClockStatus();
+          yield* Fiber.join(sent);
           yield* assistant.getClockStatus();
           assert.lengthOf(harness.sends, 1);
         }).pipe(Effect.provide(harness.layer));
@@ -631,7 +651,9 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
         yield* Effect.gen(function* () {
           const assistant = yield* AssistantService.AssistantService;
           const store = yield* AssistantDraftStore.AssistantDraftStore;
+          const sent = yield* awaitStoredDraft("2026-11-05", (d) => d.triggerRunId !== undefined);
           yield* assistant.getClockStatus();
+          yield* Fiber.join(sent);
           yield* assistant.start();
           const failed = yield* store.changes.pipe(
             Stream.filter((file) => file.drafts["2026-11-05"]?.status === "failed"),
@@ -815,17 +837,22 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
       }).pipe(Effect.scoped),
   );
   it.effect(
-    "maybeTriggerDraft should store the run id when the clock request is interrupted during the send",
+    "regenerateDraft should store the run id when the request is interrupted during the send",
     () =>
       Effect.gen(function* () {
         const sendGate = {
           started: yield* Deferred.make<void>(),
           release: yield* Deferred.make<void>(),
         };
-        const harness = yield* makeHarness({ clockings: [todaySegment], sendGate });
+        const harness = yield* makeHarness({ sendGate });
         yield* Effect.gen(function* () {
           const assistant = yield* AssistantService.AssistantService;
-          const request = yield* assistant.getClockStatus().pipe(Effect.forkChild);
+          const seeded = yield* seedDraft(
+            storedDraft({ status: "failed", failure: "no-proposal" }),
+          );
+          const request = yield* assistant
+            .regenerateDraft({ reportDate: "2026-11-05", revision: seeded.revision })
+            .pipe(Effect.forkChild);
           yield* Deferred.await(sendGate.started);
           const interrupted = yield* Fiber.interrupt(request).pipe(
             Effect.forkChild({ startImmediately: true }),
@@ -835,6 +862,7 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
           const draft = yield* readStoredDraft("2026-11-05");
           assert.equal(draft?.status, "generating");
           assert.equal(draft?.triggerRunId, "run-1");
+          assert.lengthOf(harness.sends, 1);
         }).pipe(Effect.provide(harness.layer));
       }).pipe(Effect.scoped),
   );
@@ -846,7 +874,9 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
         const harness = yield* makeHarness({ clockings: [todaySegment], scratchUnavailable: true });
         yield* Effect.gen(function* () {
           const assistant = yield* AssistantService.AssistantService;
+          const failed = yield* awaitStoredDraft("2026-11-05", (d) => d.status === "failed");
           yield* assistant.getClockStatus();
+          yield* Fiber.join(failed);
           assert.lengthOf(harness.sends, 0);
           const draft = yield* readStoredDraft("2026-11-05");
           assert.equal(draft?.status, "failed");
@@ -933,14 +963,13 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
     }).pipe(Effect.scoped),
   );
   it.effect(
-    "proposeDraft should fail with the no-trigger message when no draft exists for the workday",
+    "proposeDraft should fail with the no-trigger message when no draft has been triggered",
     () =>
       Effect.gen(function* () {
         const harness = yield* makeHarness();
         yield* harness.addShell(assistantShell("existing-assistant", harness.root));
         yield* Effect.gen(function* () {
           const assistant = yield* AssistantService.AssistantService;
-          yield* seedWorkday("2026-11-05");
           const error = yield* Effect.flip(
             assistant.proposeDraft({
               callerThreadId: ThreadId.make("existing-assistant"),
@@ -970,7 +999,6 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
               editedByUser: true,
             }),
           );
-          yield* seedWorkday("2026-11-05");
           const saved = yield* assistant.proposeDraft({
             callerThreadId: ThreadId.make("existing-assistant"),
             items: [
@@ -1004,7 +1032,6 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
       yield* Effect.gen(function* () {
         const assistant = yield* AssistantService.AssistantService;
         yield* seedDraft(storedDraft());
-        yield* seedWorkday("2026-11-05");
         const error = yield* Effect.flip(
           assistant.proposeDraft({
             callerThreadId: ThreadId.make("some-other-thread"),
@@ -1017,5 +1044,196 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
         assert.equal((yield* readStoredDraft("2026-11-05"))?.version, 1);
       }).pipe(Effect.provide(harness.layer));
     }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "proposeDraft should reject with stale when the user saved the card after the agent read the draft",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
+        yield* harness.addShell(assistantShell("existing-assistant", harness.root));
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          const callerThreadId = ThreadId.make("existing-assistant");
+          const item = {
+            section: "today",
+            content: "Typo itme",
+            status: "new",
+            projectId: 7,
+            projectOther: null,
+            sortOrder: 0,
+          } as const;
+          yield* seedDraft(storedDraft({ items: [item] }));
+          const read = yield* assistant.getDraftForAgent(callerThreadId);
+          yield* assistant.saveDraft({
+            reportDate: "2026-11-05",
+            revision: read.revision,
+            items: [{ ...item, content: "Fixed item" }],
+            problemText: "",
+          });
+          const proposal = {
+            callerThreadId,
+            items: [{ ...item, status: "processing" as const }],
+            problemText: "",
+            sources: [{ key: "erp_prefill" as const, status: "ok" as const }],
+          };
+          const error = yield* Effect.flip(assistant.proposeDraft(proposal));
+          assert.equal(error.kind, "stale");
+          const kept = yield* readStoredDraft("2026-11-05");
+          assert.equal(kept?.items[0]?.content, "Fixed item");
+          assert.equal(kept?.version, 1);
+
+          const reread = yield* assistant.getDraftForAgent(callerThreadId);
+          const revised = {
+            ...proposal,
+            items: reread.items.map((current) => ({ ...current, status: "processing" as const })),
+          };
+          assert.equal((yield* assistant.proposeDraft(revised)).version, 2);
+          // The agent knows the version it wrote, so it may revise again without re-reading.
+          assert.equal((yield* assistant.proposeDraft(revised)).version, 3);
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "getClockStatus should reply before the draft message is sent when the first clocking triggers a draft",
+    () =>
+      Effect.gen(function* () {
+        const sendGate = {
+          started: yield* Deferred.make<void>(),
+          release: yield* Deferred.make<void>(),
+        };
+        const harness = yield* makeHarness({ clockings: [todaySegment], sendGate });
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          const sent = yield* awaitStoredDraft("2026-11-05", (d) => d.triggerRunId !== undefined);
+          const status = yield* assistant.getClockStatus();
+          assert.lengthOf(status.segments, 1);
+          yield* Deferred.await(sendGate.started);
+          assert.lengthOf(harness.sends, 0);
+          yield* Deferred.succeed(sendGate.release, undefined);
+          yield* Fiber.join(sent);
+          assert.lengthOf(harness.sends, 1);
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "getDraftForAgent should keep the last triggered draft when the clock read moves to the next workday",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({
+          active: activeClocking({
+            meta: {
+              server_now: "2026-11-06T00:30:00+08:00",
+              today_ordinary_hours: 0,
+              today_required_hours: 8,
+            },
+          }),
+        });
+        yield* harness.addShell(assistantShell("existing-assistant", harness.root));
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          const callerThreadId = ThreadId.make("existing-assistant");
+          yield* seedDraft(storedDraft({ reportDate: "2026-11-04", status: "submitted" }));
+          yield* seedDraft(storedDraft());
+          assert.equal((yield* assistant.getClockStatus()).reportDate, "2026-11-06");
+          assert.equal(
+            (yield* assistant.getDraftForAgent(callerThreadId)).reportDate,
+            "2026-11-05",
+          );
+          const saved = yield* assistant.proposeDraft({
+            callerThreadId,
+            items: [],
+            problemText: "",
+            sources: [{ key: "erp_prefill", status: "ok" }],
+          });
+          assert.deepEqual(saved, { reportDate: "2026-11-05", version: 2 });
+
+          yield* seedDraft(storedDraft({ reportDate: "2026-11-06", status: "generating" }));
+          assert.equal(
+            (yield* assistant.getDraftForAgent(callerThreadId)).reportDate,
+            "2026-11-06",
+          );
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "getDraftForAgent should reject with submitted when the last triggered draft was submitted before midnight",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
+        yield* harness.addShell(assistantShell("existing-assistant", harness.root));
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          yield* seedDraft(storedDraft({ status: "submitted" }));
+          const error = yield* Effect.flip(
+            assistant.getDraftForAgent(ThreadId.make("existing-assistant")),
+          );
+          assert.equal(error.kind, "submitted");
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "submitDailyReport should skip blank items and send no project when the other project name is blank",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          const item = {
+            section: "today",
+            content: "Plan the sprint",
+            status: "new",
+            projectId: null,
+            projectOther: "  ",
+            sortOrder: 1,
+          } as const;
+          const seeded = yield* seedDraft(
+            storedDraft({
+              items: [
+                { ...item, content: " \n", projectId: 7, projectOther: null, sortOrder: 0 },
+                item,
+              ],
+            }),
+          );
+          yield* assistant.submitDailyReport({
+            reportDate: "2026-11-05",
+            revision: seeded.revision,
+          });
+          assert.deepEqual(harness.submitted, [
+            {
+              date: "2026-11-05",
+              items: [
+                { section: "today", content: "Plan the sprint", status: "new", sort_order: 0 },
+              ],
+            },
+          ]);
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    { erp: "has no submitted report", fails: false, status: "ready" },
+    { erp: "cannot be read", fails: true, status: "submitted" },
+  ])(
+    "getDailyReport should leave the cached submitted draft $status when ERP $erp",
+    ({ fails, status }) =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
+        if (fails) harness.erpState.todayFailure = new AssistantError({ reason: "unavailable" });
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          yield* seedDraft(
+            storedDraft({ status: "submitted", submittedAt: "2026-11-05T18:00:00+08:00" }),
+          );
+          yield* assistant.getDailyReport().pipe(Effect.ignore);
+          const draft = yield* readStoredDraft("2026-11-05");
+          assert.equal(draft?.status, status);
+          assert.equal(draft?.submittedAt === undefined, !fails);
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
   );
 });

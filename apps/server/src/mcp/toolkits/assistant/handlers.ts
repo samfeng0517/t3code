@@ -29,6 +29,12 @@ const toFailure = (error: AssistantService.AssistantAgentDraftError) => {
         code: "invalid_request",
         message: "Today's daily report was already submitted. Tell the user to edit it in ERP.",
       });
+    case "stale":
+      return new OrchestratorMcpFailure({
+        code: "invalid_request",
+        message:
+          "The user changed the draft on the card after you last read it, so nothing was saved. Call assistant_get_daily_report_draft again, then propose your revision on top of the current draft.",
+      });
     case "unavailable":
       return new OrchestratorMcpFailure({
         code: "orchestration_error",

@@ -42,7 +42,7 @@ it.layer(NodeServices.layer)("AssistantDraftStore", (it) => {
     () =>
       Effect.gen(function* () {
         const store = yield* AssistantDraftStore.AssistantDraftStore;
-        assert.deepEqual(yield* store.read(), { version: 1, workday: null, drafts: {} });
+        assert.deepEqual(yield* store.read(), { version: 1, drafts: {} });
       }).pipe(Effect.provide(layerTest())),
   );
 
@@ -51,7 +51,7 @@ it.layer(NodeServices.layer)("AssistantDraftStore", (it) => {
       const store = yield* AssistantDraftStore.AssistantDraftStore;
       yield* store.update((file) => [
         undefined,
-        { ...file, workday: "2026-11-05", drafts: { "2026-11-05": draft("2026-11-05") } },
+        { ...file, drafts: { "2026-11-05": draft("2026-11-05") } },
       ]);
       const first = (yield* store.read()).drafts["2026-11-05"];
       assert.equal(first?.revision, 1);
@@ -108,7 +108,7 @@ it.layer(NodeServices.layer)("AssistantDraftStore", (it) => {
         yield* fs.makeDirectory(path.dirname(filePath), { recursive: true });
         yield* fs.writeFileString(filePath, "{ not json");
         const store = yield* AssistantDraftStore.AssistantDraftStore;
-        assert.deepEqual(yield* store.read(), { version: 1, workday: null, drafts: {} });
+        assert.deepEqual(yield* store.read(), { version: 1, drafts: {} });
         assert.isFalse(yield* fs.exists(filePath));
         const aside = (yield* fs.readDirectory(path.dirname(filePath))).filter((name) =>
           name.startsWith("assistant-drafts.json.corrupt-"),
