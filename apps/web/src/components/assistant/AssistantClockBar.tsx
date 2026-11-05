@@ -1,4 +1,4 @@
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -27,6 +27,7 @@ import { Spinner } from "../ui/spinner";
 import { toastManager } from "../ui/toast";
 import {
   dailyChip,
+  draftRejectionMessageKey,
   formatClockTime,
   formatDuration,
   remainingHours,
@@ -94,6 +95,11 @@ function toastCommandFailure(result: AtomCommandResult<unknown, unknown>, t: Tra
       type: "error",
       title: error.erpMessage ?? t("assistantPage.error.unavailable"),
     });
+    return error;
+  }
+  const rejection = isAssistantError(error) ? draftRejectionMessageKey(error.reason) : null;
+  if (rejection !== null) {
+    toastManager.add({ type: "error", title: t(rejection) });
     return error;
   }
   const { message, detail } = describeAssistantFailure(error, t);
@@ -249,6 +255,9 @@ function DraftRetryButton(props: {
   const regenerate = useAtomCommand(assistantEnvironment.regenerateDraft, {
     reportFailure: false,
   });
+  const reloadState = useAtomRefresh(
+    assistantEnvironment.state({ environmentId: props.environmentId, input: {} }),
+  );
   const inFlight = useRef(false);
   const [pending, setPending] = useState(false);
   const retry = async () => {
@@ -261,7 +270,8 @@ function DraftRetryButton(props: {
     });
     inFlight.current = false;
     setPending(false);
-    toastCommandFailure(result, t);
+    const error = toastCommandFailure(result, t);
+    if (isAssistantError(error) && error.reason === "stale-revision") reloadState();
   };
   return (
     <Button

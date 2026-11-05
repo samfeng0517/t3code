@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
 import { setLanguagePreference } from "~/i18n/languagePreferenceStore";
-import { render } from "../../../test/render";
+import { act, fakeTimers, render } from "../../../test/render";
 
 const { state, commands, clockIn, clockOut, regenerateDraft } = vi.hoisted(() => ({
   state: { canOperate: true },
@@ -128,7 +128,7 @@ describe("AssistantClockBar", () => {
     });
   });
 
-  it("AssistantClockBar should disable the button and ignore clicks while clockIn is pending", async () => {
+  it("AssistantClockBar should send one clockIn request and disable the button when 打卡 is clicked twice before a re-render", async () => {
     setup();
     using _locale = zhTW();
     let resolve: (result: AsyncResult.AsyncResult<AssistantClockStatus>) => void = () => {};
@@ -136,14 +136,35 @@ describe("AssistantClockBar", () => {
     await using screen = await render(bar({ data: idleStatus, failure: null }));
     // The spinner joins the button's name while pending.
     const button = screen.getByRole("button", { name: /打卡$/ });
+    const element = button.element() as HTMLButtonElement;
 
-    await userEvent.click(button);
-    await expect.element(button).toBeDisabled();
-    (button.element() as HTMLButtonElement).click();
+    // One act batch: the second click lands before React re-renders, so only the ref can stop it.
+    await act(() => {
+      element.click();
+      element.click();
+    });
 
     expect(clockIn).toHaveBeenCalledOnce();
+    await expect.element(button).toBeDisabled();
     resolve(AsyncResult.success(workingStatus));
     await expect.element(screen.getByRole("button", { name: "停卡", exact: true })).toBeEnabled();
+  });
+
+  it("AssistantClockBar should restore 停卡 when the confirmation is not clicked within 3 seconds", async () => {
+    setup();
+    using _locale = zhTW();
+    await using screen = await render(bar({ data: workingStatus, failure: null }));
+    using _timers = fakeTimers();
+    const button = screen.getByRole("button", { name: /停卡/ }).element() as HTMLButtonElement;
+
+    await act(() => button.click());
+    expect(button.textContent).toBe("確定停卡？");
+
+    await act(() => vi.advanceTimersByTime(2_999));
+    expect(button.textContent).toBe("確定停卡？");
+    await act(() => vi.advanceTimersByTime(1));
+    expect(button.textContent).toBe("停卡");
+    expect(clockOut).not.toHaveBeenCalled();
   });
 
   it("AssistantClockBar should show 前往設定 when the status error is not-configured", async () => {

@@ -7,6 +7,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   dailyChip,
+  draftRejectionMessageKey,
   formatDuration,
   msUntilNextMinute,
   remainingHours,
@@ -123,8 +124,27 @@ describe("sidebarTimer", () => {
 });
 
 describe("msUntilNextMinute", () => {
-  it("msUntilNextMinute should return the time left to the next minute boundary", () => {
+  it("msUntilNextMinute should return the time left to the next minute boundary when called mid-minute or on a boundary", () => {
     expect(msUntilNextMinute(Date.parse("2026-11-05T05:05:20.000Z"))).toBe(40_000);
     expect(msUntilNextMinute(Date.parse("2026-11-05T05:05:00.000Z"))).toBe(60_000);
   });
+});
+
+describe("draftRejectionMessageKey", () => {
+  it.each([
+    ["busy", "assistantPage.draftRejected.busy"],
+    ["stale-revision", "assistantPage.draftRejected.staleRevision"],
+    ["submitted", "assistantPage.draftRejected.submitted"],
+    ["not-editable", "assistantPage.draftRejected.notEditable"],
+    ["no-draft", "assistantPage.draftRejected.noDraft"],
+    ["thread-unavailable", "assistantPage.draftRejected.threadUnavailable"],
+    ["unavailable", null],
+    ["unauthorized", null],
+    ["rejected", null],
+  ] as const)(
+    "draftRejectionMessageKey should return the matching copy when the reason is %s",
+    (reason, key) => {
+      expect(draftRejectionMessageKey(reason)).toBe(key);
+    },
+  );
 });

@@ -2,7 +2,10 @@ import type {
   AssistantClockStatus,
   AssistantDailyReportStatus,
   AssistantDraft,
+  AssistantErrorReason,
 } from "@t3tools/contracts";
+
+import type { MessageKey } from "~/i18n";
 
 const HOUR_MS = 3_600_000;
 const MINUTE_MS = 60_000;
@@ -60,4 +63,24 @@ export function sidebarTimer(
 
 export function msUntilNextMinute(nowMs: number): number {
   return MINUTE_MS - (nowMs % MINUTE_MS);
+}
+
+/** Copy for a draft action (retry, save, submit) the server turned down; null for an ERP failure. */
+export function draftRejectionMessageKey(reason: AssistantErrorReason): MessageKey | null {
+  switch (reason) {
+    case "busy":
+      return "assistantPage.draftRejected.busy";
+    case "stale-revision":
+      return "assistantPage.draftRejected.staleRevision";
+    case "submitted":
+      return "assistantPage.draftRejected.submitted";
+    case "not-editable":
+      return "assistantPage.draftRejected.notEditable";
+    case "no-draft":
+      return "assistantPage.draftRejected.noDraft";
+    case "thread-unavailable":
+      return "assistantPage.draftRejected.threadUnavailable";
+    default:
+      return null;
+  }
 }
