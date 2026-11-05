@@ -2,7 +2,12 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/model
 import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { activeRootThreads, projectInRepoChecker, threadsUsingBranch } from "./gitActionGuards";
+import {
+  activeRootThreads,
+  projectInRepoChecker,
+  threadsUsingBranch,
+  worktreeHoldingThread,
+} from "./gitActionGuards";
 
 const environmentId = EnvironmentId.make("env-1");
 const repoProject = ProjectId.make("project-repo");
@@ -21,6 +26,8 @@ function thread(overrides: {
   readonly branch?: string | null;
   readonly worktreePath?: string | null;
   readonly running?: boolean;
+  readonly rootId?: string;
+  readonly settled?: boolean;
 }): EnvironmentThreadShell {
   return {
     environmentId,
@@ -29,6 +36,8 @@ function thread(overrides: {
     title: overrides.id,
     branch: overrides.branch ?? null,
     worktreePath: overrides.worktreePath ?? null,
+    lineage: { rootThreadId: ThreadId.make(overrides.rootId ?? overrides.id) },
+    settledOverride: overrides.settled ? "settled" : null,
     runtime: overrides.running
       ? {
           status: "running",
@@ -234,5 +243,52 @@ describe("projectInRepoChecker", () => {
       showToplevel: async () => null,
     });
     expect(await check(repoProject)).toBe(true);
+  });
+});
+
+describe("worktreeHoldingThread", () => {
+  const holder = (
+    threadIds: ReadonlyArray<string>,
+    shells: ReadonlyArray<EnvironmentThreadShell>,
+    families: Record<string, ReadonlyArray<EnvironmentThreadShell> | null> = {},
+  ) =>
+    worktreeHoldingThread({
+      threadIds: threadIds.map((id) => ThreadId.make(id)),
+      shellOf: (threadId) => shells.find((shell) => shell.id === threadId) ?? null,
+      familyOf: async (threadId) => families[threadId] ?? null,
+    });
+
+  it("worktreeHoldingThread should return null when every thread on the worktree is settled or gone", async () => {
+    const result = await holder(
+      ["settled", "older-settled", "gone"],
+      [thread({ id: "settled", settled: true })],
+      {
+        "older-settled": [thread({ id: "older-settled", settled: true })],
+        gone: [],
+      },
+    );
+    expect(result).toBeNull();
+  });
+
+  it("worktreeHoldingThread should return the thread when it is unsettled or still running", async () => {
+    expect(await holder(["open"], [thread({ id: "open" })])).toMatchObject({ title: "open" });
+    expect(
+      await holder(["busy"], [thread({ id: "busy", settled: true, running: true })]),
+    ).toMatchObject({ title: "busy" });
+  });
+
+  it("worktreeHoldingThread should follow a subagent child to its root when deciding whether it is settled", async () => {
+    const child = thread({ id: "child", rootId: "root" });
+    expect(await holder(["child"], [], { child: [child] })).toBeNull();
+    expect(await holder(["child"], [thread({ id: "root" })], { child: [child] })).toMatchObject({
+      title: "child",
+    });
+    expect(
+      await holder(["child"], [], { child: [child, thread({ id: "root", settled: true })] }),
+    ).toBeNull();
+  });
+
+  it("worktreeHoldingThread should return unknown when an omitted thread's family read fails", async () => {
+    expect(await holder(["omitted"], [], { omitted: null })).toBe("unknown");
   });
 });
