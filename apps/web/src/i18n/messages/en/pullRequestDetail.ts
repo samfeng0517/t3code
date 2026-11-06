@@ -312,6 +312,32 @@ export const pullRequestDetailEn = {
     "This repository has more people with access than are listed here. Ask for the rest on the host.",
   "pullRequestDetail.reviewers.team": "team",
   "pullRequestDetail.reviewers.alreadyAsked": "Already asked",
+  "pullRequestDetail.assignees.label": "Assign",
+  "pullRequestDetail.assignees.assigned": "Assigned to {login}",
+  "pullRequestDetail.assignees.unassigned": "Unassigned {login}",
+  "pullRequestDetail.assignees.replaced": "Changed the assignee from {from} to {to}",
+  "pullRequestDetail.assignees.assignFailed": "Could not assign {login}",
+  "pullRequestDetail.assignees.unassignFailed": "Could not unassign {login}",
+  "pullRequestDetail.assignees.refusedHint":
+    "The host refused it. Check that you have write access on this repository, and that they still have access to it.",
+  "pullRequestDetail.assignees.disabledReason":
+    "Assigning someone needs write access on this repository",
+  "pullRequestDetail.assignees.connectionDisabledReason":
+    "This connection cannot change assignees.",
+  "pullRequestDetail.assignees.search": "Search people with access",
+  "pullRequestDetail.assignees.empty": "Nobody has access to this repository.",
+  "pullRequestDetail.assignees.noMatch": "Nobody with access matches that.",
+  "pullRequestDetail.assignees.error": "The people with access could not be read.",
+  "pullRequestDetail.assignees.truncated":
+    "This repository has more people with access than are listed here. Assign the rest on the host.",
+  "pullRequestDetail.assignees.alreadyAssigned": "Assigned",
+  "pullRequestDetail.assignees.singleHint":
+    "GitLab takes one assignee. Picking someone replaces {login}.",
+  "pullRequestDetail.assignees.singleHintEmpty": "GitLab takes one assignee.",
+  "pullRequestDetail.assignees.headerTooltip": "Assignee: {assignees} / Author: {author}",
+  "pullRequestDetail.assignees.headerSrLabel": "Assignee: {login}",
+  "pullRequestDetail.assignees.listSeparator": ", ",
+  "pullRequestDetail.assignees.more": "+{count}",
   "pullRequestDetail.labels.removeFailed": "Could not take {name} off",
   "pullRequestDetail.labels.applyFailed": "Could not put {name} on",
   "pullRequestDetail.labels.refusedHint":

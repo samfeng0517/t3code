@@ -36,6 +36,8 @@ export function PullRequestCandidatePicker<T>({
   onSelect,
   anchor,
   triggerDisabled = false,
+  closeOnSelect = false,
+  notice,
   children,
 }: {
   icon: ReactNode;
@@ -60,6 +62,8 @@ export function PullRequestCandidatePicker<T>({
   onSelect: (candidate: T) => void;
   anchor?: RefObject<HTMLElement | null>;
   triggerDisabled?: boolean;
+  closeOnSelect?: boolean;
+  notice?: ReactNode;
   children: (candidate: T) => ReactNode;
 }) {
   if (!allowed) {
@@ -93,7 +97,7 @@ export function PullRequestCandidatePicker<T>({
       open={open}
       onOpenChange={(nextOpen, details) => {
         // Item-press closure steals search focus and the next keystroke.
-        if (!nextOpen && details.reason === "item-press") {
+        if (!nextOpen && details.reason === "item-press" && !closeOnSelect) {
           details.cancel();
           return;
         }
@@ -115,6 +119,7 @@ export function PullRequestCandidatePicker<T>({
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
         />
+        {notice ? <p className="p-2 text-xs text-muted-foreground">{notice}</p> : null}
         <ComboboxList className="max-h-72">
           {isPending ? (
             <PullRequestPeopleGhost rows={4} />

@@ -55,6 +55,8 @@ import {
   writePullRequestDetailSnapshot,
   readableFailure,
   pullRequestLabelDraftChanges,
+  pullRequestAssigneeToast,
+  pullRequestHeaderPerson,
 } from "./pullRequestDetail.logic";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 
@@ -1541,4 +1543,64 @@ describe("pullRequestLabelDraftChanges", () => {
       { name: "unlisted", color: null },
     ]);
   });
+});
+
+describe("pull request assignees", () => {
+  const person = (login: string) => ({ login, name: null, avatarUrl: null });
+
+  it.each([
+    { label: "missing field", detail: { author: person("ada") } },
+    { label: "empty", detail: { author: person("ada"), assignees: [] } },
+    { label: "same login", detail: { author: person("ada"), assignees: [person("ADA")] } },
+  ])(
+    "pullRequestHeaderPerson should return the author when there is no assignee or the first assignee is the author ($label)",
+    ({ detail }) => {
+      expect(pullRequestHeaderPerson(detail)).toEqual({ kind: "author", actor: person("ada") });
+    },
+  );
+
+  it("pullRequestHeaderPerson should return the first assignee and the rest when the first assignee is not the author", () => {
+    expect(
+      pullRequestHeaderPerson({
+        author: person("release-bot"),
+        assignees: [person("ada"), person("grace"), person("linus")],
+      }),
+    ).toEqual({
+      kind: "assignee",
+      actor: person("ada"),
+      others: [person("grace"), person("linus")],
+      author: person("release-bot"),
+    });
+  });
+
+  it("pullRequestAssigneeToast should report a replacement when GitLab swapped the previous assignee", () => {
+    expect(
+      pullRequestAssigneeToast({
+        before: [person("ada")],
+        login: "grace",
+        assigned: true,
+        after: [person("grace")],
+      }),
+    ).toEqual({ type: "success", key: "replaced", from: "ada" });
+    expect(
+      pullRequestAssigneeToast({
+        before: [person("ada")],
+        login: "grace",
+        assigned: true,
+        after: [person("ada"), person("grace")],
+      }),
+    ).toEqual({ type: "success", key: "assigned" });
+  });
+
+  it.each([
+    { assigned: true, after: [person("ada")], key: "assignFailed" },
+    { assigned: false, after: [person("ada"), person("grace")], key: "unassignFailed" },
+  ])(
+    "pullRequestAssigneeToast should report a failure when the host's list leaves out the requested login ($key)",
+    ({ assigned, after, key }) => {
+      expect(
+        pullRequestAssigneeToast({ before: [person("ada")], login: "grace", assigned, after }),
+      ).toEqual({ type: "error", key });
+    },
+  );
 });

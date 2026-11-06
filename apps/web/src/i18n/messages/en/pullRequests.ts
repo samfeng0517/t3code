@@ -107,6 +107,7 @@ export const pullRequestsEn = {
   "pullRequests.ghost.branchCopied": "Branch name copied",
   "pullRequests.ghost.fileCount": "{count} file",
   "pullRequests.ghost.filesCount": "{count} files",
+  "pullRequests.ghost.assignees": "Assignees",
   "pullRequests.ghost.reviewers": "Reviewers",
   "pullRequests.ghost.reviewersLoading": "Reviewers loading",
   "pullRequests.ghost.labels": "Labels",

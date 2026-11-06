@@ -30,6 +30,9 @@ import { InlineButton } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { PullRequestReviewOutcome } from "@t3tools/client-runtime/pull-request-reviews";
 import { pullRequestLabelColor } from "./pullRequestList.logic";
+import type { pullRequestHeaderPerson } from "./pullRequestDetail.logic";
+
+type PullRequestHeaderPersonView = ReturnType<typeof pullRequestHeaderPerson>;
 import {
   PULL_REQUEST_STATE_PRESENTATION,
   PullRequestGlyph,
@@ -480,27 +483,107 @@ export function PullRequestActorAvatar({
   );
 }
 
+export function pullRequestActorName(actor: PullRequestActor | null): string {
+  const login = actor?.login ?? "ghost";
+  return actor?.name && actor.name !== login ? `${actor.name} (@${login})` : login;
+}
+
+export function PullRequestHeaderPerson({
+  person,
+  profileUrl,
+  variant = "label",
+  className,
+}: {
+  person: PullRequestHeaderPersonView;
+  profileUrl: string | null;
+  variant?: "label" | "avatar";
+  className?: string;
+}) {
+  const t = useT();
+  if (person.kind === "author") {
+    return (
+      <PullRequestActorLabel
+        actor={person.actor}
+        profileUrl={profileUrl}
+        variant={variant}
+        {...(className ? { className } : {})}
+      />
+    );
+  }
+  const assignees = [person.actor, ...person.others]
+    .map(pullRequestActorName)
+    .join(t("pullRequestDetail.assignees.listSeparator"));
+  const more =
+    person.others.length > 0
+      ? t("pullRequestDetail.assignees.more", { count: person.others.length })
+      : null;
+  return (
+    <PullRequestActorLabel
+      actor={person.actor}
+      profileUrl={profileUrl}
+      variant={variant}
+      {...(className ? { className } : {})}
+      leading={
+        <UserCheckIcon
+          aria-label={t("pullRequestDetail.assignees.alreadyAssigned")}
+          className="size-3.5 shrink-0 self-center"
+        />
+      }
+      trailing={
+        more === null ? null : (
+          <span
+            className={
+              variant === "label"
+                ? "shrink-0 font-medium text-foreground"
+                : "shrink-0 text-2xs text-muted-foreground"
+            }
+          >
+            {more}
+          </span>
+        )
+      }
+      tooltipText={t("pullRequestDetail.assignees.headerTooltip", {
+        assignees,
+        author: pullRequestActorName(person.author),
+      })}
+      srText={t("pullRequestDetail.assignees.headerSrLabel", { login: person.actor.login })}
+    />
+  );
+}
+
 export function PullRequestActorLabel({
   actor,
   className,
   variant = "label",
   tooltip = true,
   profileUrl,
+  leading,
+  trailing,
+  tooltipText,
+  srText,
 }: {
   actor: PullRequestActor | null;
   className?: string;
   variant?: "label" | "avatar";
   tooltip?: boolean;
   profileUrl?: string | null;
+  leading?: ReactNode;
+  trailing?: ReactNode;
+  tooltipText?: string;
+  srText?: string;
 }) {
   const t = useT();
   const login = actor?.login ?? "ghost";
   const label = (
-    <span className={cn("flex min-w-0 items-baseline", variant === "label" && "gap-1.5")}>
+    <span
+      className={cn("flex min-w-0 items-baseline", (variant === "label" || leading) && "gap-1.5")}
+    >
+      {leading}
       <PullRequestActorAvatar actor={actor} className="self-center" />
       <span className={variant === "label" ? "truncate font-medium text-foreground" : "sr-only"}>
-        {login}
+        {variant === "label" ? login : (srText ?? login)}
       </span>
+      {trailing}
     </span>
   );
   const placement = cn("flex min-w-0 shrink", className);
@@ -529,7 +612,7 @@ export function PullRequestActorLabel({
         {label}
       </TooltipTrigger>
       <TooltipPopup side="top">
-        {actor?.name && actor.name !== login ? `${actor.name} (@${login})` : login}
+        {tooltipText ?? pullRequestActorName(actor)}
         {profileUrl ? t("pullRequests.actor.openProfileSuffix") : ""}
       </TooltipPopup>
     </Tooltip>

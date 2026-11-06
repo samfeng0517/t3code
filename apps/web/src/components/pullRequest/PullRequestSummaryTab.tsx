@@ -23,6 +23,7 @@ import {
   HammerIcon,
   ListFilterIcon,
   TagIcon,
+  UserCheckIcon,
   UsersIcon,
 } from "lucide-react";
 import * as Schema from "effect/Schema";
@@ -52,6 +53,7 @@ import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   PullRequestActorLabel,
+  pullRequestActorName,
   PullRequestCheckStatusIcon,
   pullRequestCheckStatusLabel,
   PullRequestReviewOutcomeBadge,
@@ -62,6 +64,7 @@ import {
 } from "./pullRequestPresentation";
 import { PullRequestLabelPicker } from "./PullRequestLabelPicker";
 import { PullRequestReviewerPicker } from "./PullRequestReviewerPicker";
+import { PullRequestAssigneePicker } from "./PullRequestAssigneePicker";
 import { PullRequestActivityUnavailableState } from "./PullRequestActivityUnavailableState";
 import {
   filterPullRequestConversationItems,
@@ -902,6 +905,44 @@ export function PullRequestSummaryTab({
     <div ref={scrollerRef} className="h-full overflow-y-auto" data-pull-request-summary-scroll>
       <section className="px-4 pt-2.5 pb-1">
         <div className="space-y-2">
+          {detail.capabilities.assignees !== undefined ? (
+            <MetaRow
+              icon={<UserCheckIcon className="size-3.5" />}
+              label={t("pullRequests.ghost.assignees")}
+            >
+              <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                {(detail.assignees ?? []).length === 0 ? (
+                  <span className="text-muted-foreground">{t("pullRequests.ghost.none")}</span>
+                ) : (
+                  <span className="flex items-center -space-x-1">
+                    {(detail.assignees ?? []).map((assignee) => (
+                      <Tooltip key={assignee.login}>
+                        <TooltipTrigger
+                          render={<span className="relative rounded-full hover:z-10" />}
+                        >
+                          <PullRequestActorLabel
+                            actor={assignee}
+                            tooltip={false}
+                            variant="avatar"
+                          />
+                        </TooltipTrigger>
+                        <TooltipPopup side="bottom">{pullRequestActorName(assignee)}</TooltipPopup>
+                      </Tooltip>
+                    ))}
+                  </span>
+                )}
+                {detail.capabilities.assignees.set ? (
+                  <PullRequestAssigneePicker
+                    environmentId={environmentId}
+                    reference={reference}
+                    assignees={detail.assignees ?? []}
+                    multiple={detail.capabilities.assignees.multiple}
+                    viewerAllowed={detail.viewerPermissions.assignees !== false}
+                  />
+                ) : null}
+              </span>
+            </MetaRow>
+          ) : null}
           <MetaRow
             icon={<UsersIcon className="size-3.5" />}
             label={t("pullRequests.ghost.reviewers")}

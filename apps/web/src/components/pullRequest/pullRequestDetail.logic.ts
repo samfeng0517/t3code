@@ -1410,3 +1410,52 @@ export function resolveDisplayedPullRequestDetail(input: {
     ? input.cached
     : null;
 }
+
+const sameLogin = (left: string, right: string) => left.toLowerCase() === right.toLowerCase();
+
+export function pullRequestHeaderPerson(detail: {
+  author: PullRequestActor | null;
+  assignees?: ReadonlyArray<PullRequestActor> | undefined;
+}):
+  | { kind: "author"; actor: PullRequestActor | null }
+  | {
+      kind: "assignee";
+      actor: PullRequestActor;
+      others: ReadonlyArray<PullRequestActor>;
+      author: PullRequestActor | null;
+    } {
+  const [first, ...others] = detail.assignees ?? [];
+  if (first === undefined || (detail.author && sameLogin(first.login, detail.author.login))) {
+    return { kind: "author", actor: detail.author };
+  }
+  return { kind: "assignee", actor: first, others, author: detail.author };
+}
+
+export function pullRequestAssigneeToast(input: {
+  before: ReadonlyArray<PullRequestActor>;
+  login: string;
+  assigned: boolean;
+  after: ReadonlyArray<PullRequestActor>;
+}):
+  | { type: "success"; key: "assigned" | "unassigned" }
+  | { type: "success"; key: "replaced"; from: string }
+  | { type: "error"; key: "assignFailed" | "unassignFailed" } {
+  const present = (list: ReadonlyArray<PullRequestActor>, login: string) =>
+    list.some((actor) => sameLogin(actor.login, login));
+  const isPresent = present(input.after, input.login);
+  if (!input.assigned) {
+    return isPresent
+      ? { type: "error", key: "unassignFailed" }
+      : { type: "success", key: "unassigned" };
+  }
+  if (!isPresent) return { type: "error", key: "assignFailed" };
+  const previous = input.before[0];
+  if (
+    previous !== undefined &&
+    !sameLogin(previous.login, input.login) &&
+    !present(input.after, previous.login)
+  ) {
+    return { type: "success", key: "replaced", from: previous.login };
+  }
+  return { type: "success", key: "assigned" };
+}

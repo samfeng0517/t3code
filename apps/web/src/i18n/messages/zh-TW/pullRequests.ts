@@ -106,6 +106,7 @@ export const pullRequestsZhTW: Readonly<Record<keyof typeof pullRequestsEn, stri
   "pullRequests.ghost.branchCopied": "已複製 branch 名稱",
   "pullRequests.ghost.fileCount": "{count} 個檔案",
   "pullRequests.ghost.filesCount": "{count} 個檔案",
+  "pullRequests.ghost.assignees": "負責人",
   "pullRequests.ghost.reviewers": "審查者",
   "pullRequests.ghost.reviewersLoading": "正在載入審查者",
   "pullRequests.ghost.labels": "標籤",

@@ -125,7 +125,7 @@ Projects cloned from that server over HTTPS or SSH, such as
 contain "gitlab", and merge request links to it open in T3 Code. Merge requests then work as they
 do on gitlab.com: listing and reviewing, creating them from Git actions, merging with a merge
 commit, squash, or rebase as the project allows, auto-merge, draft and ready, approving and
-revoking your approval, labels, reviewers, comments, replies, resolving threads, pipeline jobs
+revoking your approval, labels, reviewers, assignees (one per merge request), comments, replies, resolving threads, pipeline jobs
 as checks, and deleting the source branch once a merge request is merged or closed.
 
 Reverting a merge request, approving workflows, stacks, and requesting changes in a review are
@@ -232,7 +232,7 @@ uses the project's instructions and recent commit subjects.
 
 ## Review and merge
 
-Open **Pull requests** to review changes and comments, request reviewers, check out a branch,
+Open **Pull requests** to review changes and comments, request reviewers, set assignees, check out a branch,
 or merge. You can edit review titles and descriptions and your own comments where the host allows it.
 Where you can edit a description, you can also tick its checkboxes from the Summary tab
 (the Overview tab on mobile).

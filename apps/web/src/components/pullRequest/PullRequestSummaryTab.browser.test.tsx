@@ -3,14 +3,23 @@ import { EnvironmentId, ProjectId, type PullRequestDetailView } from "@t3tools/c
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
-const state = vi.hoisted(() => ({ update: vi.fn(), setLabels: vi.fn(), canUpdate: true }));
+const state = vi.hoisted(() => ({
+  update: vi.fn(),
+  setLabels: vi.fn(),
+  setAssignees: vi.fn(),
+  canUpdate: true,
+}));
 
 vi.mock(import("~/state/use-atom-command"), async (original) => {
   const { pullRequestEnvironment } = await import("~/state/pullRequests");
   return {
     ...(await original()),
     useAtomCommand: ((command: unknown) =>
-      command === pullRequestEnvironment.setLabels ? state.setLabels : state.update) as never,
+      command === pullRequestEnvironment.setLabels
+        ? state.setLabels
+        : command === pullRequestEnvironment.setAssignees
+          ? state.setAssignees
+          : state.update) as never,
   };
 });
 vi.mock(import("~/state/session"), async (original) => ({
@@ -32,11 +41,25 @@ vi.mock(import("~/state/pullRequests"), async (original) => {
       truncated: false,
     }),
   );
+  const assigneeCandidates = Atom.make(
+    AsyncResult.success({
+      candidates: [
+        { login: "ada", name: null, avatarUrl: null, isAssigned: true },
+        { login: "grace", name: null, avatarUrl: null, isAssigned: false },
+      ],
+      truncated: false,
+    }),
+  );
   return {
     ...actual,
     pullRequestEnvironment: {
       ...actual.pullRequestEnvironment,
       labelCandidates: (() => candidates) as never,
+      assigneeCandidates: (() => assigneeCandidates) as never,
+      setAssignees: {
+        ...actual.pullRequestEnvironment.setAssignees,
+        permissionAtom: () => allowed,
+      },
       update: {
         ...actual.pullRequestEnvironment.update,
         permissionAtom: () => (state.canUpdate ? allowed : denied),
@@ -258,4 +281,31 @@ it("label menu should send one add and one remove batch on close when labels wer
       },
     ],
   ]);
+});
+
+it("assignee picker should close and send one assignment when a candidate is picked on a single-assignee host", async () => {
+  setup();
+  state.setAssignees.mockReset();
+  state.setAssignees.mockResolvedValue({
+    _tag: "Success",
+    value: { assignees: [{ login: "grace", name: null, avatarUrl: null }] },
+  });
+  const value: PullRequestDetailView = {
+    ...detail,
+    assignees: [{ login: "ada", name: null, avatarUrl: null }],
+    capabilities: { ...detail.capabilities, assignees: { set: true, multiple: false } },
+    viewerPermissions: { ...detail.viewerPermissions, assignees: true },
+  };
+  await using screen = await render(value);
+  await screen.getByLabelText("Assign").click();
+  await expect
+    .element(page.getByText("GitLab takes one assignee. Picking someone replaces ada."))
+    .toBeVisible();
+  await page.getByRole("option", { name: /grace/ }).click();
+  await expect.element(page.getByRole("option", { name: /grace/ })).not.toBeInTheDocument();
+  expect(state.setAssignees).toHaveBeenCalledTimes(1);
+  expect(state.setAssignees).toHaveBeenCalledWith({
+    environmentId: "environment",
+    input: expect.objectContaining({ number: 1, logins: ["grace"], assigned: true }),
+  });
 });

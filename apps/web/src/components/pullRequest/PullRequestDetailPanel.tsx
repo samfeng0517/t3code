@@ -145,12 +145,13 @@ import {
   type PullRequestFinding,
   shouldRefreshPullRequestActivity,
   stripPullRequestHandoffReferences,
+  pullRequestHeaderPerson,
 } from "./pullRequestDetail.logic";
 import { pullRequestApprovalCount } from "@t3tools/client-runtime/pull-request-reviews";
 import { resolvePickableEnvironments } from "./pullRequestProjectAssignment.logic";
 import { PullRequestChecksPopover } from "./PullRequestChecksPopover";
 import {
-  PullRequestActorLabel,
+  PullRequestHeaderPerson,
   PullRequestMetaLine,
   PullRequestReviewOutcomeIcon,
   pullRequestChecksState,
@@ -486,9 +487,10 @@ export function PullRequestDetailPanel({
   const hostClient = sourceControlClients.get(detail?.provider);
   const openOnHostText = openOnHostLabel(hostClient, t);
   const markdownContext = pullRequestMarkdownContext(detail, threadRef);
-  const authorProfileUrl =
-    detail?.author && repositoryUrl !== null
-      ? hostClient.authorProfileUrl(detail.author.login, repositoryUrl)
+  const headerPerson = detail ? pullRequestHeaderPerson(detail) : null;
+  const headerPersonProfileUrl =
+    headerPerson?.actor && repositoryUrl !== null
+      ? hostClient.authorProfileUrl(headerPerson.actor.login, repositoryUrl)
       : null;
   const checkoutCommand = handoffSummary
     ? pullRequestCheckoutCommand(
@@ -1421,9 +1423,9 @@ export function PullRequestDetailPanel({
               <div className="col-span-2 min-w-0 px-4 pb-2 pt-1">
                 <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
                   <span className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden text-xs text-muted-foreground">
-                    <PullRequestActorLabel
-                      actor={detail.author}
-                      profileUrl={authorProfileUrl}
+                    <PullRequestHeaderPerson
+                      person={pullRequestHeaderPerson(detail)}
+                      profileUrl={headerPersonProfileUrl}
                       variant="avatar"
                       className="shrink-0"
                     />
@@ -1515,7 +1517,10 @@ export function PullRequestDetailPanel({
                   />
                 }
                 author={
-                  <PullRequestActorLabel actor={detail.author} profileUrl={authorProfileUrl} />
+                  <PullRequestHeaderPerson
+                    person={pullRequestHeaderPerson(detail)}
+                    profileUrl={headerPersonProfileUrl}
+                  />
                 }
                 updated={
                   <span>
