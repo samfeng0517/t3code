@@ -31,6 +31,8 @@ import type {
   PullRequestReviewerKind,
   PullRequestLabelCandidate,
   PullRequestLabelCandidateList,
+  PullRequestAssigneeCandidate,
+  PullRequestAssigneeCandidateList,
   PullRequestState,
   PullRequestThreadComment,
 } from "@t3tools/contracts";
@@ -52,6 +54,7 @@ import {
 import type {
   CheckContext,
   LabelCandidates,
+  AssigneeCandidates,
   PullRequestActivity,
   PullRequestCommitStats,
   PullRequestCheckContexts,
@@ -979,6 +982,7 @@ export function toPullRequestWatchFingerprint(
 
 export interface GitHubPullRequestCore extends GitHubPullRequestDetail {
   readonly maintainerCanModify: boolean;
+  readonly assignees: ReadonlyArray<PullRequestActor>;
   readonly canEditMaintainerEdits: boolean;
   readonly reviewRequestTeams: ReadonlyArray<PullRequestActor>;
   readonly viewerAccess: GitHubViewerAccess & GitHubRepositoryAccess;
@@ -1026,6 +1030,12 @@ export function toPullRequestCore(result: PullRequestCore.Result): GitHubPullReq
     }),
     headRepositoryNameWithOwner: trimmed(pr.headRepository?.nameWithOwner),
     maintainerCanModify: pr.maintainerCanModify,
+    assignees: nodesOf(pr.assignees).flatMap((node) => {
+      const login = trimmed(node.login);
+      return login === null
+        ? []
+        : [{ login, name: trimmed(node.name), avatarUrl: trimmed(node.avatarUrl) }];
+    }),
     canEditMaintainerEdits:
       pr.state === "OPEN" &&
       pr.isCrossRepository &&
@@ -1489,6 +1499,64 @@ export function buildReviewerRequest(
       reviewer.kind === "team" ? [reviewer.id] : [],
     ),
   };
+}
+
+/** Keep current assignees removable even when absent from the assignable page. */
+export function toAssigneeCandidates(
+  result: AssigneeCandidates.Result,
+): PullRequestAssigneeCandidateList | null {
+  const repository = result.repository;
+  if (repository == null) return null;
+  const assigned = new Map<string, string>();
+  for (const node of nodesOf(repository.pullRequest?.assignees)) {
+    const login = trimmed(node.login);
+    if (login !== null) assigned.set(login.toLowerCase(), login);
+  }
+  const candidates = new Map<string, PullRequestAssigneeCandidate>();
+  for (const node of nodesOf(repository.assignableUsers)) {
+    const login = trimmed(node.login);
+    if (login === null) continue;
+    candidates.set(login.toLowerCase(), {
+      login,
+      name: trimmed(node.name),
+      avatarUrl: trimmed(node.avatarUrl),
+      isAssigned: assigned.has(login.toLowerCase()),
+    });
+  }
+  const missing = [...assigned].filter(([key]) => !candidates.has(key));
+  return {
+    candidates: [
+      ...missing.map(([, login]) => ({ login, name: null, avatarUrl: null, isAssigned: true })),
+      ...candidates.values(),
+    ],
+    truncated: repository.assignableUsers.pageInfo.hasNextPage,
+  };
+}
+
+const RawIssueAssigneesSchema = Schema.Struct({
+  assignees: Schema.optional(
+    Schema.NullOr(
+      Schema.Array(
+        Schema.Struct({
+          login: Schema.String,
+          avatar_url: Schema.optional(Schema.NullOr(Schema.String)),
+        }),
+      ),
+    ),
+  ),
+});
+const decodeIssueAssignees = decodeJsonResult(RawIssueAssigneesSchema);
+
+/** The assignees an issue write answers with, which leave out anyone GitHub declined. */
+export function decodeIssueAssigneesJson(
+  raw: string,
+): Result.Result<ReadonlyArray<PullRequestActor>, DecodeFailure> {
+  return Result.map(decodeIssueAssignees(raw), (issue) =>
+    (issue.assignees ?? []).flatMap((assignee) => {
+      const login = trimmed(assignee.login);
+      return login === null ? [] : [{ login, name: null, avatarUrl: trimmed(assignee.avatar_url) }];
+    }),
+  );
 }
 
 /** Keep applied labels removable even when absent from the repository page. */

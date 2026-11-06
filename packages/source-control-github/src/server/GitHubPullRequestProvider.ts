@@ -54,6 +54,7 @@ const CAPABILITIES: PullRequestCapabilities = {
   stacks: true,
   stackActions: true,
   labels: true,
+  assignees: { set: true, multiple: true },
   // Statuses and check runs land on the head commit itself and are read whole, so an empty list
   // after a push is CI that never started rather than a read that saw nothing.
   checksAlwaysReport: true,
@@ -100,6 +101,8 @@ export function gitHubViewerPermissions(
     requestReviewers: access.canWrite,
     ...(access.canUpdateBranch === true ? { updateMethods: CAPABILITIES.updateMethods } : {}),
     labels: access.canTriage,
+    // GitHub drops an assignment from anyone without push access instead of refusing it.
+    assignees: access.canWrite,
   };
 }
 
@@ -666,6 +669,21 @@ export const make = Effect.gen(function* () {
           applied: input.applied,
         })
         .pipe(Effect.mapError(fail("setLabels"))),
+
+    listAssigneeCandidates: (input) =>
+      cli.listAssigneeCandidates(input).pipe(Effect.mapError(fail("listAssigneeCandidates"))),
+
+    setAssignees: (input) =>
+      cli
+        .setAssignees({
+          cwd: input.cwd,
+          repository: input.repository,
+          host: input.host,
+          number: input.number,
+          logins: input.logins,
+          assigned: input.assigned,
+        })
+        .pipe(Effect.mapError(fail("setAssignees"))),
 
     runAction: (input) =>
       cli

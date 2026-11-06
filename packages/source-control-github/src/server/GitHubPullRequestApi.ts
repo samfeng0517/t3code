@@ -40,6 +40,7 @@ import {
   type PullRequestReviewerKind,
   type PullRequestLabel,
   type PullRequestLabelCandidateList,
+  type PullRequestAssigneeCandidateList,
   type PullRequestThreadCommentsResult,
   type PullRequestUpdateMethod,
   type PullRequestPreview,
@@ -70,6 +71,8 @@ import {
   pageRows,
   pullRequestLookup,
   toLabelCandidates,
+  toAssigneeCandidates,
+  decodeIssueAssigneesJson,
   toRepositoryAuthors,
   toRepositoryLabels,
   toPullRequestActivityPage,
@@ -617,6 +620,22 @@ export class GitHubPullRequestApi extends Context.Service<
       readonly host: string;
       readonly number: number;
     }) => Effect.Effect<PullRequestLabelCandidateList, GitHubPullRequestApiError>;
+
+    readonly listAssigneeCandidates: (input: {
+      readonly cwd: string;
+      readonly repository: string;
+      readonly host: string;
+      readonly number: number;
+    }) => Effect.Effect<PullRequestAssigneeCandidateList, GitHubPullRequestApiError>;
+
+    readonly setAssignees: (input: {
+      readonly cwd: string;
+      readonly repository: string;
+      readonly host: string;
+      readonly number: number;
+      readonly logins: ReadonlyArray<string>;
+      readonly assigned: boolean;
+    }) => Effect.Effect<ReadonlyArray<PullRequestActor>, GitHubPullRequestApiError>;
 
     readonly listRepositoryLabels: (input: {
       readonly cwd: string;
@@ -2336,6 +2355,38 @@ export const make = Effect.gen(function* () {
           graphql({ ...input, operation, allowReserve: true }),
           Effect.map(toLabelCandidates),
           Effect.flatMap(found({ ...input, operation })),
+        );
+    }),
+
+    listAssigneeCandidates: Effect.fn("GitHubPullRequestApi.listAssigneeCandidates")(
+      function (input) {
+        const { owner, name } = parseRepositorySelector(input.repository);
+        const operation = "listAssigneeCandidates";
+        return client
+          .AssigneeCandidates({ owner, name, number: input.number })
+          .pipe(
+            graphql({ ...input, operation, allowReserve: true }),
+            Effect.map(toAssigneeCandidates),
+            Effect.flatMap(found({ ...input, operation })),
+          );
+      },
+    ),
+
+    setAssignees: Effect.fn("GitHubPullRequestApi.setAssignees")(function (input) {
+      const { owner, name } = parseRepositorySelector(input.repository);
+      const operation = "setAssignees";
+      return api
+        .rest({
+          host: input.host,
+          operation,
+          method: input.assigned ? "POST" : "DELETE",
+          path: `repos/${owner}/${name}/issues/${input.number}/assignees`,
+          body: { assignees: input.logins },
+        })
+        .pipe(
+          Effect.flatMap((response) =>
+            decodeWith(input.cwd, operation, decodeIssueAssigneesJson, response.body),
+          ),
         );
     }),
 

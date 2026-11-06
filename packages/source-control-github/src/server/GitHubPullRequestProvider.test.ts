@@ -18,6 +18,7 @@ import type { GitHubReviewThreadComments } from "./gitHubPullRequestJson.ts";
 const coreFields = {
   maintainerCanModify: true,
   canEditMaintainerEdits: false,
+  assignees: [],
   reviewRequestTeams: [],
   checksTruncated: false,
   comparison: { behindBy: 0, viewerCanUpdate: true },
@@ -180,6 +181,7 @@ describe("gitHubViewerPermissions", () => {
       verdicts: ["comment", "approve", "request-changes"],
       requestReviewers: true,
       labels: true,
+      assignees: true,
     });
   });
 
@@ -199,6 +201,7 @@ describe("gitHubViewerPermissions", () => {
       verdicts: ["comment", "approve", "request-changes"],
       requestReviewers: false,
       labels: false,
+      assignees: false,
     });
   });
 
@@ -212,6 +215,7 @@ describe("gitHubViewerPermissions", () => {
     });
     expect(permissions.labels).toBe(true);
     expect(permissions.requestReviewers).toBe(false);
+    expect(permissions.assignees).toBe(false);
     expect(permissions.actions).toEqual([]);
   });
 
@@ -231,6 +235,7 @@ describe("gitHubViewerPermissions", () => {
       verdicts: ["comment"],
       requestReviewers: false,
       labels: false,
+      assignees: false,
     });
   });
 
@@ -252,6 +257,7 @@ describe("gitHubViewerPermissions", () => {
         verdicts: ["comment", "approve", "request-changes"],
         requestReviewers: false,
         labels: false,
+        assignees: false,
       });
       expect(detail.workflowApprovalsRequired).toBeUndefined();
       expect(detail.checks).toContainEqual({

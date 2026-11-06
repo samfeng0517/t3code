@@ -78,6 +78,7 @@ const coreResponse = (pullRequest: Readonly<Record<string, unknown>> = {}) => ({
         headRef: null,
         author: null,
         autoMergeRequest: null,
+        assignees: { nodes: [] },
         headRefName: "feature",
         baseRefName: "main",
         headRefOid: "abc123",
@@ -3898,6 +3899,44 @@ layer("GitHubPullRequestApi.layer", (it) => {
         ["hubot", false],
       ]);
     }),
+  );
+
+  it.effect(
+    "setAssignees should POST logins and return the response's assignees when assigning",
+    () =>
+      Effect.gen(function* () {
+        mockedExecute
+          .mockReturnValueOnce(
+            Effect.succeed(output(JSON.stringify({ assignees: [{ login: "octocat" }] }))),
+          )
+          .mockReturnValueOnce(Effect.succeed(output(JSON.stringify({ assignees: [] }))));
+        const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+        const target = { cwd: "/w", repository: "acme/web", host: "github.com", number: 7 };
+
+        const assigned = yield* cli.setAssignees({
+          ...target,
+          logins: ["octocat", "hubot"],
+          assigned: true,
+        });
+        const unassigned = yield* cli.setAssignees({
+          ...target,
+          logins: ["octocat"],
+          assigned: false,
+        });
+
+        expect(callAt(0)).toMatchObject({
+          method: "POST",
+          path: "repos/acme/web/issues/7/assignees",
+          body: { assignees: ["octocat", "hubot"] },
+        });
+        expect(callAt(1)).toMatchObject({
+          method: "DELETE",
+          path: "repos/acme/web/issues/7/assignees",
+          body: { assignees: ["octocat"] },
+        });
+        expect(assigned).toEqual([{ login: "octocat", name: null, avatarUrl: null }]);
+        expect(unassigned).toEqual([]);
+      }),
   );
 
   it.effect("takes labels off one at a time, naming each in the path encoded", () =>

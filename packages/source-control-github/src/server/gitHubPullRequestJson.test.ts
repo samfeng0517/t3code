@@ -12,6 +12,8 @@ import {
   LenientPullRequestList,
   reviewThreadConversation,
   toLabelCandidates,
+  toAssigneeCandidates,
+  decodeIssueAssigneesJson,
   toPullRequestActivityPage,
   toPullRequestCore,
   toPullRequestFilesViewedPage,
@@ -24,6 +26,7 @@ import {
 } from "./gitHubPullRequestJson.ts";
 import { PullRequestWatchFingerprint } from "./pullRequestBatches.graphql.ts";
 import {
+  AssigneeCandidates,
   LabelCandidates,
   PullRequestActivity,
   PullRequestCore,
@@ -206,6 +209,7 @@ const decodeReviewThreadCommentsJson = (raw: string) =>
   through(ReviewThreadComments.result, toReviewThreadCommentsPage)(withReviewDefaults(raw));
 const decodeViewerPermissionsJson = through(ViewerPermissions.result, toViewerPermissions);
 const decodeLabelCandidatesJson = through(LabelCandidates.result, toLabelCandidates);
+const decodeAssigneeCandidatesJson = through(AssigneeCandidates.result, toAssigneeCandidates);
 const decodeReviewerCandidatesJson = through(ReviewerCandidates.result, toReviewerCandidates);
 const decodePullRequestFilesViewedJson = through(
   PullRequestFilesViewed.result,
@@ -368,6 +372,7 @@ describe("pull request detail decoding", () => {
             headRef: null,
             author: null,
             autoMergeRequest: null,
+            assignees: { nodes: [] },
             viewerCanUpdate: true,
             viewerDidAuthor: false,
             viewerCanUpdateBranch: false,
@@ -516,6 +521,22 @@ describe("pull request detail decoding", () => {
       autoMergeMethod: "squash",
     });
     expect(detailOf([], { autoMergeRequest: null }).autoMergeEnabled).toBe(false);
+  });
+
+  it("toPullRequestCore should carry assignees when the pull request has them", () => {
+    const detail = detailOf([], {
+      assignees: {
+        nodes: [
+          { login: " octocat ", name: "The Octocat", avatarUrl: "https://avatars/octocat" },
+          { login: "  ", name: null, avatarUrl: "https://avatars/blank" },
+          { login: "hubot", name: " ", avatarUrl: "https://avatars/hubot" },
+        ],
+      },
+    });
+    expect(detail.assignees).toEqual([
+      { login: "octocat", name: "The Octocat", avatarUrl: "https://avatars/octocat" },
+      { login: "hubot", name: null, avatarUrl: "https://avatars/hubot" },
+    ]);
   });
 
   it("shows a re-running check once, as the run that is happening now", () => {
@@ -1059,6 +1080,50 @@ describe("label candidate decoding", () => {
       ["legacy", true],
       ["bug", false],
     ]);
+  });
+});
+
+describe("assignee decoding", () => {
+  it("toAssigneeCandidates should mark assigned users and keep the author when listing", () => {
+    const list = expectSuccess(
+      decodeAssigneeCandidatesJson(
+        JSON.stringify({
+          data: {
+            repository: {
+              assignableUsers: {
+                pageInfo: { hasNextPage: true },
+                nodes: [
+                  { login: "bilal", name: null, avatarUrl: "https://avatars/bilal" },
+                  { login: "octocat", name: "The Octocat", avatarUrl: "https://avatars/octocat" },
+                ],
+              },
+              pullRequest: {
+                assignees: { nodes: [{ login: "OctoCat" }, { login: "departed" }] },
+              },
+            },
+          },
+        }),
+      ),
+    );
+    expect(list.candidates.map((candidate) => [candidate.login, candidate.isAssigned])).toEqual([
+      ["departed", true],
+      ["bilal", false],
+      ["octocat", true],
+    ]);
+    expect(list.truncated).toBe(true);
+  });
+
+  it("decodeIssueAssigneesJson should read the assignees an issue write answers with", () => {
+    expect(
+      expectSuccess(
+        decodeIssueAssigneesJson(
+          JSON.stringify({
+            number: 7,
+            assignees: [{ login: "octocat", avatar_url: "https://avatars/octocat" }],
+          }),
+        ),
+      ),
+    ).toEqual([{ login: "octocat", name: null, avatarUrl: "https://avatars/octocat" }]);
   });
 });
 

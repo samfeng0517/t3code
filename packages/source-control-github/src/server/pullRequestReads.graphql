@@ -111,6 +111,13 @@ query PullRequestCore(
       autoMergeRequest {
         mergeMethod
       }
+      assignees(first: 10) {
+        nodes {
+          login
+          name
+          avatarUrl
+        }
+      }
       viewerCanUpdate
       viewerDidAuthor
       viewerCanUpdateBranch
@@ -444,6 +451,28 @@ query ReviewerCandidates($owner: String!, $name: String!, $number: Int!) {
               avatarUrl
             }
           }
+        }
+      }
+    }
+  }
+}
+
+query AssigneeCandidates($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    assignableUsers(first: 100) {
+      pageInfo {
+        hasNextPage
+      }
+      nodes {
+        login
+        name
+        avatarUrl
+      }
+    }
+    pullRequest(number: $number) {
+      assignees(first: 10) {
+        nodes {
+          login
         }
       }
     }
