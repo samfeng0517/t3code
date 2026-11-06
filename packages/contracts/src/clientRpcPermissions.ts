@@ -78,9 +78,16 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.scheduledTasksDelete]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksRunNow]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksRotateWebhookToken]: AuthOrchestrationOperateScope,
+  // Assistant mutations write to the user's ERP account or start and edit the assistant thread.
+  [WS_METHODS.assistantClockIn]: AuthOrchestrationOperateScope,
+  [WS_METHODS.assistantClockOut]: AuthOrchestrationOperateScope,
+  [WS_METHODS.assistantGetOrCreateThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.assistantReadMemory]: AuthOrchestrationOperateScope,
+  [WS_METHODS.assistantWriteMemory]: AuthOrchestrationOperateScope,
+  [WS_METHODS.assistantSaveDraft]: AuthOrchestrationOperateScope,
+  [WS_METHODS.assistantRegenerateDraft]: AuthOrchestrationOperateScope,
+  [WS_METHODS.assistantSubmitDailyReport]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.stopWorkflow]: AuthOrchestrationOperateScope,
-  // A mod button can start work in the agent session that drew it.
-  [WS_METHODS.modsAct]: AuthOrchestrationOperateScope,
   // Force stop kills agent processes, as Stop on a terminal does.
   [ORCHESTRATION_V2_WS_METHODS.forceStopThread]: AuthOrchestrationOperateScope,
   // A guest link hands thread access to someone outside, like a pairing link.

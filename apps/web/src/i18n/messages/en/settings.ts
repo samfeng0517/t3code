@@ -21,6 +21,7 @@ export const settingsEn = {
   "settings.section.maintenance": "Maintenance",
   "settings.section.labs": "Labs",
   "settings.section.about": "About",
+  "settings.section.assistant": "Assistant",
 
   "settings.language.section": "Language",
   "settings.language.title": "Display language",

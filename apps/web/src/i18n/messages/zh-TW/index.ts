@@ -9,7 +9,6 @@ import { settingsPagesZhTW } from "./settingsPages";
 import { workspaceZhTW } from "./workspace";
 import { onboardingZhTW } from "./onboarding";
 import { searchIndexZhTW } from "./searchIndex";
-import { modsZhTW } from "./mods";
 import { browserZhTW } from "./browser";
 import { pageCommentsZhTW } from "./pageComments";
 import { gitZhTW } from "./git";
@@ -27,6 +26,7 @@ import { settingsMiscZhTW } from "./settingsMisc";
 import { deviceZhTW } from "./device";
 import { filesZhTW } from "./files";
 import { legacySidebarZhTW } from "./legacySidebar";
+import { assistantZhTW } from "./assistant";
 
 export const zhTW: Readonly<Record<MessageKey, string>> = {
   ...commonZhTW,
@@ -39,7 +39,6 @@ export const zhTW: Readonly<Record<MessageKey, string>> = {
   ...workspaceZhTW,
   ...onboardingZhTW,
   ...searchIndexZhTW,
-  ...modsZhTW,
   ...browserZhTW,
   ...pageCommentsZhTW,
   ...gitZhTW,
@@ -57,4 +56,5 @@ export const zhTW: Readonly<Record<MessageKey, string>> = {
   ...deviceZhTW,
   ...filesZhTW,
   ...legacySidebarZhTW,
+  ...assistantZhTW,
 };

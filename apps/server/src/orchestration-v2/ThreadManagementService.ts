@@ -11,7 +11,7 @@ import type {
 import {
   type ChatAttachment,
   CommandId,
-  isListedThreadLineage,
+  isShownInThreadLists,
   MessageId,
   OrchestrationV2StopWorkflowError,
   type OrchestrationV2StopWorkflowInput,
@@ -25,6 +25,7 @@ import {
   type OrchestrationV2ServerCommand,
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2CreationSource,
+  type OrchestrationV2Notification,
   type OrchestrationV2Run,
   type OrchestrationV2ThreadShellSnapshot,
   type OrchestrationV2ThreadProjection,
@@ -80,8 +81,13 @@ export function withCreationProvenance(
 ): OrchestrationV2Command {
   switch (command.type) {
     case "thread.create": {
-      // Only the server stamps a link's origin, so a client cannot set one.
-      const { linkOrigin: _linkOrigin, delegatedFrom: _delegatedFrom, ...rest } = command;
+      // Only the server stamps a link's origin or the assistant marker, so a client cannot set one.
+      const {
+        linkOrigin: _linkOrigin,
+        delegatedFrom: _delegatedFrom,
+        assistant: _assistant,
+        ...rest
+      } = command;
       return { ...rest, ...provenance };
     }
     case "message.dispatch":
@@ -150,6 +156,8 @@ export interface ThreadManagementSendInput {
   readonly freshContext?: boolean;
   readonly createdBy: OrchestrationV2Actor;
   readonly creationSource: OrchestrationV2CreationSource;
+  /** Shown on the message and delivered like an agent notification, e.g. for server-sent prompts. */
+  readonly notification?: OrchestrationV2Notification;
 }
 
 export interface ThreadManagementSendResult {
@@ -414,6 +422,7 @@ export interface ThreadManagementServiceShape {
   readonly listActiveSubagentThreadIds: Orchestrator.OrchestratorV2["Service"]["listActiveSubagentThreadIds"];
   readonly countThreads: Orchestrator.OrchestratorV2["Service"]["countThreads"];
   readonly listActiveShellIndex: Orchestrator.OrchestratorV2["Service"]["listActiveShellIndex"];
+  readonly listAssistantThreadIds: Orchestrator.OrchestratorV2["Service"]["listAssistantThreadIds"];
   readonly listThreadWorktreePaths: Orchestrator.OrchestratorV2["Service"]["listThreadWorktreePaths"];
   readonly listOlderSettledThreads: Orchestrator.OrchestratorV2["Service"]["listOlderSettledThreads"];
   readonly readShellSnapshot: (
@@ -802,8 +811,8 @@ const make = Effect.gen(function* () {
           snapshot.threads
             .filter((thread) =>
               input.includeSubagents
-                ? thread.lineage.sideChat !== true
-                : isListedThreadLineage(thread.lineage),
+                ? thread.lineage.sideChat !== true && thread.lineage.assistant !== true
+                : isShownInThreadLists(thread.lineage),
             )
             .toSorted(
               (left, right) =>
@@ -863,6 +872,7 @@ const make = Effect.gen(function* () {
       ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
       ...(input.freshContext ? { freshContext: true } : {}),
       dispatchMode,
+      ...(input.notification === undefined ? {} : { notification: input.notification }),
       createdBy: input.createdBy,
       creationSource: input.creationSource,
     });
@@ -1536,6 +1546,7 @@ const make = Effect.gen(function* () {
     listActiveSubagentThreadIds: orchestrator.listActiveSubagentThreadIds,
     countThreads: orchestrator.countThreads,
     listActiveShellIndex: orchestrator.listActiveShellIndex,
+    listAssistantThreadIds: orchestrator.listAssistantThreadIds,
     listThreadWorktreePaths: orchestrator.listThreadWorktreePaths,
     listOlderSettledThreads: orchestrator.listOlderSettledThreads,
     readShellSnapshot: orchestrator.readShellSnapshot,

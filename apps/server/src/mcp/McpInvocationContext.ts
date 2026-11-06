@@ -29,6 +29,8 @@ export interface McpThreadCaller {
   readonly providerInstanceId: ProviderInstanceId;
   /** A delegated child task; its parent owns the work it hands back. */
   readonly subagent?: boolean;
+  /** The personal assistant's hidden thread; only it may use the daily report tools. */
+  readonly assistant?: boolean;
 }
 
 export interface McpClientCaller {
@@ -159,6 +161,17 @@ export const hiddenFromSubagents = (): boolean => {
   const fiber = Fiber.getCurrent();
   const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
   return scope?.thread?.subagent !== true;
+};
+
+/** `McpSchema.EnabledWhen` for tools only the assistant thread's own agent may see or call. */
+export const assistantThreadOnly = (): boolean => {
+  const fiber = Fiber.getCurrent();
+  const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
+  return (
+    scope?.client === undefined &&
+    scope?.thread?.assistant === true &&
+    scope.thread.subagent !== true
+  );
 };
 
 /** `McpSchema.EnabledWhen` for tools that only serve links, hidden while the beta is off. */

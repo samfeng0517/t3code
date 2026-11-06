@@ -67,6 +67,7 @@ const thread = (
     readonly deletedAt?: DateTime.Utc;
     readonly subagentOf?: ThreadId;
     readonly sideChatOf?: ThreadId;
+    readonly assistant?: true;
     readonly title?: string;
     readonly settledAt?: DateTime.Utc;
     readonly linkedPullRequest?: ThreadLinkedPullRequest;
@@ -106,7 +107,12 @@ const thread = (
             rootThreadId: overrides.sideChatOf,
             sideChat: true,
           }
-        : { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+        : {
+            parentThreadId: null,
+            relationshipToParent: null,
+            rootThreadId: threadId,
+            ...(overrides.assistant ? { assistant: true } : {}),
+          },
     forkedFrom: null,
     createdAt: at(0),
     updatedAt: at(0),
@@ -382,6 +388,7 @@ it.layer(layerTest)("ThreadSearch", (it) => {
       const parent = ThreadId.make("thread:tokens-parent");
       const subagent = ThreadId.make("thread:tokens-subagent");
       const sideChat = ThreadId.make("thread:tokens-side-chat");
+      const assistant = ThreadId.make("thread:tokens-assistant");
       yield* createProject(project);
       yield* Effect.forEach(
         [
@@ -391,6 +398,8 @@ it.layer(layerTest)("ThreadSearch", (it) => {
           message(subagent, "subagent", "assistant", "ThreadSearchService renamed"),
           thread(sideChat, project, { sideChatOf: parent, title: "ThreadSearchService question" }),
           message(sideChat, "side-chat", "user", "Why rename ThreadSearchService?"),
+          thread(assistant, project, { assistant: true, title: "ThreadSearchService plan" }),
+          message(assistant, "assistant", "user", "Track the ThreadSearchService rename"),
         ],
         projections.apply,
         { discard: true },

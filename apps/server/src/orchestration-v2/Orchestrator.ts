@@ -464,6 +464,10 @@ export interface OrchestratorV2Shape {
     ReadonlyArray<ActiveShellIndexEntry>,
     OrchestratorV2Error
   >;
+  readonly listAssistantThreadIds: () => Effect.Effect<
+    ReadonlyArray<ThreadId>,
+    OrchestratorV2Error
+  >;
   /** Every unarchived thread's recorded worktree path, as the thread was given it. */
   readonly listThreadWorktreePaths: () => Effect.Effect<
     ReadonlyArray<{ readonly threadId: ThreadId; readonly worktreePath: string }>,
@@ -2974,6 +2978,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         parentThreadId: null,
         relationshipToParent: null,
         rootThreadId: command.threadId,
+        ...(command.assistant === true ? { assistant: true } : {}),
       },
       forkedFrom: null,
       createdAt: now,
@@ -14549,6 +14554,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     ),
     countThreads: Effect.fn("OrchestratorV2.countThreads")(function () {
       return projectionStore.countThreads().pipe(Effect.mapError(shellProjectionError));
+    }),
+    listAssistantThreadIds: Effect.fn("OrchestratorV2.listAssistantThreadIds")(function () {
+      return projectionStore.listAssistantThreadIds().pipe(Effect.mapError(shellProjectionError));
     }),
     listActiveShellIndex: Effect.fn("OrchestratorV2.listActiveShellIndex")(function () {
       return projectionStore.listActiveShellIndex().pipe(Effect.mapError(shellProjectionError));

@@ -553,6 +553,45 @@ it.effect("retains automation and sender attribution while a message waits in th
   }).pipe(Effect.provide(harness.layer));
 });
 
+it.effect(
+  "sendToThread should put the notification on the dispatched message when one is given",
+  () => {
+    const harness = makeHarness({ runSetup: () => Effect.never });
+    return Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const launched = yield* launches.launch(
+        launchInput({
+          command: "command:notification:queue",
+          thread: "thread:notification:queue",
+          message: "First message",
+          workspace: { type: "worktree", baseRef: "main" },
+        }),
+      );
+      const notification = {
+        source: { kind: "system" },
+        outcome: "updated",
+        summary: "Draft requested",
+      } as const;
+      const queued = yield* threads.sendToThread({
+        projectId,
+        commandId: CommandId.make("command:notification:queued"),
+        threadId: launched.threadId,
+        messageId: MessageId.make("message:notification:queued"),
+        text: "Draft the report",
+        attachments: [],
+        mode: "queue",
+        createdBy: "agent",
+        creationSource: "server",
+        notification,
+      });
+      const projection = yield* threads.getThreadProjection(launched.threadId);
+      const message = projection.messages.find((item) => item.id === queued.message.id);
+      assert.deepEqual(message?.notification, notification);
+    }).pipe(Effect.provide(harness.layer));
+  },
+);
+
 it.effect("provisions independent launches concurrently instead of behind a global semaphore", () =>
   Effect.gen(function* () {
     const setupCount = yield* Ref.make(0);
@@ -1023,6 +1062,35 @@ it.effect("launches a worktree request for Scratch at the root, in its own folde
     assert.deepEqual(harness.claimed, [launched.threadId]);
   }).pipe(Effect.provide(harness.layer));
 });
+
+it.effect(
+  "launch should create the thread with lineage.assistant and keep it out of project thread lists when the input sets assistant",
+  () => {
+    const harness = scratchHarness();
+    return Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const launched = yield* launches.launch({
+        ...launchInput({ command: "command:launch:assistant", thread: "thread:launch:assistant" }),
+        assistant: true,
+      });
+      const regular = yield* launches.launch(
+        launchInput({ command: "command:launch:regular", thread: "thread:launch:regular" }),
+      );
+      const projection = yield* threads.getThreadProjection(launched.threadId);
+      assert.equal(projection.thread.lineage.assistant, true);
+      const regularProjection = yield* threads.getThreadProjection(regular.threadId);
+      assert.notProperty(regularProjection.thread.lineage, "assistant");
+      for (const includeSubagents of [false, true]) {
+        const listed = yield* threads.listProjectThreads({ projectId, includeSubagents });
+        assert.deepEqual(
+          listed.map((thread) => thread.id),
+          [regular.threadId],
+        );
+      }
+    }).pipe(Effect.provide(harness.layer));
+  },
+);
 
 it.effect("stores a Scratch scheduled task at the root and keeps worktrees elsewhere", () => {
   const harness = scratchHarness();

@@ -261,7 +261,6 @@ import {
 } from "../state/entities";
 import { useEnvironmentShellHasSnapshot } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
-import { ModsStatusBand } from "./mods/ModsStatusBand";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialogHost, openExpandedImagePreview } from "./chat/ExpandedImageDialog";
 import {
@@ -798,6 +797,8 @@ export default function ChatView(props: ChatViewProps) {
     : undefined;
   const isServerThread = serverThread !== null;
   const activeThread = isServerThread ? serverThread : localDraftThread;
+  // The assistant page's clock bar is its title bar.
+  const assistantThread = activeThread?.lineage.assistant === true;
   const serverLatestRun =
     serverProjection === null ? null : deriveLatestThreadRun(serverProjection);
   const serverActivityRun =
@@ -1521,6 +1522,7 @@ export default function ChatView(props: ChatViewProps) {
     optimisticMessages: optimisticUserMessages,
     anchoredMessages: anchoredTimelineMessages,
     attachmentUrlById: timelineAttachmentUrlById,
+    assistantThread,
     ...(serverProjection === null
       ? {}
       : {
@@ -3308,7 +3310,9 @@ export default function ChatView(props: ChatViewProps) {
           state={deviceState}
         />
       )}
-      {rightPanelControlsAtRoot && !embedded ? panelLayoutControls : null}
+      {(rightPanelControlsAtRoot || (assistantThread && !rightPanelControlsInPanel)) && !embedded
+        ? panelLayoutControls
+        : null}
       <div
         className={cn(
           "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
@@ -3318,7 +3322,7 @@ export default function ChatView(props: ChatViewProps) {
         data-chat-column
         inert={rightPanelMaximized}
       >
-        {embedded ? null : (
+        {embedded || assistantThread ? null : (
           <header
             ref={threadPanelPopoverAnchorRef}
             data-chat-header
@@ -3590,12 +3594,6 @@ export default function ChatView(props: ChatViewProps) {
                                   />
                                 ) : null
                               }
-                            />
-                          ) : null}
-                          {isServerThread && activeThreadId !== null ? (
-                            <ModsStatusBand
-                              environmentId={environmentId}
-                              threadId={activeThreadId}
                             />
                           ) : null}
                           {!composerMounted ? null : (

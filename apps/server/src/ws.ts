@@ -119,14 +119,13 @@ import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
 import * as CommandOutputHub from "./orchestration-v2/CommandOutputHub.ts";
 import * as McpAppRequests from "./mcpApps/McpAppRequests.ts";
-import * as ModSurfaceActions from "./mods/ModSurfaceActions.ts";
-import * as ModSurfaceHub from "./mods/ModSurfaceHub.ts";
 import * as ProviderSessionManager from "./orchestration-v2/ProviderSessionManager.ts";
 import * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadMessageIntake from "./orchestration-v2/ThreadMessageIntake.ts";
 import * as DocumentText from "./provider/DocumentText.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
+import * as AssistantService from "./assistant/AssistantService.ts";
 import * as SecretRequests from "./secrets/SecretRequests.ts";
 import * as GuestShareService from "./guest/GuestShareService.ts";
 import {
@@ -1388,8 +1387,6 @@ export const layerWsRpc = (
 
       const providerSessionsV2 = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const mcpAppRequests = yield* McpAppRequests.McpAppRequests;
-      const modSurfaceHub = yield* ModSurfaceHub.ModSurfaceHub;
-      const modSurfaceActions = yield* ModSurfaceActions.ModSurfaceActions;
       const analytics = yield* AnalyticsService.AnalyticsService;
       const originProps = clientAnalyticsProps;
       const recordClientCommandAnalytics = (command: OrchestrationV2Command) => {
@@ -1413,6 +1410,7 @@ export const layerWsRpc = (
       const commandOutputHub = yield* CommandOutputHub.CommandOutputHub;
       const providerSessionManager = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
+      const assistant = yield* AssistantService.AssistantService;
       const secretRequests = yield* SecretRequests.SecretRequests;
       const guestShares = yield* GuestShareService.GuestShareService;
       const pullRequests = yield* PullRequestService.PullRequestService;
@@ -2331,6 +2329,19 @@ export const layerWsRpc = (
           Effect.annotateCurrentSpan({ "scheduled_task.id": input.id }).pipe(
             Effect.andThen(scheduledTasks.rotateWebhookToken(input)),
           ),
+        [WS_METHODS.assistantGetClockStatus]: () => assistant.getClockStatus(),
+        [WS_METHODS.assistantListProjects]: () => assistant.listProjects(),
+        [WS_METHODS.assistantClockIn]: () => assistant.clockIn(),
+        [WS_METHODS.assistantClockOut]: () => assistant.clockOut(),
+        [WS_METHODS.assistantGetOrCreateThread]: () =>
+          assistant.getOrCreateThread().pipe(Effect.map((threadId) => ({ threadId }))),
+        [WS_METHODS.assistantReadMemory]: () => assistant.readMemory(),
+        [WS_METHODS.assistantWriteMemory]: (input) => assistant.writeMemory(input),
+        [WS_METHODS.assistantGetDailyReport]: () => assistant.getDailyReport(),
+        [WS_METHODS.assistantSubscribeState]: () => assistant.streamState(),
+        [WS_METHODS.assistantSaveDraft]: (input) => assistant.saveDraft(input),
+        [WS_METHODS.assistantRegenerateDraft]: (input) => assistant.regenerateDraft(input),
+        [WS_METHODS.assistantSubmitDailyReport]: (input) => assistant.submitDailyReport(input),
         [WS_METHODS.guestShareCreate]: (input) =>
           Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
             Effect.andThen(guestShares.create(input)),
@@ -2536,8 +2547,6 @@ export const layerWsRpc = (
         [WS_METHODS.mcpAppsToolInfo]: (input) => mcpAppRequests.toolInfo(input),
         [WS_METHODS.mcpAppsUpdateModelContext]: (input) => mcpAppRequests.updateModelContext(input),
         [WS_METHODS.mcpAppsReadResource]: (input) => mcpAppRequests.readResource(input),
-        [WS_METHODS.modsSubscribeThread]: (input) => modSurfaceHub.subscribe(input.threadId),
-        [WS_METHODS.modsAct]: (input) => modSurfaceActions.act(input),
         [WS_METHODS.providerUploadFeedback]:
           /* Request instrumentation already owns the span; keep this helper in that context. */
           Effect.fnUntraced(
@@ -3504,6 +3513,7 @@ export const layer = Layer.unwrap(
     const npmRelease = yield* NpmRelease.NpmRelease;
     const pullRequests = yield* PullRequestService.PullRequestService;
     const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
+    const assistant = yield* AssistantService.AssistantService;
     const peerLinks = yield* PeerLinks.PeerLinks;
     const peerLinkRequests = yield* PeerLinkRequests.PeerLinkRequests;
     const sql = yield* SqlClient.SqlClient;
@@ -3594,6 +3604,8 @@ export const layer = Layer.unwrap(
                 ),
               ),
               Layer.provide(Layer.succeed(PeerLinks.PeerLinks, peerLinks)),
+              // One assistant service owns the thread lookup cache and the memory reload flag.
+              Layer.provide(Layer.succeed(AssistantService.AssistantService, assistant)),
               Layer.provide(Layer.succeed(PeerLinkRequests.PeerLinkRequests, peerLinkRequests)),
               Layer.provide(
                 SourceControlDiscovery.layer.pipe(

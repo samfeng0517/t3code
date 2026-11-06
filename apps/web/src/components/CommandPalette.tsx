@@ -72,13 +72,13 @@ import {
   PaletteIcon,
   RotateCcwIcon,
   SettingsIcon,
+  SparklesIcon,
   MonitorIcon,
   PinIcon,
   PinOffIcon,
   SquarePenIcon,
   TextSearchIcon,
   Globe2Icon,
-  BlocksIcon,
   UserPlusIcon,
 } from "lucide-react";
 import { openThreadFind } from "./chat/threadFindStore";
@@ -1501,21 +1501,6 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  if (activeThread !== null && activeThreadServerConfig?.environment.capabilities.modSurfaces) {
-    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
-    actionItems.push({
-      kind: "action",
-      value: "action:toggle-mods-panel",
-      searchTerms: ["mods", "mod", "plugin", "pane", "panel", "claude"],
-      title: t("mods.commandPalette.toggle"),
-      icon: <BlocksIcon className={ITEM_ICON_CLASS} />,
-      shortcutCommand: "modsPanel.toggle",
-      run: async () => {
-        useRightPanelStore.getState().toggle(threadRef, "mods");
-      },
-    });
-  }
-
   if (activeThread !== null && canShareActiveThreadWithGuest) {
     const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
     actionItems.push({
@@ -1708,6 +1693,20 @@ function OpenCommandPaletteDialog(props: {
       await navigate({ to: "/usage" });
     },
   });
+
+  if (primaryEnvironmentId !== null) {
+    actionItems.push({
+      kind: "action",
+      value: "action:assistant",
+      searchTerms: ["assistant", "clock", "daily report", "erp"],
+      title: t("assistantPage.open"),
+      icon: <SparklesIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "assistant.open",
+      run: async () => {
+        await navigate({ to: "/assistant" });
+      },
+    });
+  }
 
   for (const direction of [1, -1] as const) {
     const title =

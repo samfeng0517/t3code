@@ -31,6 +31,7 @@ export type SettingsPath =
   | "/settings/browser"
   | "/settings/devices"
   | "/settings/scheduled-tasks"
+  | "/settings/assistant"
   | "/settings/source-control"
   | "/settings/worktrees"
   | "/settings/connections"
@@ -70,6 +71,7 @@ export interface SettingsSearchItem {
   readonly wslAvailableOnly?: boolean;
   readonly managedTunnelOnly?: boolean;
   readonly peerLinksOnly?: boolean;
+  readonly primaryEnvironmentOnly?: boolean;
   readonly secondary?: boolean;
   readonly requiresThreadAutoSettlement?: boolean;
   readonly requiresThreadAutoCleanup?: boolean;
@@ -87,6 +89,7 @@ export interface SettingsSearchAvailability {
   readonly hasThreadAutoCleanup: boolean;
   readonly managedTunnelActive?: boolean;
   readonly hasPeerLinkHost?: boolean;
+  readonly hasPrimaryEnvironment?: boolean;
 }
 
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
@@ -103,6 +106,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/browser": "Browser",
   "/settings/devices": "Devices",
   "/settings/scheduled-tasks": "Scheduled tasks",
+  "/settings/assistant": "Assistant",
   "/settings/source-control": "Source control",
   "/settings/worktrees": "Worktrees",
   "/settings/connections": "Environments",
@@ -147,6 +151,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
       "/settings/browser",
       "/settings/devices",
       "/settings/scheduled-tasks",
+      "/settings/assistant",
     ],
   },
   {
@@ -1229,6 +1234,41 @@ export const SETTINGS_SEARCH_ITEMS = [
     secretsFeatureOnly: true,
   },
   {
+    id: "assistant-erp-url",
+    title: "ERP URL",
+    to: "/settings/assistant",
+    searchTerms: ["assistant daily report address host"],
+    primaryEnvironmentOnly: true,
+  },
+  {
+    id: "assistant-erp-token",
+    title: "ERP token",
+    to: "/settings/assistant",
+    searchTerms: ["assistant daily report api key scopes"],
+    primaryEnvironmentOnly: true,
+  },
+  {
+    id: "assistant-model",
+    title: "Model",
+    to: "/settings/assistant",
+    searchTerms: ["assistant daily report claude"],
+    primaryEnvironmentOnly: true,
+  },
+  {
+    id: "assistant-runtime-mode",
+    title: "Permission mode",
+    to: "/settings/assistant",
+    searchTerms: ["assistant approval access"],
+    primaryEnvironmentOnly: true,
+  },
+  {
+    id: "assistant-memory",
+    title: "Edit assistant memory",
+    to: "/settings/assistant",
+    searchTerms: ["assistant daily report claude.md instructions"],
+    primaryEnvironmentOnly: true,
+  },
+  {
     id: "archive",
     title: "Archived threads",
     to: "/settings/archived",
@@ -1259,6 +1299,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/access": "connections",
   "/settings/secrets": null,
   "/settings/scheduled-tasks": null,
+  "/settings/assistant": null,
   "/settings/maintenance": null,
   "/settings/labs": null,
   "/settings/about": null,
@@ -1410,7 +1451,8 @@ export function filterAvailableSettingsSearchItems(
       (!item.requiresThreadAutoSettlement || availability.hasThreadAutoSettlement) &&
       (!item.requiresThreadAutoCleanup || availability.hasThreadAutoCleanup) &&
       (!item.managedTunnelOnly || availability.managedTunnelActive === true) &&
-      (!item.peerLinksOnly || availability.hasPeerLinkHost === true),
+      (!item.peerLinksOnly || availability.hasPeerLinkHost === true) &&
+      (!item.primaryEnvironmentOnly || availability.hasPrimaryEnvironment === true),
   );
 }
 

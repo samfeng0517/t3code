@@ -8,7 +8,6 @@ import { settingsPagesEn } from "./settingsPages";
 import { workspaceEn } from "./workspace";
 import { onboardingEn } from "./onboarding";
 import { searchIndexEn } from "./searchIndex";
-import { modsEn } from "./mods";
 import { browserEn } from "./browser";
 import { pageCommentsEn } from "./pageComments";
 import { gitEn } from "./git";
@@ -26,6 +25,7 @@ import { settingsMiscEn } from "./settingsMisc";
 import { deviceEn } from "./device";
 import { filesEn } from "./files";
 import { legacySidebarEn } from "./legacySidebar";
+import { assistantEn } from "./assistant";
 
 // English is the source of truth: every other locale is typed against these keys.
 export const en = {
@@ -39,7 +39,6 @@ export const en = {
   ...workspaceEn,
   ...onboardingEn,
   ...searchIndexEn,
-  ...modsEn,
   ...browserEn,
   ...pageCommentsEn,
   ...gitEn,
@@ -57,6 +56,7 @@ export const en = {
   ...deviceEn,
   ...filesEn,
   ...legacySidebarEn,
+  ...assistantEn,
 } as const;
 
 export type MessageKey = keyof typeof en;

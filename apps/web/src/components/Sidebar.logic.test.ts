@@ -11,6 +11,7 @@ import {
   getFallbackThreadIdAfterDelete,
   hasUnseenCompletion,
   resolveSidebarRowThreadId,
+  filterSidebarV2VisibleThreads,
   orderInboxThreadsByStatus,
   orderItemsByPreferredIds,
   pinOrderKeyBetween,
@@ -137,6 +138,22 @@ describe("deleteSelectedThreadEntries", () => {
 });
 
 describe("sidebar thread lineage helpers", () => {
+  it("filterSidebarV2VisibleThreads should drop the assistant thread when it lists root threads", () => {
+    const root = makeThreadFixture({ id: ThreadId.make("thread-root") });
+    const assistant = makeThreadFixture({
+      id: ThreadId.make("thread-assistant"),
+      lineage: {
+        rootThreadId: ThreadId.make("thread-assistant"),
+        parentThreadId: null,
+        relationshipToParent: null,
+        assistant: true,
+      },
+    });
+    expect(
+      filterSidebarV2VisibleThreads([root, assistant], null, new Set()).map((thread) => thread.id),
+    ).toEqual([root.id]);
+  });
+
   it("maps an open subagent to its nearest visible ancestor's sidebar row", () => {
     const environmentId = EnvironmentId.make("environment-row");
     const otherEnvironmentId = EnvironmentId.make("environment-other");

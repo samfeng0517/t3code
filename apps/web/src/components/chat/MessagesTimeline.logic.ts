@@ -632,6 +632,14 @@ type MessagesTimelineRowContent =
       htmlRender: HtmlRenderReference;
     }
   | {
+      kind: "daily-report-draft";
+      id: string;
+      createdAt: string;
+      reportDate: string;
+      version: number;
+      input: Extract<TimelineEntry, { kind: "daily-report-draft" }>["input"];
+    }
+  | {
       kind: "mcp-app";
       id: string;
       createdAt: string;
@@ -795,6 +803,7 @@ function deriveSupersededAttemptFolds(
       (entry.kind === "event" && entry.projectedItem.item.type === "handoff") ||
       entry.kind === "html-render" ||
       entry.kind === "mcp-app" ||
+      entry.kind === "daily-report-draft" ||
       timelineEntryIsPersistentResourceCard(entry) ||
       liveSubagentEntryIds.has(entry.id) ||
       (entry.kind === "work" && entry.entry.itemType === "system_notice")
@@ -1959,6 +1968,18 @@ export function deriveMessagesTimelineRows(input: {
       continue;
     }
 
+    if (timelineEntry.kind === "daily-report-draft") {
+      nextRows.push({
+        kind: "daily-report-draft",
+        id: timelineEntry.id,
+        createdAt: timelineEntry.createdAt,
+        reportDate: timelineEntry.reportDate,
+        version: timelineEntry.version,
+        input: timelineEntry.input,
+      });
+      continue;
+    }
+
     if (timelineEntry.kind === "mcp-app") {
       nextRows.push({
         kind: "mcp-app",
@@ -2443,6 +2464,16 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       // Tool updates rebuild entries; preserve frames for unchanged pages.
       const bh = b as typeof a;
       return a.createdAt === bh.createdAt && htmlRenderReferencesEqual(a.htmlRender, bh.htmlRender);
+    }
+
+    case "daily-report-draft": {
+      const bd = b as typeof a;
+      return (
+        a.createdAt === bd.createdAt &&
+        a.reportDate === bd.reportDate &&
+        a.version === bd.version &&
+        Equal.equals(a.input, bd.input)
+      );
     }
 
     case "mcp-app": {

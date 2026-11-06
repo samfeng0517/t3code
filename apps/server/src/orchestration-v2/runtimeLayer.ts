@@ -43,8 +43,6 @@ import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as CommandOutputHub from "./CommandOutputHub.ts";
-import * as ModSurfaceActions from "../mods/ModSurfaceActions.ts";
-import * as ModSurfaceHub from "../mods/ModSurfaceHub.ts";
 import * as ProviderRuntimeRecoveryService from "./ProviderRuntimeRecoveryService.ts";
 import * as ProviderSwitchService from "./ProviderSwitchService.ts";
 import * as ProviderTurnControlService from "./ProviderTurnControlService.ts";
@@ -138,7 +136,6 @@ const layerProviderSessionManagerProvided = ProviderSessionManager.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
       layerCommandOutputHubProvided,
-      ModSurfaceHub.layer,
       ProviderAdapterRegistry.layerFromProviderInstanceRegistry,
       layerEventSink,
       IdAllocator.layer,
@@ -351,10 +348,6 @@ const layerProviderRuntimeRecoveryProvided = ProviderRuntimeRecoveryService.laye
   ),
 );
 
-const layerModSurfaceActionsProvided = ModSurfaceActions.layer.pipe(
-  Layer.provide(Layer.merge(ModSurfaceHub.layer, layerProviderSessionManagerProvided)),
-);
-
 const layerMcpAppRequestsProvided = McpAppRequests.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
@@ -368,8 +361,6 @@ const layerMcpAppRequestsProvided = McpAppRequests.layer.pipe(
 
 export const layer = Layer.mergeAll(
   layerCommandOutputHubProvided,
-  ModSurfaceHub.layer,
-  layerModSurfaceActionsProvided,
   layerOrchestratorProvided,
   layerMcpAppRequestsProvided,
   layerThreadManagementProvided,

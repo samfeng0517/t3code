@@ -1,5 +1,6 @@
 import {
   AntigravitySettings,
+  AssistantSettings,
   ClaudeSettings,
   CodexSettings,
   EasDeviceHostConfig,
@@ -10,6 +11,7 @@ import {
   UsageLimitSourceConfig,
   isSecretReference,
   secretSettingsFields,
+  SETTINGS_SECRET_REDACTED,
 } from "@t3tools/contracts";
 import { acpRegistryClient } from "@t3tools/provider-acp-registry/client";
 import { cursorClient } from "@t3tools/provider-cursor/client";
@@ -25,7 +27,7 @@ import {
   writeSecretFieldValues,
 } from "./sourceControl/sourceControlHostSecrets.ts";
 
-export const SECRET_REDACTED = "\u2022\u2022\u2022\u2022\u2022\u2022";
+export const SECRET_REDACTED = SETTINGS_SECRET_REDACTED;
 
 const providerSecretFields = new Map([
   ["codex", secretSettingsFields(CodexSettings)],
@@ -47,6 +49,7 @@ const providerSecretFields = new Map([
 const usageLimitSecretFields = secretSettingsFields(UsageLimitSourceConfig);
 const easDeviceHostSecretFields = secretSettingsFields(EasDeviceHostConfig);
 const simlockDeviceHostSecretFields = secretSettingsFields(SimlockDeviceHostConfig);
+const assistantSecretFields = secretSettingsFields(AssistantSettings);
 const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
 
 export interface SettingsSecret {
@@ -230,6 +233,13 @@ function mapSecretFieldGroups(
       ) as SimlockDeviceHostConfig,
   );
 
+  // A fixed name: the token belongs to whichever ERP URL is saved, and changing the URL clears it.
+  const assistant = mapFields(
+    settings.assistant,
+    assistantSecretFields,
+    () => "assistant-erp-token",
+  ) as ServerSettings["assistant"];
+
   return {
     ...settings,
     providerInstances,
@@ -237,5 +247,6 @@ function mapSecretFieldGroups(
     usageLimitSources,
     easDeviceHosts,
     simlockDeviceHosts,
+    assistant,
   };
 }

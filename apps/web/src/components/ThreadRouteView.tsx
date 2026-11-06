@@ -16,6 +16,7 @@ import {
   useAnyEnvironmentHiding,
   useQuietThreadShell,
 } from "../state/entities";
+import { usePrimaryEnvironmentId } from "../state/environments";
 import { useEnvironmentShellStatus } from "../state/shell";
 import { environmentThreadShells, useEnvironmentThread } from "../state/threads";
 import {
@@ -48,6 +49,12 @@ export function ThreadRouteView({
   );
   const serverThreadRef = target.kind === "server" ? target.threadRef : null;
   const serverThreadShell = useQuietThreadShell(serverThreadRef);
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  // Notifications and thread links reach the assistant thread; it only opens on its own page.
+  const isAssistantThread =
+    serverThreadRef !== null &&
+    serverThreadRef.environmentId === primaryEnvironmentId &&
+    serverThreadShell?.lineage.assistant === true;
   const shellStatus = useEnvironmentShellStatus(serverThreadRef?.environmentId ?? null);
   const environmentThreadRefs = useEnvironmentThreadRefs(serverThreadRef?.environmentId ?? null);
   const bootstrapComplete = isThreadRouteSnapshotAuthoritative(shellStatus);
@@ -187,6 +194,8 @@ export function ThreadRouteView({
     } else {
       redirect = <Navigate to="/" replace />;
     }
+  } else if (isAssistantThread) {
+    redirect = <Navigate to="/assistant" replace />;
   } else if (hiddenByTagFilter) {
     redirect = <Navigate to="/" replace />;
   } else if (offShellBlocked) {

@@ -143,6 +143,10 @@
       "types": "./src/relay/index.ts",
       "default": "./src/relay/index.ts"
     },
+    "./state/assistant": {
+      "types": "./src/state/assistant.ts",
+      "default": "./src/state/assistant.ts"
+    },
     "./state/auth": {
       "types": "./src/state/auth.ts",
       "default": "./src/state/auth.ts"
@@ -486,10 +490,6 @@
     "./state/mcp-apps": {
       "types": "./src/state/mcpApps.ts",
       "default": "./src/state/mcpApps.ts"
-    },
-    "./state/mods": {
-      "types": "./src/state/mods.ts",
-      "default": "./src/state/mods.ts"
     },
     "./source-control-clients": {
       "types": "./src/sourceControlClients.ts",

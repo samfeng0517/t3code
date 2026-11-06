@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   compactDynamicToolOutput,
+  dailyReportDraftFromToolItem,
   MAX_TOOL_OUTPUT_IMAGES,
   mcpToolResultOutput,
   toolOutputImages,
@@ -21,6 +22,27 @@ describe("compactDynamicToolOutput", () => {
     ]) {
       expect(compactDynamicToolOutput(value)).toEqual(metadata);
     }
+  });
+
+  it("compactDynamicToolOutput should keep dailyReportDraft when the propose tool returns it", () => {
+    const dailyReportDraft = { reportDate: "2026-11-05", version: 2 };
+    const output = { dailyReportDraft, message: "Saved draft version 2." };
+    expect(compactDynamicToolOutput(output)).toEqual({ dailyReportDraft });
+    for (const invalid of [
+      { reportDate: "11/05", version: 2 },
+      { reportDate: "2026-11-05", version: -1 },
+      { reportDate: "2026-11-05", version: 1.5 },
+    ]) {
+      expect(compactDynamicToolOutput({ dailyReportDraft: invalid })).toBeUndefined();
+    }
+    const toolName = "mcp__t3-code__assistant_propose_daily_report";
+    expect(dailyReportDraftFromToolItem({ toolName, output })).toEqual(dailyReportDraft);
+    expect(
+      dailyReportDraftFromToolItem({ toolName: "mcp__t3-code__html_render", output }),
+    ).toBeUndefined();
+    expect(
+      dailyReportDraftFromToolItem({ toolName, output: { ...output, isError: true } }),
+    ).toBeUndefined();
   });
 
   it("keeps nested thread identity and scalar task IDs without result bodies", () => {

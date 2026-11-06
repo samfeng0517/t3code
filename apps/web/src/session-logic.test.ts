@@ -1357,6 +1357,138 @@ describe("HTML renders in the timeline", () => {
   });
 });
 
+describe("daily report drafts in the timeline", () => {
+  const at = DateTime.makeUnsafe("2026-11-05T01:30:00.000Z");
+  const proposeCall = (overrides: Partial<OrchestrationV2TurnItem> = {}): OrchestrationV2TurnItem =>
+    ({
+      id: TurnItemId.make("propose"),
+      threadId: ThreadId.make("assistant-thread"),
+      runId: RunId.make("draft-run"),
+      nodeId: null,
+      providerThreadId: null,
+      providerTurnId: null,
+      nativeItemRef: null,
+      parentItemId: null,
+      ordinal: 1,
+      status: "completed",
+      title: null,
+      startedAt: at,
+      completedAt: at,
+      updatedAt: at,
+      type: "dynamic_tool",
+      toolName: "mcp__t3-code__assistant_propose_daily_report",
+      input: {
+        items: [
+          {
+            section: "yesterday",
+            content: "Review merge requests",
+            status: "finished",
+            sort_order: 0,
+          },
+          {
+            section: "today",
+            content: "Write the release notes",
+            status: "processing",
+            project_id: 7,
+            sort_order: 0,
+          },
+        ],
+        problem_text: "Waiting on review",
+        sources: [{ key: "erp_prefill", status: "ok" }],
+      },
+      output: {
+        structuredContent: {
+          dailyReportDraft: { reportDate: "2026-11-05", version: 2 },
+          message: "Saved",
+        },
+        content: [],
+      },
+      ...overrides,
+    }) as OrchestrationV2TurnItem;
+  const rows = (...items: OrchestrationV2TurnItem[]): OrchestrationV2ProjectedTurnItem[] =>
+    items.map((item) => ({
+      position: item.ordinal,
+      visibility: "local",
+      sourceThreadId: item.threadId,
+      sourceItemId: item.id,
+      item,
+    }));
+
+  it("session-logic should emit a daily-report-draft entry when the assistant thread has a propose tool item", () => {
+    const entries = deriveTimelineEntriesFromVisibleTurnItems({
+      visibleTurnItems: rows(proposeCall()),
+      optimisticMessages: [],
+      assistantThread: true,
+    });
+    expect(entries).toEqual([
+      {
+        id: "propose",
+        kind: "daily-report-draft",
+        createdAt: DateTime.formatIso(at),
+        reportDate: "2026-11-05",
+        version: 2,
+        input: {
+          items: [
+            {
+              section: "yesterday",
+              content: "Review merge requests",
+              status: "finished",
+              projectId: null,
+              projectOther: null,
+              sortOrder: 0,
+            },
+            {
+              section: "today",
+              content: "Write the release notes",
+              status: "processing",
+              projectId: 7,
+              projectOther: null,
+              sortOrder: 0,
+            },
+          ],
+          problemText: "Waiting on review",
+        },
+      },
+    ]);
+    // The wire summarizes large inputs; the card then shows its header only.
+    const summarized = deriveTimelineEntriesFromVisibleTurnItems({
+      visibleTurnItems: rows(proposeCall({ input: { truncated: true, summary: "{...}" } })),
+      optimisticMessages: [],
+      assistantThread: true,
+    });
+    expect(summarized[0]).toMatchObject({ kind: "daily-report-draft", input: null });
+  });
+
+  it("session-logic should keep the generic tool row when the thread is not the assistant thread", () => {
+    const input = { visibleTurnItems: rows(proposeCall()), optimisticMessages: [] };
+    expect(deriveTimelineEntriesFromVisibleTurnItems(input).map((entry) => entry.kind)).toEqual([
+      "work",
+    ]);
+    const readCall = proposeCall({
+      toolName: "mcp__t3-code__assistant_get_daily_report_draft",
+      input: {},
+      output: { structuredContent: { report_date: "2026-11-05" }, content: [] },
+    });
+    expect(
+      deriveTimelineEntriesFromVisibleTurnItems({
+        visibleTurnItems: rows(readCall),
+        optimisticMessages: [],
+        assistantThread: true,
+      }).map((entry) => entry.kind),
+    ).toEqual(["work"]);
+  });
+
+  it("deriveTimelineEntriesFromVisibleTurnItemsWithState should rederive the card when assistantThread turns true after the items loaded", () => {
+    const input = { visibleTurnItems: rows(proposeCall()), optimisticMessages: [] };
+    const previous = deriveTimelineEntriesFromVisibleTurnItemsWithState(input);
+    const next = deriveTimelineEntriesFromVisibleTurnItemsWithState(
+      { ...input, assistantThread: true },
+      previous,
+    );
+    expect(next.entries.map((entry) => entry.kind)).toEqual(["daily-report-draft"]);
+  });
+});
+
 describe("work-log failure policy (#7999/#7893)", () => {
   const toolEntry = (overrides: Record<string, unknown>) =>
     ({

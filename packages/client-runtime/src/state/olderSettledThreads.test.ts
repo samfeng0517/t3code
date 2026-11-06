@@ -60,6 +60,7 @@ const row = (
     readonly settledDay?: number;
     readonly createdDay?: number;
     readonly subagent?: boolean;
+    readonly assistant?: boolean;
   },
 ) =>
   ({
@@ -69,6 +70,7 @@ const row = (
       parentThreadId: input.subagent === true ? ThreadId.make("parent") : null,
       relationshipToParent: input.subagent === true ? "subagent" : null,
       rootThreadId: ThreadId.make(id),
+      ...(input.assistant === true ? { assistant: true } : {}),
     },
     settledOverride: input.settledDay === undefined ? null : "settled",
     settledAt: input.settledDay === undefined ? null : DateTime.makeUnsafe(input.settledDay * DAY),
@@ -100,6 +102,9 @@ describe("olderSettledCountKey", () => {
     expect(key([...base, row("new", { createdDay: 70 })])).toBe(start);
     expect(key([...base, row("new-settled", { createdDay: 70, settledDay: 71 })])).toBe(start);
     expect(key([...base, row("child", { createdDay: 5, subagent: true })])).toBe(start);
+    expect(
+      key([...base, row("assistant", { createdDay: 5, settledDay: 6, assistant: true })]),
+    ).toBe(start);
   });
 });
 

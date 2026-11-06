@@ -7,6 +7,7 @@ import {
   SecretProviderKind,
   ServerSettings,
   ServerSettingsPatch,
+  SETTINGS_SECRET_REDACTED,
   UsageLimitSourceId,
   type ServerProvider,
 } from "@t3tools/contracts";
@@ -144,6 +145,48 @@ describe("serverSettings helpers", () => {
       sourceControlHosts: { github: { tokens: { " GitHub.com ": "ghp_new" } } },
     });
     expect(recased.sourceControlHosts.github?.tokens).toEqual({ "github.com": "ghp_new" });
+  });
+
+  describe("applyServerSettingsPatch assistant", () => {
+    const configured = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      assistant: { erpBaseUrl: "https://erp.example.com", erpToken: "erp-token" },
+    });
+
+    it("should clear erpToken when erpBaseUrl changes without a new token", () => {
+      for (const erpToken of [undefined, SETTINGS_SECRET_REDACTED]) {
+        const moved = applyServerSettingsPatch(configured, {
+          assistant: {
+            erpBaseUrl: "https://erp2.example.com/",
+            ...(erpToken === undefined ? {} : { erpToken }),
+          },
+        });
+        expect(moved.assistant).toMatchObject({
+          erpBaseUrl: "https://erp2.example.com",
+          erpToken: "",
+        });
+      }
+    });
+
+    it("should keep the new erpToken when erpBaseUrl and erpToken change together", () => {
+      const moved = applyServerSettingsPatch(configured, {
+        assistant: { erpBaseUrl: "https://erp2.example.com", erpToken: "new-token" },
+      });
+      expect(moved.assistant).toMatchObject({
+        erpBaseUrl: "https://erp2.example.com",
+        erpToken: "new-token",
+      });
+    });
+
+    it("should keep erpToken when the patch only changes runtimeMode or repeats the same URL", () => {
+      const mode = applyServerSettingsPatch(configured, {
+        assistant: { runtimeMode: "full-access" },
+      });
+      expect(mode.assistant).toMatchObject({ erpToken: "erp-token", runtimeMode: "full-access" });
+      const same = applyServerSettingsPatch(configured, {
+        assistant: { erpBaseUrl: "https://erp.example.com/" },
+      });
+      expect(same.assistant.erpToken).toBe("erp-token");
+    });
   });
 
   it("inherits actions, preserves existing actions, and supports empty overrides and reset", () => {

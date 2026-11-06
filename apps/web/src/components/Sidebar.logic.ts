@@ -18,7 +18,7 @@ import {
 } from "@t3tools/client-runtime/state/thread-search";
 import { foldSearchQuery, rankSearchItems, scoreThreadSearch } from "@t3tools/shared/paletteSearch";
 import {
-  isListedThreadLineage,
+  isShownInThreadLists,
   type ContextMenuItem,
   type EnvironmentId,
   type ThreadId,
@@ -566,7 +566,7 @@ export async function deleteSelectedThreadEntries<
 }
 
 export function isSidebarHiddenThread(thread: Pick<SidebarThreadSummary, "lineage">): boolean {
-  return !isListedThreadLineage(thread.lineage);
+  return !isShownInThreadLists(thread.lineage);
 }
 
 // Subagent and side-chat threads have no sidebar row, so an open one is represented by
@@ -605,6 +605,7 @@ export function filterSidebarV2VisibleThreads<
   return threads.filter(
     (thread) =>
       thread.archivedAt === null &&
+      thread.lineage.assistant !== true &&
       !isShownUnderParent(
         { environmentId: thread.environmentId, threadId: thread.id },
         thread.lineage,

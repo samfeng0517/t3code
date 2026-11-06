@@ -616,6 +616,9 @@ declare module "effect/Schema" {
   }
 }
 
+/** What clients see, and send back unchanged, in place of a saved secret. */
+export const SETTINGS_SECRET_REDACTED = "\u2022\u2022\u2022\u2022\u2022\u2022";
+
 export function secretSetting<S extends Schema.Top>(schema: S): S["Rebuild"] {
   return schema.annotateKey({ settingsSecret: true });
 }
@@ -1223,6 +1226,42 @@ export const StorageCleanupSettings = Schema.Struct({
 });
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
+const isHttpsUrl = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.username === "" && url.password === "";
+  } catch {
+    return false;
+  }
+};
+
+/** "" means not configured; otherwise an https URL without credentials. */
+export const AssistantErpBaseUrl = TrimmedString.check(
+  Schema.makeFilter(
+    (value) => value === "" || isHttpsUrl(value) || "ERP URL must be an https:// URL",
+  ),
+);
+export type AssistantErpBaseUrl = typeof AssistantErpBaseUrl.Type;
+
+export const AssistantSettings = Schema.Struct({
+  // Only patches are validated: a hand-edited bad URL must not fail the whole settings file.
+  erpBaseUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  erpToken: TrimmedString.pipe(secretSetting, Schema.withDecodingDefault(Effect.succeed(""))),
+  /** Null means the assistant default model. */
+  modelSelection: Schema.NullOr(ModelSelection).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  runtimeMode: RuntimeMode.pipe(
+    Schema.withDecodingDefault(Effect.succeed("approval-required" as const)),
+  ),
+});
+export type AssistantSettings = typeof AssistantSettings.Type;
+
+export const DEFAULT_ASSISTANT_MODEL_SELECTION: ModelSelection = {
+  instanceId: ProviderInstanceId.make("claudeAgent"),
+  model: "claude-opus-5-5",
+};
+
 export const ServerSettings = Schema.Struct({
   // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
   favorites: Schema.NullOr(ModelFavorites).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
@@ -1397,6 +1436,7 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
   reviewGuideInstructions: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  assistant: AssistantSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 
   pullRequestMergeMethod: Schema.NullOr(PullRequestMergeMethod).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
@@ -1747,6 +1787,15 @@ export const ServerSettingsPatch = Schema.Struct({
   reviewGuidesEnabled: Schema.optionalKey(Schema.Boolean),
   reviewGuideModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
   reviewGuideInstructions: Schema.optionalKey(TrimmedString),
+  /** Merges per field; changing `erpBaseUrl` clears the saved token unless a new one comes with it. */
+  assistant: Schema.optionalKey(
+    Schema.Struct({
+      erpBaseUrl: Schema.optionalKey(AssistantErpBaseUrl),
+      erpToken: Schema.optionalKey(TrimmedString),
+      modelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
+      runtimeMode: Schema.optionalKey(RuntimeMode),
+    }),
+  ),
   pullRequestMergeMethod: Schema.optionalKey(Schema.NullOr(PullRequestMergeMethod)),
   observability: Schema.optionalKey(
     Schema.Struct({

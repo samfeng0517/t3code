@@ -556,3 +556,36 @@ describe("server model preferences", () => {
     expect(decodeServerSettingsPatch(input)).toEqual(input);
   });
 });
+
+describe("AssistantSettings", () => {
+  it("should decode defaults when assistant is missing from settings.json", () => {
+    expect(decodeServerSettings({}).assistant).toEqual({
+      erpBaseUrl: "",
+      erpToken: "",
+      modelSelection: null,
+      runtimeMode: "approval-required",
+    });
+  });
+
+  it("ServerSettings should keep a hand-edited http erpBaseUrl when decoding settings.json", () => {
+    // Only patches validate the URL, so a hand-edited one cannot fail the whole settings file.
+    expect(
+      decodeServerSettings({ assistant: { erpBaseUrl: "http://erp.example.com" } }).assistant
+        .erpBaseUrl,
+    ).toBe("http://erp.example.com");
+  });
+
+  it("ServerSettingsPatch should reject erpBaseUrl when protocol is http or carries credentials", () => {
+    for (const erpBaseUrl of ["http://erp.example.com", "https://me:pw@erp.example.com", "erp"]) {
+      expect(() => decodeServerSettingsPatch({ assistant: { erpBaseUrl } })).toThrow(
+        "ERP URL must be an https:// URL",
+      );
+    }
+    expect(decodeServerSettingsPatch({ assistant: { erpBaseUrl: "" } }).assistant).toEqual({
+      erpBaseUrl: "",
+    });
+    expect(
+      decodeServerSettingsPatch({ assistant: { erpBaseUrl: "https://erp.example.com" } }).assistant,
+    ).toEqual({ erpBaseUrl: "https://erp.example.com" });
+  });
+});
