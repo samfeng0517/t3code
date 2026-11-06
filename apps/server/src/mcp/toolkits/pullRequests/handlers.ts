@@ -357,6 +357,22 @@ const make = Effect.gen(function* () {
   const guideFailureDetail = (error: { readonly message: string }) =>
     "detail" in error && typeof error.detail === "string" ? error.detail : error.message;
 
+  const locateOne = Effect.fn("PullRequestsToolkit.locateOne")(function* <E>(
+    input: Omit<PullRequestTargetInput, "threadId">,
+    unresolved: (detail: string) => E,
+  ) {
+    const [entry] = yield* locateAll([input]);
+    if (entry !== undefined && entry.target === null) {
+      return yield* Effect.fail(unresolved(entry.failure ?? ""));
+    }
+    if (entry === undefined || entry.target === null || entry.project === undefined) {
+      return yield* new PullRequestProjectNotFoundError({
+        repository: entry?.target.repository ?? input.repository ?? "",
+      });
+    }
+    return { target: entry.target, project: entry.project };
+  });
+
   const writesThread = <P extends { readonly threadId?: ThreadId | undefined }, A, E, R>(
     handle: (params: P) => Effect.Effect<A, E, R>,
   ) => McpToolAccess.writesThreads((params: P) => [params.threadId], handle);
@@ -579,15 +595,10 @@ const make = Effect.gen(function* () {
     ),
     read_pull_request_guide: McpToolAccess.reads((input) =>
       Effect.gen(function* () {
-        const [entry] = yield* locateAll([input]);
-        if (entry !== undefined && entry.target === null) {
-          return yield* new PullRequestGuideFailedError({ detail: entry.failure ?? "" });
-        }
-        if (entry === undefined || entry.target === null || entry.project === undefined) {
-          return yield* new PullRequestProjectNotFoundError({
-            repository: entry?.target.repository ?? input.repository ?? "",
-          });
-        }
+        const entry = yield* locateOne(
+          input,
+          (detail) => new PullRequestGuideFailedError({ detail }),
+        );
         const result = yield* reviewGuides.get(guideReference(entry.project, entry.target)).pipe(
           Effect.mapError(
             (error) =>
@@ -614,15 +625,10 @@ const make = Effect.gen(function* () {
     ),
     set_pull_request_assignees: McpToolAccess.writesWithCapability((input) =>
       Effect.gen(function* () {
-        const [entry] = yield* locateAll([input]);
-        if (entry !== undefined && entry.target === null) {
-          return yield* new PullRequestAssigneesFailedError({ detail: entry.failure ?? "" });
-        }
-        if (entry === undefined || entry.target === null || entry.project === undefined) {
-          return yield* new PullRequestProjectNotFoundError({
-            repository: entry?.target.repository ?? input.repository ?? "",
-          });
-        }
+        const entry = yield* locateOne(
+          input,
+          (detail) => new PullRequestAssigneesFailedError({ detail }),
+        );
         const result = yield* pullRequests
           .setAssignees({
             ...guideReference(entry.project, entry.target),

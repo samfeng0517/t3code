@@ -815,6 +815,26 @@ describe("pull request guide tools", () => {
       }),
   );
 
+  it.effect(
+    "set_pull_request_assignees should refuse without calling the service when no project holds the PR",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
+        const error = yield* harness
+          .call("set_pull_request_assignees", {
+            url: "https://github.com/someone/else/pull/1",
+            logins: ["octocat"],
+            assigned: true,
+          })
+          .pipe(Effect.flip);
+        expect(error).toMatchObject({
+          _tag: "PullRequestProjectNotFoundError",
+          repository: "someone/else",
+        });
+        expect(yield* Ref.get(harness.assigneeRequests)).toEqual([]);
+      }),
+  );
+
   it.effect("reports an unreadable entry on its own and still writes the rest of the batch", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();
