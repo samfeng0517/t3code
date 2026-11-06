@@ -231,6 +231,18 @@ export const PullRequestLabelCandidateList = Schema.Struct({
 });
 export type PullRequestLabelCandidateList = typeof PullRequestLabelCandidateList.Type;
 
+export const PullRequestAssigneeCandidate = Schema.Struct({
+  ...PullRequestActor.fields,
+  isAssigned: Schema.Boolean,
+});
+export type PullRequestAssigneeCandidate = typeof PullRequestAssigneeCandidate.Type;
+
+export const PullRequestAssigneeCandidateList = Schema.Struct({
+  candidates: Schema.Array(PullRequestAssigneeCandidate),
+  truncated: Schema.Boolean,
+});
+export type PullRequestAssigneeCandidateList = typeof PullRequestAssigneeCandidateList.Type;
+
 export const PullRequestCommit = Schema.Struct({
   oid: TrimmedNonEmptyString,
   messageHeadline: Schema.String,
@@ -267,6 +279,13 @@ export const PullRequestReviewerCapabilities = Schema.Struct({
 });
 export type PullRequestReviewerCapabilities = typeof PullRequestReviewerCapabilities.Type;
 
+export const PullRequestAssigneeCapabilities = Schema.Struct({
+  set: Schema.Boolean,
+  /** False where the host keeps one assignee, so assigning someone replaces the current one. */
+  multiple: Schema.Boolean,
+});
+export type PullRequestAssigneeCapabilities = typeof PullRequestAssigneeCapabilities.Type;
+
 export const PullRequestViewedFilesStore = Schema.Literals(["host", "environment"]);
 export type PullRequestViewedFilesStore = typeof PullRequestViewedFilesStore.Type;
 
@@ -290,6 +309,7 @@ export const PullRequestCapabilities = Schema.Struct({
   stacks: Schema.optional(Schema.Boolean),
   stackActions: Schema.optional(Schema.Boolean),
   labels: Schema.optional(Schema.Boolean),
+  assignees: Schema.optional(PullRequestAssigneeCapabilities),
   /**
    * Every head gets at least one check, so a head that has gone a while without any means none
    * reported rather than that the repository runs none. Absent means an empty list says nothing.
@@ -308,6 +328,7 @@ export const PullRequestViewerPermissions = Schema.Struct({
   requestReviewers: Schema.Boolean,
   updateMethods: Schema.optional(ForwardCompatibleArray(PullRequestUpdateMethod)),
   labels: Schema.optional(Schema.Boolean),
+  assignees: Schema.optional(Schema.Boolean),
   editChangeRequest: Schema.optional(Schema.Boolean),
   maintainerEdits: Schema.optional(Schema.Boolean),
 });
@@ -594,6 +615,7 @@ export const PullRequestDetail = Schema.Struct({
   mergedAt: Schema.NullOr(IsoDateTime),
   closedAt: Schema.NullOr(IsoDateTime),
   reviewers: Schema.Array(PullRequestActor),
+  assignees: Schema.optional(Schema.Array(PullRequestActor)),
   labels: Schema.Array(PullRequestLabel),
   checks: Schema.Array(PullRequestCheck),
   mergeCapabilities: PullRequestMergeCapabilities,
@@ -867,6 +889,18 @@ export const PullRequestLabelChangeInput = Schema.Struct({
   applied: Schema.Boolean,
 });
 export type PullRequestLabelChangeInput = typeof PullRequestLabelChangeInput.Type;
+
+export const PullRequestAssigneeChangeInput = Schema.Struct({
+  ...PullRequestRef.fields,
+  logins: Schema.Array(TrimmedNonEmptyString).check(Schema.isMinLength(1), Schema.isMaxLength(10)),
+  assigned: Schema.Boolean,
+});
+export type PullRequestAssigneeChangeInput = typeof PullRequestAssigneeChangeInput.Type;
+
+export const PullRequestAssigneeChangeResult = Schema.Struct({
+  assignees: Schema.Array(PullRequestActor),
+});
+export type PullRequestAssigneeChangeResult = typeof PullRequestAssigneeChangeResult.Type;
 
 /**
  * The names keep their `cli-` prefix for wire compatibility; for a host read with a credential

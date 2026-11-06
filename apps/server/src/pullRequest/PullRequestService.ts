@@ -60,6 +60,9 @@ import {
   type PullRequestReviewerRequestInput,
   type PullRequestLabelCandidateList,
   type PullRequestLabelChangeInput,
+  type PullRequestAssigneeCandidateList,
+  type PullRequestAssigneeChangeInput,
+  type PullRequestAssigneeChangeResult,
   type PullRequestSetFilesViewedInput,
   type PullRequestState,
   type PullRequestSubmitReviewInput,
@@ -280,6 +283,12 @@ export class PullRequestService extends Context.Service<
     readonly setLabels: (
       input: PullRequestLabelChangeInput,
     ) => Effect.Effect<void, PullRequestError>;
+    readonly assigneeCandidates: (
+      input: PullRequestRef,
+    ) => Effect.Effect<PullRequestAssigneeCandidateList, PullRequestError>;
+    readonly setAssignees: (
+      input: PullRequestAssigneeChangeInput,
+    ) => Effect.Effect<PullRequestAssigneeChangeResult, PullRequestError>;
     readonly invalidate: (
       input: PullRequestInvalidateInput,
       options?: { readonly notifyReaders?: boolean },
@@ -318,6 +327,9 @@ const ACTION_ACCESS_REFUSALS: Record<PullRequestAction, string> = {
 
 const REVIEWER_REQUEST_REFUSAL = "You need write access on this repository to ask for a review.";
 const LABEL_CHANGE_REFUSAL = "You need triage access on this repository to change its labels.";
+const ASSIGNEE_CHANGE_REFUSAL = "You need write access on this repository to change its assignees.";
+const ASSIGNEES_UNSUPPORTED = "This host cannot assign people to a change request.";
+const SINGLE_ASSIGNEE_REFUSAL = "This host takes one assignee at a time.";
 
 export interface SupportedProject {
   readonly cursorKey: string;
@@ -608,6 +620,14 @@ function withRateLimitBackoff(
       ? {}
       : { listLabelCandidates: interactive("listLabelCandidates", api.listLabelCandidates) }),
     ...(api.setLabels === undefined ? {} : { setLabels: interactive("setLabels", api.setLabels) }),
+    ...(api.listAssigneeCandidates === undefined
+      ? {}
+      : {
+          listAssigneeCandidates: interactive("listAssigneeCandidates", api.listAssigneeCandidates),
+        }),
+    ...(api.setAssignees === undefined
+      ? {}
+      : { setAssignees: interactive("setAssignees", api.setAssignees) }),
     ...(api.listRepositoryLabels === undefined
       ? {}
       : { listRepositoryLabels: interactive("listRepositoryLabels", api.listRepositoryLabels) }),
@@ -1824,6 +1844,9 @@ export const make = Effect.gen(function* () {
             ...(changeRequest.approvedBy === undefined
               ? {}
               : { approvedBy: changeRequest.approvedBy }),
+            ...(changeRequest.assignees === undefined
+              ? {}
+              : { assignees: changeRequest.assignees }),
             ...(changeRequest.approvalsLeft === undefined
               ? {}
               : { approvalsLeft: changeRequest.approvalsLeft }),
@@ -2628,6 +2651,68 @@ export const make = Effect.gen(function* () {
         );
       }),
     );
+
+  const assigneeCandidates: PullRequestService["Service"]["assigneeCandidates"] = Effect.fn(
+    "PullRequestService.assigneeCandidates",
+  )(function* (input) {
+    const project = yield* requireProject(input);
+    const list = project.api.listAssigneeCandidates;
+    if (project.api.capabilities.assignees?.set !== true || list === undefined) {
+      return yield* new PullRequestOperationError({
+        operation: "assigneeCandidates",
+        detail: ASSIGNEES_UNSUPPORTED,
+      });
+    }
+    const viewer = yield* viewerPermissionsOf(project, input, "assigneeCandidates");
+    if (viewer.assignees === false) {
+      return yield* new PullRequestOperationError({
+        operation: "assigneeCandidates",
+        detail: ASSIGNEE_CHANGE_REFUSAL,
+      });
+    }
+    return yield* list({
+      cwd: project.project.workspaceRoot,
+      repository: project.repository,
+      host: project.host,
+      number: input.number,
+    }).pipe(Effect.mapError(toPullRequestError("assigneeCandidates")));
+  });
+
+  const setAssignees: PullRequestService["Service"]["setAssignees"] = Effect.fn(
+    "PullRequestService.setAssignees",
+  )(function* (input) {
+    const project = yield* requireProject(input);
+    const change = project.api.setAssignees;
+    const capability = project.api.capabilities.assignees;
+    if (capability?.set !== true || change === undefined) {
+      return yield* new PullRequestOperationError({
+        operation: "setAssignees",
+        detail: ASSIGNEES_UNSUPPORTED,
+      });
+    }
+    if (!capability.multiple && input.assigned && input.logins.length > 1) {
+      return yield* new PullRequestOperationError({
+        operation: "setAssignees",
+        detail: SINGLE_ASSIGNEE_REFUSAL,
+      });
+    }
+    const viewer = yield* viewerPermissionsOf(project, input, "setAssignees");
+    if (viewer.assignees === false) {
+      return yield* new PullRequestOperationError({
+        operation: "setAssignees",
+        detail: ASSIGNEE_CHANGE_REFUSAL,
+      });
+    }
+    const assignees = yield* change({
+      cwd: project.project.workspaceRoot,
+      repository: project.repository,
+      host: project.host,
+      number: input.number,
+      logins: input.logins,
+      assigned: input.assigned,
+    }).pipe(Effect.mapError(toPullRequestError("setAssignees")));
+    return { assignees };
+  });
 
   /**
    * The line counts for rows already on the page, which the listing left out because on GitHub
@@ -3555,13 +3640,13 @@ export const make = Effect.gen(function* () {
   });
 
   const invalidatedByMutation =
-    <I extends PullRequestRef>(
-      method: (input: I) => Effect.Effect<void, PullRequestError>,
-    ): ((input: I) => Effect.Effect<void, PullRequestError>) =>
+    <I extends PullRequestRef, A>(
+      method: (input: I) => Effect.Effect<A, PullRequestError>,
+    ): ((input: I) => Effect.Effect<A, PullRequestError>) =>
     (input) =>
       Effect.gen(function* () {
         const ref = yield* canonicalRef(input);
-        yield* readCache.invalidate(refScope(ref)).pipe(
+        const result = yield* readCache.invalidate(refScope(ref)).pipe(
           Effect.andThen(method(input)),
           Effect.ensuring(readCache.invalidate(refScope(ref))),
           Effect.tap(() =>
@@ -3572,6 +3657,7 @@ export const make = Effect.gen(function* () {
           ),
         );
         yield* SubscriptionRef.set(pullRequestRefreshes, listingsEpoch);
+        return result;
       });
   const runActionAndInvalidate: PullRequestService["Service"]["runAction"] = Effect.fn(
     "PullRequestService.runActionAndInvalidate",
@@ -3773,6 +3859,8 @@ export const make = Effect.gen(function* () {
     requestReviewers: invalidatedByMutation(requestReviewers),
     labelCandidates,
     setLabels: invalidatedByMutation(setLabels),
+    assigneeCandidates,
+    setAssignees: invalidatedByMutation(setAssignees),
     invalidate,
   });
 });

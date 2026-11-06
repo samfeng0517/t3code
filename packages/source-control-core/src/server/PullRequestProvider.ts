@@ -31,6 +31,7 @@ import type {
   PullRequestReviewerCandidateList,
   PullRequestReviewerKind,
   PullRequestLabelCandidateList,
+  PullRequestAssigneeCandidateList,
   PullRequestState,
   PullRequestPreview,
   PullRequestUpdateMethod,
@@ -205,6 +206,7 @@ export interface ProviderChangeRequestDetail extends ProviderChangeRequest {
   readonly autoMergeMethod?: PullRequestMergeMethod;
   readonly workflowApprovalsRequired?: number;
   readonly approvedBy?: ReadonlyArray<PullRequestActor>;
+  readonly assignees?: ReadonlyArray<PullRequestActor>;
   readonly approvalsLeft?: number | null;
 }
 
@@ -559,6 +561,19 @@ export interface PullRequestProviderApi {
       readonly applied: boolean;
     },
   ) => Effect.Effect<void, PullRequestProviderError>;
+
+  readonly listAssigneeCandidates?: (
+    input: ProviderRepositoryRef & { readonly number: number },
+  ) => Effect.Effect<PullRequestAssigneeCandidateList, PullRequestProviderError>;
+
+  /** Resolves to the assignees the host reports after the write, which may differ from the request. */
+  readonly setAssignees?: (
+    input: ProviderRepositoryRef & {
+      readonly number: number;
+      readonly logins: ReadonlyArray<string>;
+      readonly assigned: boolean;
+    },
+  ) => Effect.Effect<ReadonlyArray<PullRequestActor>, PullRequestProviderError>;
 
   readonly replyToThread: (
     input: ProviderRepositoryRef & {

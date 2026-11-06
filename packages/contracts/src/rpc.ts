@@ -250,6 +250,9 @@ import {
   PullRequestReviewerRequestInput,
   PullRequestLabelCandidateList,
   PullRequestLabelChangeInput,
+  PullRequestAssigneeCandidateList,
+  PullRequestAssigneeChangeInput,
+  PullRequestAssigneeChangeResult,
   PullRequestSetFilesViewedInput,
   PullRequestSubmitReviewInput,
   PullRequestThreadCommentsInput,
@@ -659,6 +662,8 @@ export const WS_METHODS = {
   pullRequestsRequestReviewers: "pullRequests.requestReviewers",
   pullRequestsLabelCandidates: "pullRequests.labelCandidates",
   pullRequestsSetLabels: "pullRequests.setLabels",
+  pullRequestsAssigneeCandidates: "pullRequests.assigneeCandidates",
+  pullRequestsSetAssignees: "pullRequests.setAssignees",
 
   sourceControlLookupRepository: "sourceControl.lookupRepository",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
@@ -1277,6 +1282,18 @@ const WsPullRequestsLabelCandidatesRpc = Rpc.make(WS_METHODS.pullRequestsLabelCa
 const WsPullRequestsSetLabelsRpc = Rpc.make(WS_METHODS.pullRequestsSetLabels, {
   payload: PullRequestLabelChangeInput,
   success: Schema.Void,
+  error: PullRequestRpcError,
+});
+
+const WsPullRequestsAssigneeCandidatesRpc = Rpc.make(WS_METHODS.pullRequestsAssigneeCandidates, {
+  payload: PullRequestRef,
+  success: PullRequestAssigneeCandidateList,
+  error: PullRequestRpcError,
+});
+
+const WsPullRequestsSetAssigneesRpc = Rpc.make(WS_METHODS.pullRequestsSetAssignees, {
+  payload: PullRequestAssigneeChangeInput,
+  success: PullRequestAssigneeChangeResult,
   error: PullRequestRpcError,
 });
 
@@ -2324,6 +2341,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsRequestReviewersRpc,
   WsPullRequestsLabelCandidatesRpc,
   WsPullRequestsSetLabelsRpc,
+  WsPullRequestsAssigneeCandidatesRpc,
+  WsPullRequestsSetAssigneesRpc,
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,

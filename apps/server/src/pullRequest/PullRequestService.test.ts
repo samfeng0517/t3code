@@ -2133,6 +2133,136 @@ it.effect("refuses a review request this viewer may not make, and says what acce
   }),
 );
 
+function assigneeProvider(
+  overrides: Partial<PullRequestProviderApi>,
+  assignees: { readonly set: boolean; readonly multiple: boolean } | null = {
+    set: true,
+    multiple: true,
+  },
+): PullRequestProviderApi {
+  const provider = fakePullRequestProvider(SourceControlProviderKind.make("github"), overrides);
+  return {
+    ...provider,
+    capabilities: {
+      ...provider.capabilities,
+      ...(assignees === null ? {} : { assignees }),
+    },
+  };
+}
+
+const assigneeRef = { projectId: "p1" as ProjectId, repository: "acme/web", number: 1 };
+
+it.effect("setAssignees should refuse when the viewer lacks the assignees permission", () =>
+  Effect.gen(function* () {
+    let sent = false;
+    const service = yield* makeService({
+      projects: [project({ id: "p1", title: "web", workspaceRoot: "/a", repository: "acme/web" })],
+      providers: [
+        assigneeProvider({
+          getViewerPermissions: () =>
+            Effect.succeed({
+              actions: [],
+              comment: true,
+              resolve: true,
+              verdicts: ["comment"],
+              requestReviewers: true,
+              assignees: false,
+            }),
+          setAssignees: () => {
+            sent = true;
+            return Effect.succeed([]);
+          },
+        }),
+      ],
+    });
+
+    const error = yield* Effect.flip(
+      service.setAssignees({ ...assigneeRef, logins: ["octocat"], assigned: true }),
+    );
+
+    assert.strictEqual(error._tag, "PullRequestOperationError");
+    assert.include(
+      error.message,
+      "You need write access on this repository to change its assignees.",
+    );
+    assert.isFalse(sent);
+  }),
+);
+
+it.effect("setAssignees should refuse more than one login when the host takes one assignee", () =>
+  Effect.gen(function* () {
+    let sent = false;
+    const service = yield* makeService({
+      projects: [project({ id: "p1", title: "web", workspaceRoot: "/a", repository: "acme/web" })],
+      providers: [
+        assigneeProvider(
+          {
+            setAssignees: () => {
+              sent = true;
+              return Effect.succeed([]);
+            },
+          },
+          { set: true, multiple: false },
+        ),
+      ],
+    });
+
+    const error = yield* Effect.flip(
+      service.setAssignees({ ...assigneeRef, logins: ["octocat", "hubot"], assigned: true }),
+    );
+
+    assert.include(error.message, "This host takes one assignee at a time.");
+    assert.isFalse(sent);
+  }),
+);
+
+it.effect("setAssignees should refuse when the host has no assignees capability", () =>
+  Effect.gen(function* () {
+    const service = yield* makeService({
+      projects: [project({ id: "p1", title: "web", workspaceRoot: "/a", repository: "acme/web" })],
+      providers: [assigneeProvider({ setAssignees: () => Effect.succeed([]) }, null)],
+    });
+
+    const error = yield* Effect.flip(
+      service.setAssignees({ ...assigneeRef, logins: ["octocat"], assigned: true }),
+    );
+
+    assert.include(error.message, "This host cannot assign people to a change request.");
+  }),
+);
+
+it.effect("setAssignees should return the host's assignees when the write succeeds", () =>
+  Effect.gen(function* () {
+    const hubot = { login: "hubot", name: null, avatarUrl: null };
+    let assignees: ReadonlyArray<typeof hubot> = [];
+    const service = yield* makeService({
+      projects: [project({ id: "p1", title: "web", workspaceRoot: "/a", repository: "acme/web" })],
+      providers: [
+        assigneeProvider({
+          getChangeRequest: () =>
+            Effect.sync(() => ({ ...hostedChangeRequest("Body"), assignees })),
+          setAssignees: (input) =>
+            Effect.sync(() => {
+              assert.deepStrictEqual(input.logins, ["octocat"]);
+              assert.isTrue(input.assigned);
+              assignees = [hubot];
+              return assignees;
+            }),
+        }),
+      ],
+    });
+
+    const result = yield* service.setAssignees({
+      ...assigneeRef,
+      logins: ["octocat"],
+      assigned: true,
+    });
+
+    assert.deepStrictEqual(result.assignees, [hubot]);
+    assert.deepStrictEqual((yield* service.detail(assigneeRef)).assignees, [hubot]);
+  }),
+);
+
 it.effect.each(["list", "listStats"] as const)(
   "retries a replacement %s read that joins a canceled lookup",
   (operation) =>
