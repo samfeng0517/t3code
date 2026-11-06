@@ -198,6 +198,11 @@ function ErpConnectionRows(props: {
       setError(t("assistantPage.settings.erpUrlNotHttps"));
       return;
     }
+    // Without a URL the token is never used, and the page would report it as missing.
+    if (url.trim() === "" && token !== "") {
+      setError(t("assistantPage.settings.erpUrlRequired"));
+      return;
+    }
     setSaving(true);
     setError(null);
     const result = await save({
@@ -254,11 +259,12 @@ function ErpConnectionRows(props: {
         description={
           <>
             {t("assistantPage.settings.erpTokenHelp")}
-            <ul className="list-disc ps-4">
-              {ERP_TOKEN_SCOPE_KEYS.map((key) => (
-                <li key={key}>{t(key)}</li>
-              ))}
-            </ul>
+            {/* The row renders its description inside a <p>, which cannot hold a list. */}
+            {ERP_TOKEN_SCOPE_KEYS.map((key) => (
+              <span key={key} className="block ps-2">
+                • {t(key)}
+              </span>
+            ))}
           </>
         }
         control={

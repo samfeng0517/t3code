@@ -113,6 +113,18 @@ describe("AssistantSettings", () => {
     expect(updateSettings).not.toHaveBeenCalled();
   });
 
+  it("AssistantSettings should show the missing URL message and not save when a token is typed without an ERP URL", async () => {
+    setup({ erpBaseUrl: "", erpToken: "" });
+    using _locale = zhTW();
+    await using screen = await render(<AssistantSettingsPanel />);
+
+    await userEvent.type(screen.getByRole("textbox", { name: "ERP token" }), "token-value");
+    await userEvent.click(screen.getByRole("button", { name: "儲存" }));
+
+    await expect.element(screen.getByText("請先填 ERP 網址")).toBeVisible();
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
   it("AssistantSettings should load the memory and call writeMemory with the edited text when saved", async () => {
     setup({ erpBaseUrl: "https://erp.example.com", erpToken: SETTINGS_SECRET_REDACTED });
     using _locale = zhTW();

@@ -69,6 +69,7 @@ export const assistantEn = {
   "assistantPage.draftCard.editInErp": "Edit it on ERP",
   "assistantPage.settings.erpUrl": "ERP URL",
   "assistantPage.settings.erpUrlNotHttps": "The ERP URL must start with https://",
+  "assistantPage.settings.erpUrlRequired": "Enter the ERP URL first",
   "assistantPage.settings.erpToken": "ERP token",
   "assistantPage.settings.erpTokenHelp":
     "Create a token in ERP under “My account › API Tokens” with these four scopes:",
