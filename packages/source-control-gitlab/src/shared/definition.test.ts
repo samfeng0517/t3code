@@ -57,6 +57,15 @@ describe("GitLab change request URLs", () => {
     }
   });
 
+  it("authorProfileUrl should link a person at the host root and skip access-token bots when given a login", () => {
+    expect(definition.authorProfileUrl("sam", "https://gitlab.example.com/group/project")).toBe(
+      "https://gitlab.example.com/sam",
+    );
+    expect(
+      definition.authorProfileUrl("project_510_bot_abc123", "https://gitlab.example.com/g/p"),
+    ).toBeNull();
+  });
+
   it("builds merge request URLs below the repository", () => {
     expect(
       definition.changeRequestUrl({
