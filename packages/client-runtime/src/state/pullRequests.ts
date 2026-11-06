@@ -718,15 +718,34 @@ export function createPullRequestEnvironmentAtoms<R, E>(
           const assigned = new Set(
             result.assignees.map((assignee) => assignee.login.toLowerCase()),
           );
-          updateCached(registry, assigneeCandidates(target), (value) => ({
-            ...value,
-            candidates: value.candidates.map((candidate) => ({
-              ...candidate,
-              isAssigned: assigned.has(candidate.login.toLowerCase()),
-            })),
-          }));
+          // GitHub's REST answer carries no display names; keep the ones already read.
+          const names = new Map<string, string>();
+          const remember = (actors: ReadonlyArray<{ login: string; name: string | null }>) => {
+            for (const actor of actors) {
+              if (actor.name !== null) names.set(actor.login.toLowerCase(), actor.name);
+            }
+          };
+          const named = () =>
+            result.assignees.map((assignee) =>
+              assignee.name !== null
+                ? assignee
+                : { ...assignee, name: names.get(assignee.login.toLowerCase()) ?? null },
+            );
+          updateCached(registry, assigneeCandidates(target), (value) => {
+            remember(value.candidates);
+            return {
+              ...value,
+              candidates: value.candidates.map((candidate) => ({
+                ...candidate,
+                isAssigned: assigned.has(candidate.login.toLowerCase()),
+              })),
+            };
+          });
           for (const atom of cachedDetails(registry, target)) {
-            updateCached(registry, atom, (value) => ({ ...value, assignees: result.assignees }));
+            updateCached(registry, atom, (value) => {
+              remember(value.assignees ?? []);
+              return { ...value, assignees: named() };
+            });
           }
         }),
     }),

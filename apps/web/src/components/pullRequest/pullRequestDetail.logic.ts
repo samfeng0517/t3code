@@ -1436,6 +1436,7 @@ export function pullRequestAssigneeToast(input: {
   login: string;
   assigned: boolean;
   after: ReadonlyArray<PullRequestActor>;
+  multiple: boolean;
 }):
   | { type: "success"; key: "assigned" | "unassigned" }
   | { type: "success"; key: "replaced"; from: string }
@@ -1450,7 +1451,9 @@ export function pullRequestAssigneeToast(input: {
   }
   if (!isPresent) return { type: "error", key: "assignFailed" };
   const previous = input.before[0];
+  // Hosts with several assignees only add people; a missing one was removed elsewhere.
   if (
+    !input.multiple &&
     previous !== undefined &&
     !sameLogin(previous.login, input.login) &&
     !present(input.after, previous.login)

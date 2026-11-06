@@ -1447,7 +1447,8 @@ it.effect(
     Effect.scoped(
       Effect.gen(function* () {
         let detailReads = 0;
-        const octocat = { login: "octocat", name: null, avatarUrl: null };
+        let answer: ReadonlyArray<{ login: string; name: null; avatarUrl: null }> = [];
+        const octocat = { login: "octocat", name: "The Octocat", avatarUrl: null };
         const client = {
           [WS_METHODS.pullRequestsSubscribeRefreshes]: () => Stream.never,
           [WS_METHODS.pullRequestsDetail]: () =>
@@ -1459,11 +1460,11 @@ it.effect(
             Effect.succeed({
               candidates: [
                 { ...octocat, isAssigned: true },
-                { login: "new", name: null, avatarUrl: null, isAssigned: false },
+                { login: "new", name: "New Person", avatarUrl: null, isAssigned: false },
               ],
               truncated: false,
             }),
-          [WS_METHODS.pullRequestsSetAssignees]: () => Effect.succeed({ assignees: [] }),
+          [WS_METHODS.pullRequestsSetAssignees]: () => Effect.sync(() => ({ assignees: answer })),
         } as unknown as WsRpcProtocolClient;
         const { atoms, registry } = yield* makeTestRuntime(client);
         const target = {
@@ -1497,6 +1498,18 @@ it.effect(
         expect((yield* AtomRegistry.getResult(registry, candidates)).candidates).toMatchObject([
           { login: "octocat", isAssigned: false },
           { login: "new", isAssigned: false },
+        ]);
+
+        // A host answer without display names keeps the names already read.
+        answer = [{ login: "new", name: null, avatarUrl: null }];
+        yield* Effect.promise(() =>
+          atoms.setAssignees.run(registry, {
+            ...target,
+            input: { ...target.input, logins: ["new"], assigned: true },
+          }),
+        );
+        expect((yield* AtomRegistry.getResult(registry, detail)).assignees).toEqual([
+          { login: "new", name: "New Person", avatarUrl: null },
         ]);
         expect(detailReads).toBe(1);
       }),

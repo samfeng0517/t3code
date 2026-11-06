@@ -89,6 +89,7 @@ export function PullRequestAssigneePicker({
       login,
       assigned,
       after: result.value.assignees,
+      multiple,
     });
     if (outcome.type === "error") {
       toastManager.add({

@@ -1579,6 +1579,7 @@ describe("pull request assignees", () => {
         before: [person("ada")],
         login: "grace",
         assigned: true,
+        multiple: false,
         after: [person("grace")],
       }),
     ).toEqual({ type: "success", key: "replaced", from: "ada" });
@@ -1587,6 +1588,16 @@ describe("pull request assignees", () => {
         before: [person("ada")],
         login: "grace",
         assigned: true,
+        multiple: true,
+        after: [person("grace")],
+      }),
+    ).toEqual({ type: "success", key: "assigned" });
+    expect(
+      pullRequestAssigneeToast({
+        before: [person("ada")],
+        login: "grace",
+        assigned: true,
+        multiple: false,
         after: [person("ada"), person("grace")],
       }),
     ).toEqual({ type: "success", key: "assigned" });
@@ -1595,6 +1606,7 @@ describe("pull request assignees", () => {
         before: [person("grace")],
         login: "GRACE",
         assigned: true,
+        multiple: false,
         after: [person("grace")],
       }),
     ).toEqual({ type: "success", key: "assigned" });
@@ -1603,6 +1615,7 @@ describe("pull request assignees", () => {
         before: [person("ada"), person("grace")],
         login: "grace",
         assigned: false,
+        multiple: false,
         after: [person("ada")],
       }),
     ).toEqual({ type: "success", key: "unassigned" });
@@ -1615,7 +1628,13 @@ describe("pull request assignees", () => {
     "pullRequestAssigneeToast should report a failure when the host's list leaves out the requested login ($key)",
     ({ assigned, after, key }) => {
       expect(
-        pullRequestAssigneeToast({ before: [person("ada")], login: "grace", assigned, after }),
+        pullRequestAssigneeToast({
+          before: [person("ada")],
+          login: "grace",
+          assigned,
+          after,
+          multiple: false,
+        }),
       ).toEqual({ type: "error", key });
     },
   );
