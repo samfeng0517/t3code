@@ -77,9 +77,7 @@ export const deviceEn = {
   "device.panel.noAndroidDevices":
     "No Android virtual devices found. Create one in Android Studio's Device Manager, then refresh.",
   "device.panel.refresh": "Refresh devices",
-  "device.panel.dismissWarning": "Dismiss device warning",
   "device.panel.dismissError": "Dismiss device error",
-  "device.panel.discoveryWarning": "Device discovery warning · {label}",
   "device.setup.hubDescription":
     "Enable this environment to open simulators and emulators, whether they run here or on a remote device host.",
   "device.setup.agentDescription":

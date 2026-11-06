@@ -99,6 +99,12 @@ describe("GitLab change request URLs", () => {
       }),
     ).toBe("https://gitlab.com/group/sub/project/-/merge_requests/4");
   });
+
+  it("links authors to their profile on the repository's host", () => {
+    expect(definition.authorProfileUrl("TonybynMp4", "https://gitlab.com/group/sub/project")).toBe(
+      "https://gitlab.com/TonybynMp4",
+    );
+  });
 });
 
 describe("GitLab remotes", () => {

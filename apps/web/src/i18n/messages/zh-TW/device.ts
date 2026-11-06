@@ -78,9 +78,7 @@ export const deviceZhTW: Readonly<Record<keyof typeof deviceEn, string>> = {
   "device.panel.noAndroidDevices":
     "找不到 Android 虛擬裝置。請在 Android Studio 的 Device Manager 建立一個，然後重新整理。",
   "device.panel.refresh": "重新整理裝置",
-  "device.panel.dismissWarning": "關閉裝置警告",
   "device.panel.dismissError": "關閉裝置錯誤",
-  "device.panel.discoveryWarning": "裝置探索警告 · {label}",
   "device.setup.hubDescription": "讓此環境可開啟模擬器，不論它們是在本機或遠端裝置主機上執行。",
   "device.setup.agentDescription":
     "允許此環境中的新 agent 工作階段啟動並控制本機與遠端裝置，並自動設定所需工具。",

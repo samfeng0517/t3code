@@ -18,6 +18,7 @@ import {
   remoteWebOrigin,
 } from "@t3tools/source-control-core/shared/definition";
 import { icon } from "./icon.ts";
+import { gitLabReferenceAutolinks } from "./referenceAutolinks.ts";
 
 const CHECKOUT_COMMAND = /^glab\s+mr\s+checkout\s+(.+)$/i;
 // `/-/merge_requests/` is GitLab's own route, so a self-hosted server is recognized by it
@@ -106,7 +107,9 @@ export const definition = defineSourceControl({
   parseChangeRequestUrl: (url) => parseChangeRequestPath(url, CHANGE_REQUEST_PATH),
   commitUrl: (input) => buildCommitUrl(input, "-/commit"),
   parseCommitUrl: (url) => parseCommitPath(url, COMMIT_PATH),
-  changeRequestUrlFromReferenceAutolink: () => null,
+  // `!12` already links the merge request itself; `#12` is always an issue.
+  changeRequestUrlFromReferenceAutolink: (url) =>
+    CHANGE_REQUEST_PATH.test(url.pathname) ? url.toString() : null,
   changeRequestActions: new Set([
     "merge",
     "ready",
@@ -127,6 +130,7 @@ export const definition = defineSourceControl({
     /^(?:project|group)_\d+_bot_/u.test(login)
       ? null
       : new URL(`/${encodeURIComponent(login)}`, repositoryUrl).toString(),
+  referenceAutolinks: gitLabReferenceAutolinks,
   reviewSummaryRequired: () => false,
   checkoutCommandArgument: (input) => CHECKOUT_COMMAND.exec(input)?.[1]?.trim() ?? null,
   isChangeRequestReference: (url) => CHANGE_REQUEST_REFERENCE.test(url),

@@ -16,6 +16,7 @@ export const settingsEn = {
   "settings.section.threads": "Threads",
   "settings.section.browser": "Browser",
   "settings.section.devices": "Devices",
+  "settings.section.voice": "Voice",
   "settings.section.worktrees": "Worktrees",
   "settings.section.access": "Sharing & access",
   "settings.section.maintenance": "Maintenance",

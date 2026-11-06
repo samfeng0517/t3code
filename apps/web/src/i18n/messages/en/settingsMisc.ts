@@ -2,25 +2,24 @@ export const settingsMiscEn = {
   "settingsMisc.database.title": "Database",
   "settingsMisc.database.reclaim.title": "Reclaim freed database space",
   "settingsMisc.database.reclaim.description":
-    "Old history is cleaned up automatically, but these databases still hold the freed space. Run the command on each machine to return it to disk; it pauses and restarts the background service. Quit the desktop app first if it hosts the environment.",
+    "These databases still hold space freed by history cleanup. Run the command on each machine to reclaim it. It restarts the background service. Quit the desktop app first if it hosts the environment.",
   "settingsMisc.database.reclaim.rowTitle": "{size} GiB on {environment}",
   "settingsMisc.database.copyCommand": "Copy command",
   "settingsMisc.database.dismiss": "Dismiss",
   "settingsMisc.labs.beta": "Beta",
   "settingsMisc.labs.guestLinks.signedOutDescription":
-    "Share a thread with a guest who watches it live in their browser and sends messages you approve. Sign in to T3 Connect to use guest links.",
+    "Share a thread with a guest who watches it live in a browser and sends messages you approve. Sign in to T3 Connect to use guest links.",
   "settingsMisc.labs.signIn": "Sign in",
   "settingsMisc.labs.guestLinks.descriptionBefore":
-    "Share a thread with a guest who watches it live in their browser and sends messages you approve. Needs T3 Connect: sign in and link this machine in",
+    "Share a thread with a guest who watches it live in a browser and sends messages you approve. Needs T3 Connect: sign in and link this machine in",
   "settingsMisc.labs.guestLinks.sharingAccess": "Sharing & access",
-  "settingsMisc.labs.guestLinks.descriptionAfter":
-    ". While it is off, every guest link stops working.",
+  "settingsMisc.labs.guestLinks.descriptionAfter": ". Turning it off stops every guest link.",
   "settingsMisc.labs.guestLinks.ariaLabel": "Guest links",
   "settingsMisc.labs.linked.descriptionBefore":
     "Let agents here work on your other machines, and theirs here. Turn it on for each machine, then link them in",
   "settingsMisc.labs.linked.connections": "Connections",
   "settingsMisc.labs.linked.descriptionAfter":
-    ". While it is off, nothing new starts over a link; tasks already running finish.",
+    ". While off, nothing new starts over a link; running tasks finish.",
   "settingsMisc.labs.linked.ariaLabel": "Linked environments",
   "settingsMisc.localEnv.couldNotChange": "Couldn't change this setting.",
   "settingsMisc.localEnv.descriptionOn":
