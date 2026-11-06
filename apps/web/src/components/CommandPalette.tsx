@@ -79,7 +79,6 @@ import {
   SquarePenIcon,
   TextSearchIcon,
   Globe2Icon,
-  BlocksIcon,
   UserPlusIcon,
 } from "lucide-react";
 import { openThreadFind } from "./chat/threadFindStore";
@@ -1498,21 +1497,6 @@ function OpenCommandPaletteDialog(props: {
       icon: <PullRequestGlyph.link className={ITEM_ICON_CLASS} />,
       run: async () => {
         useRightPanelStore.getState().open(threadRef, "pull-requests");
-      },
-    });
-  }
-
-  if (activeThread !== null && activeThreadServerConfig?.environment.capabilities.modSurfaces) {
-    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
-    actionItems.push({
-      kind: "action",
-      value: "action:toggle-mods-panel",
-      searchTerms: ["mods", "mod", "plugin", "pane", "panel", "claude"],
-      title: t("mods.commandPalette.toggle"),
-      icon: <BlocksIcon className={ITEM_ICON_CLASS} />,
-      shortcutCommand: "modsPanel.toggle",
-      run: async () => {
-        useRightPanelStore.getState().toggle(threadRef, "mods");
       },
     });
   }

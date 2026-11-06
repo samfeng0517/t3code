@@ -36,7 +36,6 @@ import { restrictToFirstScrollableAncestor, restrictToHorizontalAxis } from "@dn
 import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  Blocks,
   Smartphone,
   ChevronDown,
   ChevronLeft,
@@ -617,8 +616,6 @@ function surfaceTitle(
       return `#${surface.number}`;
     case "pull-requests":
       return t("shell.rightPanel.surface.pullRequests", termParams);
-    case "mods":
-      return t("mods.panel.title");
     case "device":
       return surface.title ?? surface.target?.name ?? t("shell.rightPanel.surface.device");
     case "side-chat":
@@ -712,8 +709,6 @@ function SurfaceIcon({
       );
     case "pull-requests":
       return <PullRequestGlyph.link className="size-3 shrink-0" />;
-    case "mods":
-      return <Blocks className="size-3 shrink-0" />;
     case "side-chat":
       return <SideChatTabIcon environmentId={environmentId} threadId={surface.threadId} />;
     case "device":

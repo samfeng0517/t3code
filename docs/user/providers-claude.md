@@ -102,30 +102,6 @@ can still be started by you. Invoke those one per message: Claude directly runs
 only the last named skill and may try to start earlier ones through its Skill
 tool, which refuses skills reserved for manual invocation.
 
-## Mods
-
-Claude Code mods are plugins that add their own panes, buttons, status lines and
-notifications to Claude. Install them the way you install any Claude plugin; T3
-Code shows what they draw while the thread's Claude session is running.
-
-Open the **Mods** panel beside the chat from the command palette (**Toggle mods
-panel**) or a keybinding you assign to **Mods Panel: Toggle**. It lists the panes
-your mods have opened in the current thread. Buttons, text fields, pickers and
-images in a pane work as they do in Claude Code: pressing a button, typing in a
-field (Enter submits it; Shift+Enter starts a new line in a field of several
-lines) or picking an option runs the mod's action in that session. A mod's status
-lines and its band appear above the composer, and its notifications show as
-toasts.
-
-Mods draw nothing while the thread has no running Claude session, and their panes
-close when the session ends. Regions a mod draws with its own code are not shown
-yet. An image a mod marks as interactive responds to hover and follows its own
-links, but it runs no scripts and clicks inside it do not reach the mod. When a
-pane or the status band first shows, the control the mod asks to focus takes the
-keyboard, unless you are typing somewhere else. Mods need a Claude Code release
-that supports them; on older releases the panel says so. The mobile app does not
-show mods.
-
 ## Task lists
 
 To show Claude task lists in the web and desktop apps, add

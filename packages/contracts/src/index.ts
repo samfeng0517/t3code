@@ -57,7 +57,6 @@ export * from "./agentSessions.ts";
 export * from "./assets.ts";
 export * from "./review.ts";
 export * from "./mcpApps.ts";
-export * from "./mods.ts";
 export * from "./browserImport.ts";
 export * from "./browserExtension.ts";
 export * from "./browserMedia.ts";

@@ -167,7 +167,6 @@ export const searchIndexZhTW: Readonly<Record<keyof typeof searchIndexEn, string
   "searchIndex.keybinding.view.reopenClosed": "重新開啟已關閉的分頁",
   "searchIndex.keybinding.pullRequest.copyNumber": "Pull Request：複製編號",
   "searchIndex.keybinding.diff.toggle": "差異：切換",
-  "searchIndex.keybinding.modsPanel.toggle": "Mods 面板：切換",
   "searchIndex.keybinding.preview.toggle": "預覽：切換",
   "searchIndex.keybinding.preview.refresh": "預覽：重新整理",
   "searchIndex.keybinding.preview.focusUrl": "預覽：聚焦網址",

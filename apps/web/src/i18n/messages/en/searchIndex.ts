@@ -168,7 +168,6 @@ export const searchIndexEn = {
   "searchIndex.keybinding.view.reopenClosed": "Reopen Closed Tab",
   "searchIndex.keybinding.pullRequest.copyNumber": "Pull Request: Copy Number",
   "searchIndex.keybinding.diff.toggle": "Diff: Toggle",
-  "searchIndex.keybinding.modsPanel.toggle": "Mods Panel: Toggle",
   "searchIndex.keybinding.preview.toggle": "Preview: Toggle",
   "searchIndex.keybinding.preview.refresh": "Preview: Refresh",
   "searchIndex.keybinding.preview.focusUrl": "Preview: Focus URL",

@@ -17,13 +17,6 @@ import {
   McpAppUpdateModelContextInput,
 } from "./mcpApps.ts";
 import {
-  ModSurfaceActInput,
-  ModSurfaceActResult,
-  ModSurfaceActionError,
-  ModSurfaceFrame,
-  ModSurfaceSubscribeInput,
-} from "./mods.ts";
-import {
   PeerLink,
   PeerLinkCreateInput,
   PeerLinkError,
@@ -492,9 +485,6 @@ export const WS_METHODS = {
   mcpAppsToolInfo: "mcpApps.toolInfo",
   mcpAppsReadResource: "mcpApps.readResource",
   mcpAppsUpdateModelContext: "mcpApps.updateModelContext",
-
-  modsSubscribeThread: "mods.subscribeThread",
-  modsAct: "mods.act",
 
   providerUploadFeedback: "provider.uploadFeedback",
   providerAuthStart: "provider.auth.start",
@@ -1545,19 +1535,6 @@ const WsMcpAppsReadResourceRpc = Rpc.make(WS_METHODS.mcpAppsReadResource, {
   error: Schema.Union([McpAppRequestError, EnvironmentAuthorizationError]),
 });
 
-const WsModsSubscribeThreadRpc = Rpc.make(WS_METHODS.modsSubscribeThread, {
-  payload: ModSurfaceSubscribeInput,
-  success: ModSurfaceFrame,
-  error: EnvironmentAuthorizationError,
-  stream: true,
-});
-
-const WsModsActRpc = Rpc.make(WS_METHODS.modsAct, {
-  payload: ModSurfaceActInput,
-  success: ModSurfaceActResult,
-  error: Schema.Union([ModSurfaceActionError, EnvironmentAuthorizationError]),
-});
-
 const WsProviderUploadFeedbackRpc = Rpc.make(WS_METHODS.providerUploadFeedback, {
   payload: ProviderUploadFeedbackInput,
   success: ProviderUploadFeedbackResult,
@@ -2472,8 +2449,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsMcpAppsToolInfoRpc,
   WsMcpAppsReadResourceRpc,
   WsMcpAppsUpdateModelContextRpc,
-  WsModsSubscribeThreadRpc,
-  WsModsActRpc,
   WsProviderUploadFeedbackRpc,
   WsSubscribeVcsStatusRpc,
   WsSubscribeWorktreeSetupRpc,

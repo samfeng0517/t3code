@@ -8,7 +8,6 @@ import { settingsPagesEn } from "./settingsPages";
 import { workspaceEn } from "./workspace";
 import { onboardingEn } from "./onboarding";
 import { searchIndexEn } from "./searchIndex";
-import { modsEn } from "./mods";
 import { browserEn } from "./browser";
 import { pageCommentsEn } from "./pageComments";
 import { gitEn } from "./git";
@@ -40,7 +39,6 @@ export const en = {
   ...workspaceEn,
   ...onboardingEn,
   ...searchIndexEn,
-  ...modsEn,
   ...browserEn,
   ...pageCommentsEn,
   ...gitEn,

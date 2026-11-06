@@ -156,30 +156,6 @@ describe("command permissions", () => {
     ),
   );
 
-  it.effect("requires the destination operate grant to press a mod's button", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const registry = yield* setup;
-        const act = createCommandPermissions(runtime, WS_METHODS.modsAct);
-        registry.set(
-          sessions(env),
-          AsyncResult.success({
-            ...grant(false),
-            scopes: [AuthOrchestrationReadScope],
-            permissions: [AuthOrchestrationReadScope],
-          }),
-        );
-        expect(registry.get(act.permissionAtom(env))).toBe(false);
-        expect((yield* act.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
-          "EnvironmentAuthorizationError",
-        );
-        registry.set(sessions(env), AsyncResult.success(grant(true)));
-        expect(registry.get(act.permissionAtom(env))).toBe(true);
-        yield* act.authorize(registry, env);
-      }),
-    ),
-  );
-
   it.effect("requires the destination settings grant to check OTLP endpoints", () =>
     Effect.scoped(
       Effect.gen(function* () {

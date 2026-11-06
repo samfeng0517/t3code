@@ -341,10 +341,6 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
       if (!event.repeat) closeRightPanelSurface(activeRightPanelSurface);
     },
     "diff.toggle": () => onToggleDiff(),
-    "modsPanel.toggle": () => {
-      if (!isServerThread || activeThreadRef === null) return false;
-      useRightPanelStore.getState().toggle(activeThreadRef, "mods");
-    },
   } satisfies ChatShortcutCommands;
 
   return {

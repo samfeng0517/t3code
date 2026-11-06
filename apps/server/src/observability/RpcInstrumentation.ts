@@ -185,8 +185,6 @@ const RPC_AGGREGATES = {
   [WS_METHODS.mcpAppsToolInfo]: "provider",
   [WS_METHODS.mcpAppsUpdateModelContext]: "provider",
   [WS_METHODS.mcpAppsReadResource]: "provider",
-  [WS_METHODS.modsSubscribeThread]: "provider",
-  [WS_METHODS.modsAct]: "provider",
   [WS_METHODS.subscribeVcsStatus]: "vcs",
   [WS_METHODS.subscribeWorktreeSetup]: "vcs",
   [WS_METHODS.worktreeSetupCancel]: "vcs",

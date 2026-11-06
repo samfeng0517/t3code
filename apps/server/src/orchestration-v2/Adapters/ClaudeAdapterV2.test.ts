@@ -35,12 +35,8 @@ import {
   CheckpointId,
   ClaudeSettings,
   EnvironmentId,
-  applyModSurfaceEvent,
-  EMPTY_MOD_SURFACE_STATE,
-  isModSurfaceActionError,
   MessageId,
   type ModelSelection,
-  type ModSurfaceEvent,
   NodeId,
   type OrchestrationV2AppThread,
   type OrchestrationV2PendingBackgroundTask,
@@ -59,7 +55,6 @@ import {
 } from "@t3tools/contracts";
 import { mcpAppFromToolItem } from "@t3tools/shared/toolOutput";
 import { assert, describe, it } from "@effect/vitest";
-import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -71,7 +66,6 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
-import * as Predicate from "effect/Predicate";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
@@ -11641,15 +11635,17 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
-  // The fork shows mod panes in its Mods panel, so a focus request reaches the pane instead of
-  // failing the turn as upstream does.
+  // regression: #17531 a mod that holds a tool behind a focused pane must fail the turn, not hang it
   it.effect.each([
-    { case: "keeps a turn running when its mod pane requests focus", focus: true },
+    { case: "fails a turn whose mod requests focus for a pane T3 cannot show", focus: true },
     { case: "keeps a turn running beside a passive mod pane", focus: false },
   ] as const)("$case", ({ focus }) =>
     Effect.scoped(
       Effect.gen(function* () {
-        const harness = yield* makeWakeHarness;
+        const closed = yield* Deferred.make<void>();
+        const harness = yield* makeWakeHarnessWithOptions({
+          close: () => Deferred.succeed(closed, undefined),
+        });
         const now = yield* DateTime.now;
         yield* harness.runtime.startTurn(
           makeClaudeTestTurnInput({
@@ -11710,15 +11706,98 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                 event.type === "turn_item.updated" && event.turnItem.type === "system_notice",
             ),
         );
-        assert.equal(harness.terminalEvents()[0], undefined);
-        assert.isTrue(
-          harness.events.some(
-            (event) =>
-              event.type === "mod_surface.updated" &&
-              event.event.type === "panes" &&
-              event.event.panes.some((pane) => pane.id === "blast-radius"),
+        const [terminal] = harness.terminalEvents();
+        if (!focus) {
+          assert.equal(terminal, undefined);
+          return;
+        }
+        assert.equal(terminal?.status, "failed");
+        if (terminal?.status !== "failed") return;
+        assert.include(terminal.failure.message, "blast-radius");
+        // The held tool call is abandoned by closing the query, never answered.
+        yield* Deferred.await(closed);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            NodeCrypto.layer,
           ),
+        ),
+      ),
+    ),
+  );
+
+  // regression: #17531 a follow-up sent while the failed mod turn's process closes gets a new process
+  it.effect("runs a follow-up in a fresh query while the mod-blocked query is closing", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const releaseClose = yield* Deferred.make<void>();
+        const replacementClosedOld = yield* Deferred.make<void>();
+        let oldCloses = 0;
+        const harness = yield* makeWakeHarnessWithOptions({
+          // The held CLI never answers an interrupt; closure must not need one.
+          interrupt: Effect.never,
+          close: (sdkMessages) =>
+            Effect.suspend(() =>
+              ++oldCloses === 2 ? Deferred.succeed(replacementClosedOld, undefined) : Effect.void,
+            ).pipe(
+              Effect.andThen(Deferred.await(releaseClose)),
+              Effect.andThen(Queue.shutdown(sdkMessages)),
+            ),
+          freshQueueOnReopen: true,
+        });
+        // Added after the harness so it runs first: a failed assertion must not
+        // leave teardown waiting on the held close.
+        yield* Effect.addFinalizer(() => Deferred.succeed(releaseClose, undefined));
+        const now = yield* DateTime.now;
+        const turnInput = makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now,
+          attemptId: RunAttemptId.make("attempt-claude-mod-pane-blocked"),
+          text: "Run rm -r build",
+          attachments: [],
+        });
+        yield* harness.runtime.startTurn(turnInput);
+        yield* Queue.offer(
+          harness.sdkMessages,
+          claudeSdkFrame({
+            type: "system",
+            subtype: "ui_panes",
+            panes: [
+              { id: "blast-radius", title: "Blast Radius", plugin: "blast-radius", rows: 10 },
+            ],
+            shown_id: "blast-radius",
+            focused_id: null,
+            focus_requested_id: "blast-radius",
+            uuid: "00000000-0000-4000-8000-000000000798",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
         );
+        assert.equal((yield* Queue.take(harness.terminalReceipts)).status, "failed");
+
+        const followUp = yield* harness.runtime
+          .startTurn({
+            ...turnInput,
+            attemptId: RunAttemptId.make("attempt-claude-after-mod-pane"),
+            providerTurnOrdinal: 2,
+          })
+          .pipe(Effect.forkScoped);
+        // Reusing the closing process would offer the prompt to it instead.
+        yield* Effect.raceFirst(
+          Deferred.await(replacementClosedOld),
+          harness.until(() => harness.offeredMessages.length >= 2),
+        );
+        assert.isTrue(yield* Deferred.isDone(replacementClosedOld));
+        yield* Deferred.succeed(releaseClose, undefined);
+        yield* Fiber.join(followUp);
+        assert.equal(harness.processQueues.length, 2);
+        yield* harness.offerAndWait(
+          makeResultFrame({ uuid: "after-mod-pane-result", result: "Done." }),
+        );
+        assert.equal((yield* Queue.take(harness.terminalReceipts)).status, "completed");
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
@@ -18849,250 +18928,5 @@ describe("ClaudeAdapterV2 query message stream", () => {
       yield* Scope.close(scope, Exit.void);
       assert.isTrue(closed);
     }),
-  );
-});
-
-describe("ClaudeAdapterV2 mods", () => {
-  const MODS_NATIVE_SESSION = "native-thread-claude-mods";
-  const sdkFrame = (uuid: string, frame: Record<string, unknown>) =>
-    ({ uuid, session_id: MODS_NATIVE_SESSION, ...frame }) as SDKMessage;
-  const resultFrame = () =>
-    sdkFrame("00000000-0000-4000-8000-000000000901", {
-      type: "result",
-      subtype: "success",
-      duration_ms: 10,
-      duration_api_ms: 10,
-      is_error: false,
-      num_turns: 1,
-      result: "done",
-      stop_reason: "end_turn",
-      total_cost_usd: 0,
-      usage: {
-        input_tokens: 1,
-        output_tokens: 1,
-        cache_creation_input_tokens: 0,
-        cache_read_input_tokens: 0,
-      },
-      modelUsage: {},
-      permission_denials: [],
-      terminal_reason: "completed",
-    });
-  const statusPush = (uuid: string, text: string) =>
-    sdkFrame(uuid, { type: "system", subtype: "ui_status", plugin: "demo", text });
-
-  it.effect("a replaced process never wipes the mods of the process that replaced it", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const changes = yield* PubSub.unbounded<void>();
-        const until = (predicate: () => boolean): Effect.Effect<void> =>
-          Effect.scoped(
-            Effect.gen(function* () {
-              const subscription = yield* PubSub.subscribe(changes);
-              while (!predicate()) yield* PubSub.take(subscription);
-            }),
-          );
-        const fileSystem = yield* FileSystem.FileSystem;
-        const attachmentsDir = yield* fileSystem.makeTempDirectoryScoped({
-          prefix: "t3-claude-v2-mods-",
-        });
-        const processes: Array<{
-          readonly messages: Queue.Queue<SDKMessage, Cause.Done>;
-          readonly ended: Deferred.Deferred<void>;
-        }> = [];
-        const events: Array<ProviderAdapter.ProviderAdapterV2Event> = [];
-        const modEvents: Array<ModSurfaceEvent> = [];
-        const uiRequests: Array<{ readonly process: number; readonly request: unknown }> = [];
-        const adapter = yield* ClaudeAdapterV2.makeClaudeAdapterV2({
-          instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
-          settings: DEFAULT_CLAUDE_SETTINGS,
-          environment: {},
-          attachmentsDir,
-          fileSystem,
-          path: yield* Path.Path,
-          random: yield* SecureRandom.SecureRandom,
-          idAllocator: yield* IdAllocator.IdAllocatorV2,
-          continuationRequests: { offer: () => Effect.void },
-          queryRunner: {
-            allocateSessionId: Effect.succeed(MODS_NATIVE_SESSION),
-            open: () =>
-              Effect.gen(function* () {
-                const messages = yield* Queue.unbounded<SDKMessage, Cause.Done>();
-                const ended = yield* Deferred.make<void>();
-                processes.push({ messages, ended });
-                return {
-                  // A closed process's stream ends when the test says so, as a
-                  // real one may end well after its replacement attached.
-                  messages: Stream.fromQueue(messages).pipe(
-                    Stream.ensuring(Deferred.succeed(ended, undefined)),
-                  ),
-                  offer: () => Effect.void,
-                  setModel: () => Effect.void,
-                  applyFlagSettings: () => Effect.void,
-                  setPermissionMode: () => Effect.void,
-                  backgroundTasks: () => Effect.succeed(false),
-                  stopTask: () => Effect.void,
-                  interrupt: Effect.void,
-                  close: Effect.void,
-                  mcpServerStatus: Effect.succeed([]),
-                  readMcpResource: () => Effect.die("unexpected MCP resource read"),
-                  callMcpTool: () => Effect.die("unexpected MCP tool call"),
-                  listPermissionRules: Effect.die("unexpected permission rules read"),
-                  uiRequest: (request) => {
-                    uiRequests.push({ process: processes.length, request });
-                    return Effect.succeed(
-                      request.subtype === "ui_panes"
-                        ? { panes: [] }
-                        : request.subtype === "ui_render"
-                          ? { tree: { type: "engine", ref: 0 }, hooked: false }
-                          : request.subtype === "ui_select"
-                            ? { handled: true, element: request.key, value: request.value }
-                            : {},
-                    );
-                  },
-                };
-              }),
-            forkSession: () => Effect.die("unused forkSession"),
-            subagentLaunchToolUseId: () => Effect.succeed(null),
-            assertComplete: Effect.void,
-          },
-        });
-        const threadId = ThreadId.make("thread-claude-mods");
-        const runtime = yield* adapter.openSession({
-          threadId,
-          providerSessionId: ProviderSessionId.make("provider-session-claude-mods"),
-          modelSelection: CLAUDE_TEST_MODEL_SELECTION,
-          runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
-        });
-        const providerThread = yield* runtime.ensureThread({
-          threadId,
-          modelSelection: CLAUDE_TEST_MODEL_SELECTION,
-          runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
-        });
-        yield* runtime.events.pipe(
-          Stream.runForEach((event) =>
-            Effect.sync(() => {
-              events.push(event);
-              if (event.type === "mod_surface.updated") modEvents.push(event.event);
-            }).pipe(Effect.andThen(PubSub.publish(changes, undefined))),
-          ),
-          Effect.forkScoped,
-        );
-        const resets = () =>
-          modEvents.flatMap((event) => (event.type === "reset" ? [event.availability] : []));
-        const now = yield* DateTime.now;
-
-        yield* runtime.startTurn(
-          makeClaudeTestTurnInput({
-            threadId,
-            providerThread,
-            now,
-            attemptId: RunAttemptId.make("attempt-claude-mods-a"),
-            text: "First process.",
-            attachments: [],
-          }),
-        );
-        yield* until(() => resets().length === 1);
-        const first = processes[0]!;
-        yield* Queue.offer(first.messages, resultFrame());
-        yield* until(() => events.some((event) => event.type === "turn.terminal"));
-
-        // A model change replaces the process.
-        yield* runtime.startTurn(
-          makeClaudeTestTurnInput({
-            threadId,
-            providerThread: { ...providerThread, status: "active" },
-            now,
-            attemptId: RunAttemptId.make("attempt-claude-mods-b"),
-            text: "Second process.",
-            attachments: [],
-            providerTurnOrdinal: 2,
-            modelSelection: CLAUDE_TEST_RESTART_MODEL_SELECTION,
-          }),
-        );
-        yield* until(() => resets().filter((reset) => reset === "available").length === 2);
-        assert.deepStrictEqual(resets(), ["available", "inactive", "available"]);
-
-        // The old process still pushes, then its stream ends.
-        yield* Queue.offer(
-          first.messages,
-          statusPush("00000000-0000-4000-8000-000000000902", "stale"),
-        );
-        yield* Queue.end(first.messages);
-        yield* Deferred.await(first.ended);
-        yield* Queue.offer(
-          processes[1]!.messages,
-          statusPush("00000000-0000-4000-8000-000000000903", "fresh"),
-        );
-        yield* until(() => modEvents.some((event) => event.type === "status"));
-
-        assert.deepStrictEqual(modEvents.reduce(applyModSurfaceEvent, EMPTY_MOD_SURFACE_STATE), {
-          availability: "available",
-          panes: [],
-          band: null,
-          statuses: [{ plugin: "demo", text: "fresh" }],
-        });
-
-        // A press on a thread the live process does not serve reports a stopped session.
-        const mods = runtime.mods;
-        if (mods === undefined) return yield* Effect.die("Claude runtime must expose mods.");
-        const error = yield* Effect.flip(
-          mods.act({
-            threadId: ThreadId.make("thread-claude-mods-other"),
-            action: { type: "close-pane", paneId: "demo-pane" },
-          }),
-        );
-        assert.isTrue("cause" in error && isModSurfaceActionError(error.cause));
-        assert.strictEqual(
-          "cause" in error && isModSurfaceActionError(error.cause) ? error.cause.reason : null,
-          "session-stopped",
-        );
-
-        // A pick on the live thread reaches the process that replaced the first.
-        assert.deepStrictEqual(
-          yield* mods.act({
-            threadId,
-            action: {
-              type: "select",
-              site: { component: "Pane", paneId: "demo-pane" },
-              plugin: "demo",
-              handle: 5,
-              key: "env",
-              value: "prod",
-            },
-          }),
-          { handled: true },
-        );
-        assert.deepStrictEqual(
-          uiRequests.filter(
-            (entry) => Predicate.isObject(entry.request) && entry.request.subtype === "ui_select",
-          ),
-          [
-            {
-              process: 2,
-              request: {
-                subtype: "ui_select",
-                plugin: "demo",
-                handle: 5,
-                key: "env",
-                surface: "desktop",
-                client_id: "t3code",
-                component: "Pane",
-                instance_id: "demo-pane",
-                value: "prod",
-              },
-            },
-          ],
-        );
-      }).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            IdAllocator.layer,
-            McpProviderSessions.layer,
-            NodeServices.layer,
-            NodeCrypto.layer,
-          ),
-        ),
-      ),
-    ),
   );
 });

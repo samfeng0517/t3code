@@ -9,7 +9,6 @@ import { settingsPagesZhTW } from "./settingsPages";
 import { workspaceZhTW } from "./workspace";
 import { onboardingZhTW } from "./onboarding";
 import { searchIndexZhTW } from "./searchIndex";
-import { modsZhTW } from "./mods";
 import { browserZhTW } from "./browser";
 import { pageCommentsZhTW } from "./pageComments";
 import { gitZhTW } from "./git";
@@ -40,7 +39,6 @@ export const zhTW: Readonly<Record<MessageKey, string>> = {
   ...workspaceZhTW,
   ...onboardingZhTW,
   ...searchIndexZhTW,
-  ...modsZhTW,
   ...browserZhTW,
   ...pageCommentsZhTW,
   ...gitZhTW,
