@@ -3,6 +3,7 @@ import {
   OrchestratorMcpEnvironmentTarget,
   OrchestratorMcpFailure,
   PositiveInt,
+  PullRequestActor,
   PullRequestReviewGuide,
   PullRequestReviewGuideRun,
   PullRequestState,
@@ -20,6 +21,7 @@ import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
+import * as PullRequestService from "../../../pullRequest/PullRequestService.ts";
 
 const dependencies = [
   McpInvocationContext.McpInvocationContext,
@@ -27,6 +29,8 @@ const dependencies = [
   Orchestrator.OrchestratorV2,
   ProjectService.ProjectService,
 ];
+
+const assigneeDependencies = [...dependencies, PullRequestService.PullRequestService];
 
 const guideDependencies = [
   ...dependencies,
@@ -185,6 +189,15 @@ export class PullRequestGuideFailedError extends Schema.TaggedError<PullRequestG
   }
 }
 
+export class PullRequestAssigneesFailedError extends Schema.TaggedError<PullRequestAssigneesFailedError>()(
+  "PullRequestAssigneesFailedError",
+  { detail: Schema.String, cause: Schema.optional(Schema.Defect()) },
+) {
+  override get message(): string {
+    return this.detail;
+  }
+}
+
 export const PullRequestToolError = Schema.Union([
   OrchestratorMcpFailure,
   McpCapabilityUnavailableError,
@@ -202,6 +215,7 @@ export const PullRequestToolError = Schema.Union([
   PullRequestWatchFromSubagentError,
   PullRequestProjectNotFoundError,
   PullRequestGuideFailedError,
+  PullRequestAssigneesFailedError,
 ]);
 export type PullRequestToolError = typeof PullRequestToolError.Type;
 
@@ -476,6 +490,34 @@ const ReadPullRequestGuideTool = Tool.make("read_pull_request_guide", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, true);
 
+export const SetPullRequestAssigneesResult = Schema.Struct({
+  ...PullRequestIdentity,
+  assignees: Schema.Array(PullRequestActor),
+});
+export type SetPullRequestAssigneesResult = typeof SetPullRequestAssigneesResult.Type;
+
+const SetPullRequestAssigneesTool = Tool.make("set_pull_request_assignees", {
+  description:
+    "Assign or unassign people on a GitHub PR or GitLab MR. assigned=true adds the logins (GitLab takes one and replaces the current assignee); assigned=false removes them and leaves the rest. Returns the assignees the host now reports. Fails on other hosts.",
+  parameters: Schema.Struct({
+    environmentId: OrchestratorMcpEnvironmentTarget,
+    ...GuideTarget.fields,
+    logins: Schema.Array(TrimmedNonEmptyString).check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(10),
+    ),
+    assigned: Schema.Boolean,
+  }),
+  success: SetPullRequestAssigneesResult,
+  failure: PullRequestToolError,
+  dependencies: assigneeDependencies,
+})
+  .annotate(Tool.Title, "Set pull request assignees")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
+
 export const PullRequestsToolkit = Toolkit.make(
   LinkPullRequestTool,
   LinkPullRequestsTool,
@@ -486,4 +528,5 @@ export const PullRequestsToolkit = Toolkit.make(
   UnwatchPullRequestTool,
   WritePullRequestGuidesTool,
   ReadPullRequestGuideTool,
+  SetPullRequestAssigneesTool,
 );

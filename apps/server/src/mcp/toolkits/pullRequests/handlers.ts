@@ -15,6 +15,7 @@ import * as Option from "effect/Option";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
+import * as PullRequestService from "../../../pullRequest/PullRequestService.ts";
 import { pullRequestSyncKey } from "../../../pullRequest/pullRequestSyncKey.ts";
 import { sourceControlDefinitions } from "../../../sourceControl/sourceControlDefinitions.ts";
 import {
@@ -43,6 +44,7 @@ import {
   PullRequestThreadNotFoundError,
   PullRequestThreadRequiredError,
   PullRequestGuideFailedError,
+  PullRequestAssigneesFailedError,
   PullRequestProjectNotFoundError,
   PullRequestsToolkit,
   type ThreadPullRequestEntry,
@@ -198,6 +200,7 @@ function projectForPullRequest(
 const make = Effect.gen(function* () {
   const engine = yield* Orchestrator.OrchestratorV2;
   const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
+  const pullRequests = yield* PullRequestService.PullRequestService;
 
   const projects = yield* ProjectService.ProjectService;
   const random = yield* SecureRandom.SecureRandom;
@@ -606,6 +609,41 @@ const make = Effect.gen(function* () {
             result.guide !== null &&
             result.currentHeadSha !== null &&
             result.guide.headSha !== result.currentHeadSha,
+        };
+      }),
+    ),
+    set_pull_request_assignees: McpToolAccess.writesWithCapability((input) =>
+      Effect.gen(function* () {
+        const [entry] = yield* locateAll([input]);
+        if (entry !== undefined && entry.target === null) {
+          return yield* new PullRequestAssigneesFailedError({ detail: entry.failure ?? "" });
+        }
+        if (entry === undefined || entry.target === null || entry.project === undefined) {
+          return yield* new PullRequestProjectNotFoundError({
+            repository: entry?.target.repository ?? input.repository ?? "",
+          });
+        }
+        const result = yield* pullRequests
+          .setAssignees({
+            ...guideReference(entry.project, entry.target),
+            logins: input.logins,
+            assigned: input.assigned,
+          })
+          .pipe(
+            Effect.mapError(
+              (error) =>
+                new PullRequestAssigneesFailedError({
+                  detail: guideFailureDetail(error),
+                  cause: error,
+                }),
+            ),
+          );
+        return {
+          host: entry.target.host,
+          repository: entry.target.repository,
+          number: entry.target.number,
+          url: entry.target.url,
+          assignees: result.assignees,
         };
       }),
     ),

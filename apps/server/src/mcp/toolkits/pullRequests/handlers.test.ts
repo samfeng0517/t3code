@@ -6,6 +6,8 @@ import {
   type OrchestrationV2ServerCommand as OrchestrationCommand,
   PullRequestOperationError,
   type OrchestrationProjectShell,
+  type PullRequestAssigneeChangeInput,
+  type PullRequestAssigneeChangeResult,
   type PullRequestRef,
   type PullRequestReviewGuideResult,
   type ThreadPullRequestLink,
@@ -27,6 +29,7 @@ import {
 } from "../../../orchestration-v2/testkit/pullRequestFixtures.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
+import * as PullRequestService from "../../../pullRequest/PullRequestService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as McpToolAccessTestkit from "../../McpToolAccess.testkit.ts";
@@ -143,6 +146,9 @@ interface HarnessOptions {
     PullRequestReviewGuideResult & { started: boolean },
     PullRequestOperationError
   >;
+  readonly setAssignees?: (
+    input: PullRequestAssigneeChangeInput,
+  ) => Effect.Effect<PullRequestAssigneeChangeResult, PullRequestOperationError>;
 }
 
 const NO_GUIDE: PullRequestReviewGuideResult = { guide: null, run: null, currentHeadSha: "head-1" };
@@ -152,6 +158,7 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
 ) {
   const commands = yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]);
   const guideRequests = yield* Ref.make<ReadonlyArray<PullRequestRef>>([]);
+  const assigneeRequests = yield* Ref.make<ReadonlyArray<PullRequestAssigneeChangeInput>>([]);
   const thread = options.thread === undefined ? makeThread([]) : options.thread;
   const project = options.project === undefined ? makeProject() : options.project;
   const dispatch: Orchestrator.OrchestratorV2Shape["dispatch"] = (command) =>
@@ -189,6 +196,17 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
           ),
         ),
     }),
+    Layer.mock(PullRequestService.PullRequestService)({
+      setAssignees: (input) =>
+        Ref.update(assigneeRequests, (recorded) => [...recorded, input]).pipe(
+          Effect.andThen(
+            options.setAssignees?.(input) ??
+              Effect.succeed({
+                assignees: input.logins.map((login) => ({ login, name: null, avatarUrl: null })),
+              }),
+          ),
+        ),
+    }),
     Layer.mock(Orchestrator.OrchestratorV2)({
       getThreadShell: (id) =>
         Effect.succeed(id === THREAD_ID && thread ? v2PullRequestThread(thread) : null),
@@ -218,7 +236,7 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
       Effect.provideService(McpInvocationContext.McpInvocationContext, invocation(capabilities)),
       Effect.provide(layerDependencies),
     );
-  return { commands, guideRequests, call };
+  return { commands, guideRequests, assigneeRequests, call };
 });
 
 describe("pull request toolkit handlers", () => {
@@ -233,7 +251,23 @@ describe("pull request toolkit handlers", () => {
         capability: "pull-requests",
         threadId: THREAD_ID,
       });
+      const assignError = yield* harness
+        .call(
+          "set_pull_request_assignees",
+          {
+            url: "https://github.com/t3tools/t3code/pull/12",
+            logins: ["octocat"],
+            assigned: true,
+          },
+          ["preview"],
+        )
+        .pipe(Effect.flip);
+      expect(assignError).toMatchObject({
+        _tag: "McpCapabilityUnavailableError",
+        capability: "pull-requests",
+      });
       expect(yield* Ref.get(harness.commands)).toEqual([]);
+      expect(yield* Ref.get(harness.assigneeRequests)).toEqual([]);
     }),
   );
 
@@ -722,6 +756,62 @@ describe("pull request guide tools", () => {
           ["project-web", 7],
           [PROJECT_ID, 12],
         ]);
+      }),
+  );
+
+  it.effect(
+    "set_pull_request_assignees should pass the located PR to the service and return its assignees when called by url",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
+        const result = yield* harness.call("set_pull_request_assignees", {
+          url: "https://github.com/t3tools/t3code/pull/12",
+          logins: ["octocat"],
+          assigned: true,
+        });
+        expect(result).toEqual({
+          host: "github.com",
+          repository: "t3tools/t3code",
+          number: 12,
+          url: "https://github.com/t3tools/t3code/pull/12",
+          assignees: [{ login: "octocat", name: null, avatarUrl: null }],
+        });
+        expect(yield* Ref.get(harness.assigneeRequests)).toEqual([
+          {
+            projectId: PROJECT_ID,
+            host: "github.com",
+            repository: "t3tools/t3code",
+            number: 12,
+            logins: ["octocat"],
+            assigned: true,
+          },
+        ]);
+      }),
+  );
+
+  it.effect(
+    "set_pull_request_assignees should report the host refusal when the host has no assignees",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({
+          setAssignees: () =>
+            Effect.fail(
+              new PullRequestOperationError({
+                operation: "setAssignees",
+                detail: "This host cannot assign people to a change request.",
+              }),
+            ),
+        });
+        const error = yield* harness
+          .call("set_pull_request_assignees", {
+            repository: "t3tools/t3code",
+            number: 12,
+            logins: ["octocat"],
+            assigned: false,
+          })
+          .pipe(Effect.flip);
+        expect(error).toMatchObject({ _tag: "PullRequestAssigneesFailedError" });
+        expect(error.message).toBe("This host cannot assign people to a change request.");
       }),
   );
 
