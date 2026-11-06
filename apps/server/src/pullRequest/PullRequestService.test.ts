@@ -2211,22 +2211,30 @@ it.effect("setAssignees should refuse more than one login when the host takes on
       service.setAssignees({ ...assigneeRef, logins: ["octocat", "hubot"], assigned: true }),
     );
 
+    assert.strictEqual(error._tag, "PullRequestOperationError");
     assert.include(error.message, "This host takes one assignee at a time.");
     assert.isFalse(sent);
   }),
 );
 
-it.effect("setAssignees should refuse when the host has no assignees capability", () =>
+it.effect.each([
+  {
+    case: "no capability",
+    provider: assigneeProvider({ setAssignees: () => Effect.succeed([]) }, null),
+  },
+  { case: "no write method", provider: assigneeProvider({}) },
+])("setAssignees should refuse when the host has $case for assignees", ({ provider }) =>
   Effect.gen(function* () {
     const service = yield* makeService({
       projects: [project({ id: "p1", title: "web", workspaceRoot: "/a", repository: "acme/web" })],
-      providers: [assigneeProvider({ setAssignees: () => Effect.succeed([]) }, null)],
+      providers: [provider],
     });
 
     const error = yield* Effect.flip(
       service.setAssignees({ ...assigneeRef, logins: ["octocat"], assigned: true }),
     );
 
+    assert.strictEqual(error._tag, "PullRequestOperationError");
     assert.include(error.message, "This host cannot assign people to a change request.");
   }),
 );
