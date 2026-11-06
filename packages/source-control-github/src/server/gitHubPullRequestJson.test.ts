@@ -13,7 +13,6 @@ import {
   reviewThreadConversation,
   toLabelCandidates,
   toAssigneeCandidates,
-  decodeIssueAssigneesJson,
   toPullRequestActivityPage,
   toPullRequestCore,
   toPullRequestFilesViewedPage,
@@ -1084,7 +1083,7 @@ describe("label candidate decoding", () => {
 });
 
 describe("assignee decoding", () => {
-  it("toAssigneeCandidates should mark assigned users and keep the author when listing", () => {
+  it("toAssigneeCandidates should mark assigned users and keep unlisted assignees removable when listing", () => {
     const list = expectSuccess(
       decodeAssigneeCandidatesJson(
         JSON.stringify({
@@ -1111,19 +1110,6 @@ describe("assignee decoding", () => {
       ["octocat", true],
     ]);
     expect(list.truncated).toBe(true);
-  });
-
-  it("decodeIssueAssigneesJson should read the assignees an issue write answers with", () => {
-    expect(
-      expectSuccess(
-        decodeIssueAssigneesJson(
-          JSON.stringify({
-            number: 7,
-            assignees: [{ login: "octocat", avatar_url: "https://avatars/octocat" }],
-          }),
-        ),
-      ),
-    ).toEqual([{ login: "octocat", name: null, avatarUrl: "https://avatars/octocat" }]);
   });
 });
 
