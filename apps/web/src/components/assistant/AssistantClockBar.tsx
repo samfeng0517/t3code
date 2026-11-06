@@ -17,7 +17,9 @@ import * as Schema from "effect/Schema";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { useT, type Translate } from "~/i18n";
+import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 import { cn } from "~/lib/utils";
+import { isElectron } from "../../env";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { assistantEnvironment } from "../../state/assistant";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -373,7 +375,14 @@ export function AssistantClockBar(props: {
   const status = clocked !== null && clocked.base === clock.data ? clocked.next : clock.data;
   return (
     <div className="@container shrink-0 border-b border-border bg-background">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-5 py-2.5 tabular-nums">
+      {/* The bar sits where the chat header's fixed panel controls and sidebar toggle are drawn. */}
+      <div
+        className={cn(
+          "flex flex-wrap items-center gap-x-5 gap-y-2 py-2.5 pr-28 pl-5 tabular-nums",
+          isElectron && "drag-region",
+          COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
+        )}
+      >
         <h1 className="hidden text-sm font-semibold @md:block">{t("assistantPage.title")}</h1>
         {clock.failure !== null ? (
           <StatusError failure={clock.failure} onRefresh={clock.refresh} />
