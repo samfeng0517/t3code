@@ -53,6 +53,12 @@ export const T3ProjectFileScript = Schema.Struct({
         "When true, the script runs in the thread's worktree before T3 Code removes that worktree, for example to stop containers. It gets one minute, and a failure does not stop the removal.",
     }),
   ),
+  stopOnSettle: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "When true, T3 stops this action's terminal and child processes when its thread settles.",
+    }),
+  ),
   async: Schema.optionalKey(
     Schema.Boolean.annotate({
       description:

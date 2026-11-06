@@ -18,6 +18,7 @@ export const settingsZhTW: Readonly<Record<keyof typeof settingsEn, string>> = {
   "settings.section.threads": "對話串",
   "settings.section.browser": "瀏覽器",
   "settings.section.devices": "裝置",
+  "settings.section.voice": "Voice",
   "settings.section.worktrees": "工作樹",
   "settings.section.access": "共用與存取",
   "settings.section.maintenance": "維護",
