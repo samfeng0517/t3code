@@ -1,8 +1,11 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { Navigate } from "@tanstack/react-router";
 import { AsyncResult } from "effect/reactivity";
-import { useContext, useEffect, useEffectEvent, useRef } from "react";
+import { useContext, useEffect, useEffectEvent, useRef, useState } from "react";
+
+import { useT } from "~/i18n";
 
 import { assistantEnvironment, refreshSettled } from "../../state/assistant";
 import { usePrimaryEnvironmentId } from "../../state/environments";
@@ -10,6 +13,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { expectsPrimaryEnvironment } from "../../state/shell";
 import { useAtomCommand } from "../../state/use-atom-command";
 import ChatView from "../ChatView";
+import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
 import { AssistantClockBar } from "./AssistantClockBar";
 
@@ -23,6 +27,7 @@ export function AssistantPage() {
 }
 
 function AssistantPageContent({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const t = useT();
   const registry = useContext(RegistryContext);
   const clockAtom = assistantEnvironment.clockStatus({ environmentId, input: {} });
   const reportAtom = assistantEnvironment.dailyReport({ environmentId, input: {} });
@@ -35,12 +40,22 @@ function AssistantPageContent({ environmentId }: { readonly environmentId: Envir
   const canCreateThread = useAtomValue(
     assistantEnvironment.getOrCreateThread.permissionAtom(environmentId),
   );
-  const getOrCreateThread = useAtomCommand(assistantEnvironment.getOrCreateThread);
+  const getOrCreateThread = useAtomCommand(assistantEnvironment.getOrCreateThread, {
+    reportFailure: false,
+  });
   const threadRequested = useRef(false);
-  const requestThread = useEffectEvent(() => {
-    if (threadRequested.current) return;
+  const [threadFailed, setThreadFailed] = useState(false);
+  const onThreadResult = (result: Awaited<ReturnType<typeof getOrCreateThread>>) => {
+    if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
+    threadRequested.current = false;
+    setThreadFailed(true);
+  };
+  const startThreadRequest = () => {
     threadRequested.current = true;
-    void getOrCreateThread({ environmentId, input: {} });
+    void getOrCreateThread({ environmentId, input: {} }).then(onThreadResult);
+  };
+  const requestThread = useEffectEvent(() => {
+    if (!threadRequested.current) startThreadRequest();
   });
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- entering the page re-reads ERP once (Spec: 進入助理頁)
@@ -67,14 +82,28 @@ function AssistantPageContent({ environmentId }: { readonly environmentId: Envir
         report={report.data}
         draft={draft}
       />
-      {threadId === null ? null : (
+      {threadId !== null ? (
         <ChatView
           key={threadId}
           environmentId={environmentId}
           threadId={threadId}
           routeKind="server"
         />
-      )}
+      ) : threadFailed ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+          <p>{t("assistantPage.draftRejected.threadUnavailable")}</p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setThreadFailed(false);
+              startThreadRequest();
+            }}
+          >
+            {t("assistantPage.retry")}
+          </Button>
+        </div>
+      ) : null}
     </SidebarInset>
   );
 }
