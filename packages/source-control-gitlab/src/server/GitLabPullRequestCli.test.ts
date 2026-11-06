@@ -1173,6 +1173,35 @@ layer("GitLabPullRequestCli.layer", (it) => {
     }),
   );
 
+  it.effect(
+    "listAssigneeCandidates should keep the author and mark assignees ignoring case when listing",
+    () =>
+      Effect.gen(function* () {
+        mockedExecute
+          .mockReturnValueOnce(
+            Effect.succeed(
+              output(mergeRequestJson({ assignees: [{ id: 5, username: "OctoCat" }] })),
+            ),
+          )
+          .mockReturnValueOnce(Effect.succeed(output(JSON.stringify([author, reviewer]))));
+        const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+
+        const list = yield* cli.listAssigneeCandidates({
+          cwd: "/w",
+          repository: "acme/web",
+          number: 7,
+        });
+
+        expect(list.candidates.map((candidate) => [candidate.login, candidate.isAssigned])).toEqual(
+          [
+            ["bilal", false],
+            ["octocat", true],
+          ],
+        );
+        assert.isFalse(list.truncated);
+      }),
+  );
+
   it.effect("writes the reviewer set back with the one being asked added to it", () =>
     Effect.gen(function* () {
       mockedExecute
