@@ -244,9 +244,28 @@ const make = Effect.gen(function* () {
     return filePath;
   });
 
+  // Auto-settle would stop idle compaction on this long-lived chat and later archive it.
+  const keepFromAutoSettle = Effect.fn("AssistantService.keepFromAutoSettle")(function* (
+    threadId: ThreadId,
+  ) {
+    const shell = yield* liveShell(threadId);
+    if (shell === null || shell.autoSettleDisabledAt != null) return;
+    yield* threads
+      .dispatch({
+        type: "thread.auto-settle.set",
+        commandId: CommandId.make(`assistant-thread:no-auto-settle:${yield* randomUuidV4}`),
+        threadId,
+        enabled: false,
+      })
+      .pipe(Effect.mapError(threadUnavailable));
+  });
+
   const getOrCreateThread = Effect.fn("AssistantService.getOrCreateThread")(function* () {
     const existing = yield* findThread();
-    if (existing !== null) return existing;
+    if (existing !== null) {
+      yield* keepFromAutoSettle(existing);
+      return existing;
+    }
     const { projectId } = yield* managedFolders.ensureScratchProject.pipe(
       Effect.mapError(threadUnavailable),
     );
@@ -267,6 +286,7 @@ const make = Effect.gen(function* () {
       })
       .pipe(Effect.mapError(threadUnavailable));
     yield* rememberThread(launched.threadId);
+    yield* keepFromAutoSettle(launched.threadId);
     yield* ensureMemoryFile(launched.threadId);
     return launched.threadId;
   }, createLock.withPermits(1));

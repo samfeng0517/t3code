@@ -271,6 +271,19 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
       }),
     dispatch: (command) =>
       Effect.sync(() => dispatched.push(command)).pipe(
+        Effect.andThen(
+          command.type === "thread.auto-settle.set"
+            ? Ref.update(shells, (current) => {
+                const shell = current.get(command.threadId);
+                return shell === undefined
+                  ? current
+                  : new Map(current).set(command.threadId, {
+                      ...shell,
+                      autoSettleDisabledAt: command.enabled ? null : NOW,
+                    });
+              })
+            : Effect.void,
+        ),
         Effect.andThen(Deferred.succeed(dispatchedOnce, undefined)),
         Effect.as({} as Orchestrator.OrchestratorV2DispatchResult),
       ),
@@ -400,6 +413,35 @@ it.layer(NodeServices.layer)("AssistantService", (it) => {
         assert.equal(yield* Ref.get(harness.launches), 1);
       }).pipe(Effect.provide(harness.layer));
     }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    { case: "a new thread", autoSettleDisabledAt: undefined, expected: 1 },
+    { case: "a thread that already has it off", autoSettleDisabledAt: NOW, expected: 0 },
+  ])(
+    "getOrCreateThread should turn off auto-settle once when it returns $case",
+    ({ autoSettleDisabledAt, expected }) =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
+        if (autoSettleDisabledAt !== undefined) {
+          yield* harness.addShell({
+            ...assistantShell("existing-assistant", harness.root),
+            autoSettleDisabledAt,
+          });
+        }
+        yield* Effect.gen(function* () {
+          const assistant = yield* AssistantService.AssistantService;
+          const threadId = yield* assistant.getOrCreateThread();
+          yield* assistant.getOrCreateThread();
+          const offs = harness.dispatched.filter(
+            (command) =>
+              command.type === "thread.auto-settle.set" &&
+              command.threadId === threadId &&
+              !command.enabled,
+          );
+          assert.equal(offs.length, expected);
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(Effect.scoped),
   );
 
   it.effect.each([
