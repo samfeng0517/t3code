@@ -378,7 +378,9 @@ export function AssistantClockBar(props: {
       {/* The bar sits where the chat header's fixed panel controls and sidebar toggle are drawn. */}
       <div
         className={cn(
-          "flex flex-wrap items-center gap-x-5 gap-y-2 py-2.5 pr-28 pl-5 tabular-nums",
+          // Room for up to four 32px panel toggles (maximize shows while the right panel is open),
+          // plus the native window buttons on Windows and Linux desktop.
+          "flex flex-wrap items-center gap-x-5 gap-y-2 py-2.5 pr-40 pl-5 tabular-nums wco:mr-(--workspace-native-controls-inset)",
           isElectron && "drag-region",
           COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
         )}
