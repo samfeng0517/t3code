@@ -44,14 +44,8 @@ export function managedWorktreesDirectories(
   return [...directories];
 }
 
-// Client paths/branches are untrusted; recreate only real paths matching managed-folder/repo/branch.
-export const makeIsManagedWorktreePath = Effect.gen(function* () {
-  const fileSystem = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const serverConfig = yield* ServerConfig.ServerConfig;
-  const serverSettings = yield* ServerSettings.ServerSettingsService;
-
-  // Match Git's symlink-following location: nearest real ancestor plus missing path components.
+// Match Git's symlink-following location: nearest real ancestor plus missing path components.
+function makeRealLocation(fileSystem: FileSystem.FileSystem, path: Path.Path) {
   const realLocation = (target: string): Effect.Effect<string> =>
     fileSystem.realPath(target).pipe(
       Effect.catch(() => {
@@ -61,6 +55,49 @@ export const makeIsManagedWorktreePath = Effect.gen(function* () {
           : Effect.map(realLocation(parent), (real) => path.join(real, path.basename(target)));
       }),
     );
+  return realLocation;
+}
+
+/**
+ * Finds the recorded worktree paths that name the same checkout as a given one. Git reports real
+ * paths, while threads keep the spelling they were given: a symlinked parent, a trailing
+ * separator, or Windows slashes and case.
+ */
+export const makeWorktreeThreadMatcher = Effect.gen(function* () {
+  const path = yield* Path.Path;
+  const realLocation = makeRealLocation(yield* FileSystem.FileSystem, path);
+  const isWindows = yield* HostProcess.isWindows;
+  // Untraced: it runs once per recorded path inside the matcher's span.
+  const keyOf = Effect.fnUntraced(function* (worktreePath: string) {
+    const real = yield* realLocation(path.resolve(worktreePath));
+    return isWindows ? real.toLowerCase() : real;
+  });
+  return Effect.fn("worktreesDirectory.matchWorktreeThreads")(function* <Id>(
+    worktreePath: string,
+    recorded: ReadonlyArray<{ readonly threadId: Id; readonly worktreePath: string }>,
+  ) {
+    const target = yield* keyOf(worktreePath);
+    const keys = new Map<string, string>();
+    const threadIds: Id[] = [];
+    for (const entry of recorded) {
+      let key = keys.get(entry.worktreePath);
+      if (key === undefined) {
+        key = yield* keyOf(entry.worktreePath);
+        keys.set(entry.worktreePath, key);
+      }
+      if (key === target) threadIds.push(entry.threadId);
+    }
+    return threadIds;
+  });
+});
+
+// Client paths/branches are untrusted; recreate only real paths matching managed-folder/repo/branch.
+export const makeIsManagedWorktreePath = Effect.gen(function* () {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const serverConfig = yield* ServerConfig.ServerConfig;
+  const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const realLocation = makeRealLocation(fileSystem, path);
 
   return Effect.fn("worktreesDirectory.isManagedWorktreePath")(function* (worktreePath: string) {
     // git resolves a relative path against the project, not the server cwd.

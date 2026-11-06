@@ -6,11 +6,13 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  claudeUsageTone,
+  hasSidebarUsageLimits,
+  usageTone,
   resetCountdown,
   resolveClaudeUsageRows,
-  resolveSidebarClaudeUsage,
-} from "./SidebarClaudeUsage.logic";
+  resolveCodexUsageRows,
+  resolveSidebarUsage,
+} from "./SidebarUsageLimits.logic";
 
 const NOW = Date.parse("2026-10-21T12:00:00.000Z");
 const MINUTE = 60_000;
@@ -54,12 +56,12 @@ function claude(
   };
 }
 
-describe("claudeUsageTone", () => {
+describe("usageTone", () => {
   it("warns from 75% and turns critical from 90%", () => {
-    expect(claudeUsageTone(74)).toBe("normal");
-    expect(claudeUsageTone(75)).toBe("warning");
-    expect(claudeUsageTone(89)).toBe("warning");
-    expect(claudeUsageTone(90)).toBe("critical");
+    expect(usageTone(74)).toBe("normal");
+    expect(usageTone(75)).toBe("warning");
+    expect(usageTone(89)).toBe("warning");
+    expect(usageTone(90)).toBe("critical");
   });
 });
 
@@ -193,27 +195,98 @@ describe("resolveClaudeUsageRows", () => {
   });
 });
 
-describe("resolveSidebarClaudeUsage", () => {
-  it("should use the first Claude instance with limits when earlier providers have none", () => {
-    const rows = resolveSidebarClaudeUsage(
+function codexWindow(
+  id: string,
+  kind: ServerProviderUsageWindow["kind"],
+  usedPercent: number,
+): ServerProviderUsageWindow {
+  return { id, kind, label: kind, usedPercent };
+}
+
+describe("resolveCodexUsageRows", () => {
+  it("should list the 5-hour and weekly windows and leave out the credit limit when a paid plan reports them", () => {
+    const rows = resolveCodexUsageRows(
+      claude(
+        [
+          codexWindow("secondary", "weekly", 40),
+          codexWindow("primary", "session", 10),
+          codexWindow("individual", "monthly", 70),
+        ],
+        {},
+        "codex",
+      ),
+      NOW,
+    );
+    expect(rows?.map((row) => [row.kind, row.reading.remainingPercent])).toEqual([
+      ["session", 90],
+      ["weekly", 60],
+    ]);
+  });
+
+  it("should list one monthly row when a Free or Go plan reports a monthly window", () => {
+    const rows = resolveCodexUsageRows(
+      claude(
+        [codexWindow("primary", "monthly", 25), codexWindow("secondary", "weekly", 5)],
+        {},
+        "codex",
+      ),
+      NOW,
+    );
+    expect(rows?.map((row) => [row.kind, row.reading.remainingPercent])).toEqual([["monthly", 75]]);
+  });
+
+  it("should return null when the provider is not an enabled Codex with readable limits", () => {
+    const windows = [codexWindow("primary", "session", 10)];
+    expect(resolveCodexUsageRows(claude(windows), NOW)).toBeNull();
+    expect(
+      resolveCodexUsageRows({ ...claude(windows, {}, "codex"), enabled: false }, NOW),
+    ).toBeNull();
+    expect(
+      resolveCodexUsageRows(claude([codexWindow("individual", "monthly", 70)], {}, "codex"), NOW),
+    ).toBeNull();
+  });
+});
+
+describe("resolveSidebarUsage", () => {
+  it("should use the first enabled instance with limits for each provider when earlier ones have none", () => {
+    const groups = resolveSidebarUsage(
       [
-        claude([sessionWindow(90)], {}, "codex"),
         { ...claude([sessionWindow(80)]), enabled: false },
         claude([sessionWindow(20)]),
         claude([sessionWindow(60)]),
       ],
       NOW,
     );
-    expect(rows?.rows[0]?.reading.remainingPercent).toBe(80);
-    expect(rows?.readFromTurns).toBe(false);
+    expect(groups.map((group) => group.provider)).toEqual(["claude"]);
+    expect(groups[0]?.rows[0]?.reading.remainingPercent).toBe(80);
+    expect(groups[0]?.readFromTurns).toBe(false);
   });
 
-  it("should mark the rows as read from turns when the limits probe failed", () => {
-    const usage = resolveSidebarClaudeUsage(
+  it("should list Claude before Codex when both report limits", () => {
+    const groups = resolveSidebarUsage(
+      [claude([codexWindow("primary", "session", 50)], {}, "codex"), claude([sessionWindow(20)])],
+      NOW,
+    );
+    expect(groups.map((group) => group.provider)).toEqual(["claude", "codex"]);
+  });
+
+  it("hasSidebarUsageLimits should ignore disabled and unsupported providers when deciding to read the clock", () => {
+    const windows = [codexWindow("primary", "session", 10)];
+    expect(hasSidebarUsageLimits([{ ...claude(windows, {}, "codex"), enabled: false }])).toBe(
+      false,
+    );
+    expect(
+      hasSidebarUsageLimits([claude([], { unavailable: { reason: "unsupported" } }, "codex")]),
+    ).toBe(false);
+    expect(hasSidebarUsageLimits([claude(windows, {}, "codex")])).toBe(true);
+  });
+
+  it("should mark a group as read from turns when its limits probe failed", () => {
+    const groups = resolveSidebarUsage(
       [claude([sessionWindow(29)], { unavailable: { reason: "probeFailed" } })],
       NOW,
     );
-    expect(usage?.readFromTurns).toBe(true);
+    expect(groups[0]?.readFromTurns).toBe(true);
   });
 });
 

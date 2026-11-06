@@ -89,7 +89,7 @@ describe("buildRefsSidebarRows", () => {
     expect(rows.find((row) => row.key === "worktree:/gone")).toMatchObject({ target: null });
   });
 
-  it("buildRefsSidebarRows should give branches, remote branches, tags and stashes a menu target and worktrees none when building items", () => {
+  it("buildRefsSidebarRows should give every branch, remote branch, tag, stash and worktree a menu target when building items", () => {
     const rows = buildRefsSidebarRows({ ...refs, tags: [{ name: "v1", hash: "h3" }] }, new Set());
     const menu = (key: string) => {
       const row = rows.find((entry) => entry.key === key);
@@ -110,6 +110,11 @@ describe("buildRefsSidebarRows", () => {
       message: "WIP",
       hash: STASH_HASH,
     });
-    expect(menu("worktree:/gone")).toBeNull();
+    expect(menu("worktree:/gone")).toEqual({
+      kind: "worktree",
+      path: "/gone",
+      name: "gone",
+      hash: null,
+    });
   });
 });

@@ -1,7 +1,7 @@
 import type { ServerProviderUsageWindow } from "@t3tools/contracts";
 
 import type { MessageKey, Translate } from "~/i18n";
-import { resetCountdown, type ResetCountdown } from "../sidebar/SidebarClaudeUsage.logic";
+import { resetCountdown, type ResetCountdown } from "../sidebar/SidebarUsageLimits.logic";
 
 const MINUTE = 60_000;
 

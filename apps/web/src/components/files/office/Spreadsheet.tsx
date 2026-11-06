@@ -1,3 +1,4 @@
+import * as Schema from "effect/Schema";
 import { observeResize } from "~/lib/observeResize";
 import { useEffect, useRef, useState } from "react";
 import { t as globalT, useT } from "~/i18n";
@@ -33,6 +34,8 @@ import {
   type Painted,
 } from "./sheet-paint";
 import { externalUrl } from "./links";
+
+const isSupersededError = Schema.is(SupersededError);
 
 type Client = ReturnType<typeof createWorkerClient<SheetMethods>>;
 type Opened = {
@@ -266,7 +269,7 @@ function SpreadsheetGrid(props: {
             schedule();
           })
           .catch((cause: unknown) => {
-            if (!(cause instanceof SupersededError) && !controller.signal.aborted)
+            if (!isSupersededError(cause) && !controller.signal.aborted)
               setNotice(globalT("files.office.cellsDrawFailed"));
           });
       }

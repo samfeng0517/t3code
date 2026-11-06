@@ -7,6 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
 import type {
@@ -55,8 +56,16 @@ interface Snapshot {
   readonly scannedAtMillis: number;
 }
 
+class HomeFolderReadError extends Schema.TaggedError<HomeFolderReadError>()("HomeFolderReadError", {
+  directory: Schema.String,
+  cause: Schema.Defect(),
+}) {}
+
 const readDirents = (directory: string) =>
-  Effect.tryPromise(() => NodeFSP.readdir(directory, { withFileTypes: true }));
+  Effect.tryPromise({
+    try: () => NodeFSP.readdir(directory, { withFileTypes: true }),
+    catch: (cause) => new HomeFolderReadError({ directory, cause }),
+  });
 
 const scan = Effect.fn("HomeFolderIndex.scan")(function* (home: string, path: Path.Path) {
   const folders: Array<HomeFolder> = [];

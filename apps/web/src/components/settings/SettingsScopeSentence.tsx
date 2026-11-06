@@ -50,7 +50,7 @@ export const SETTINGS_DEVICE_ONLY_PATHS: ReadonlySet<string> = new Set([
   "/settings/diffs",
   "/settings/snap-shot",
   "/settings/connections",
-  // Network access, authorized clients and the assistant belong to the environment serving this app.
+  // Access picks its environment on the page itself; the assistant lives on the primary environment.
   "/settings/access",
   "/settings/assistant",
   "/settings/about",

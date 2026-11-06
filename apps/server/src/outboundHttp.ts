@@ -1,6 +1,7 @@
 import * as NodeModule from "node:module";
 import * as NodeNet from "node:net";
 
+import * as Schema from "effect/Schema";
 import type * as Undici from "undici";
 
 // undici is external to the CLI bundle; Node single-executables can load it from disk only with require.
@@ -53,13 +54,12 @@ export function nodeHasBrotliDecoderFix(nodeVersion: string): boolean {
   return minor > fixedMinor || (minor === fixedMinor && patch >= fixedPatch);
 }
 
-export class BrotliResponseRejectedError extends Error {
-  override readonly name = "BrotliResponseRejectedError";
-
-  constructor(origin: string) {
-    super(
-      `Refused a Brotli-encoded response from ${origin}: the Brotli decoder in Node.js ${process.versions.node} is vulnerable to ${BROTLI_CVE}.`,
-    );
+export class BrotliResponseRejectedError extends Schema.TaggedError<BrotliResponseRejectedError>()(
+  "BrotliResponseRejectedError",
+  { origin: Schema.String },
+) {
+  override get message(): string {
+    return `Refused a Brotli-encoded response from ${this.origin}: the Brotli decoder in Node.js ${process.versions.node} is vulnerable to ${BROTLI_CVE}.`;
   }
 }
 
@@ -159,7 +159,7 @@ class BrotliGuardHandler implements Undici.Dispatcher.DispatchHandler {
     // Withholding the headers keeps fetch from creating its Brotli decoder; the
     // abort reaches the caller through onResponseError instead.
     if (hasBrotliContentEncoding(headers["content-encoding"])) {
-      controller.abort(new BrotliResponseRejectedError(this.#origin));
+      controller.abort(new BrotliResponseRejectedError({ origin: this.#origin }));
       return;
     }
     this.#handler.onResponseStart?.(controller, statusCode, headers, statusMessage);

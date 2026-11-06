@@ -61,6 +61,7 @@ export const searchIndexZhTW: Readonly<Record<keyof typeof searchIndexEn, string
   "searchIndex.new-threads": "新對話串",
   "searchIndex.worktree-submodules": "子模組",
   "searchIndex.add-project-starts-in": "新增專案的起始位置",
+  "searchIndex.ghq-clone-layout": "Clone into host folders",
   "searchIndex.unpin-confirmation": "取消釘選確認",
   "searchIndex.archive-confirmation": "封存確認",
   "searchIndex.delete-confirmation": "刪除確認",

@@ -9,6 +9,8 @@ const context = {
   isOnline: true,
   pending: false,
   inUseBy: null,
+  threadCheckFailed: false,
+  isCurrentWorktree: false,
   isCurrentBranch: false,
   isRemoteDefaultBranch: false,
   remoteNames: ["origin"],
@@ -134,6 +136,31 @@ describe("buildGitMenu", () => {
       { ...context, isRemoteDefaultBranch: true },
     );
     expect(items.find((item) => item.id === "delete")?.disabled).toBe(true);
+  });
+
+  it("buildGitMenu should offer Delete worktree and keep it enabled when no unsettled thread holds the worktree", () => {
+    const worktree = { kind: "worktree", path: "/wt/a", name: "a", hash: HASH } as const;
+    const items = buildGitMenu(worktree, context);
+    expect(items.map((item) => [item.id, item.label, item.disabled === true])).toEqual([
+      ["delete", "Delete worktree", false],
+      ["copy-hash", "Copy commit hash", false],
+    ]);
+    expect(buildGitMenu({ ...worktree, hash: null }, context).map((item) => item.id)).toEqual([
+      "delete",
+    ]);
+  });
+
+  it("buildGitMenu should disable Delete worktree and add the reason when the worktree is held, unchecked or current", () => {
+    const worktree = { kind: "worktree", path: "/wt/a", name: "a", hash: HASH } as const;
+    for (const [state, reason] of [
+      [{ inUseBy: "Fix login" }, 'Unsettled thread "Fix login" is using this worktree'],
+      [{ threadCheckFailed: true }, "Could not check which threads use this worktree"],
+      [{ isCurrentWorktree: true }, "This page is showing this worktree"],
+    ] as const) {
+      const items = buildGitMenu(worktree, { ...context, ...state });
+      expect(items[0]?.disabled).toBe(true);
+      expect(items.at(-1)).toMatchObject({ header: true, label: reason });
+    }
   });
 });
 

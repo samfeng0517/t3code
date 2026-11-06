@@ -7,7 +7,6 @@ export const chatViewZhTW: Readonly<Record<keyof typeof chatViewEn, string>> = {
   "chatView.threadError.chatGptLimitReached": "已達 ChatGPT 用量上限",
   "chatView.threadError.workspaceLimit":
     "你已達到工作區對於在其他應用程式中使用 ChatGPT 方案的上限。請複製一份請求，向工作區管理員申請提高用量上限。",
-  "chatView.threadError.reviewUsageSettings": "請在 ChatGPT 中檢查你的用量設定。",
   "chatView.threadError.copyRequestForAdmin": "複製給管理員的請求",
   "chatView.threadError.dismiss": "關閉錯誤",
   "chatView.usageLimitRecovery.title": "已達用量上限",

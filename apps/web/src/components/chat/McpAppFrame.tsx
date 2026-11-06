@@ -41,9 +41,10 @@ const commandFailure = (result: {
   readonly cause: Parameters<typeof squashAtomCommandFailure>[0]["cause"];
 }) => {
   const error = squashAtomCommandFailure(result);
-  return new McpAppHostRefusal(
-    error instanceof Error && error.message.trim() !== "" ? error.message : "Request failed.",
-  );
+  return new McpAppHostRefusal({
+    message:
+      error instanceof Error && error.message.trim() !== "" ? error.message : "Request failed.",
+  });
 };
 
 const fullscreenSupported =
@@ -255,7 +256,7 @@ export function McpAppFrame(props: {
       flushSync(() => setDisplayMode("inline"));
       const approved = await requestConfirmDialog(message);
       if (approved === undefined) {
-        throw new McpAppHostRefusal("T3 Code could not ask for approval here.");
+        throw new McpAppHostRefusal({ message: "T3 Code could not ask for approval here." });
       }
       return approved;
     };
@@ -274,7 +275,8 @@ export function McpAppFrame(props: {
         const { environmentId, input } = scope();
         const info = await readLive().toolInfo({ environmentId, input: { ...input, name } });
         if (info._tag !== "Success") throw commandFailure(info);
-        if (!info.value.callable) throw new McpAppHostRefusal("This app cannot call that tool.");
+        if (!info.value.callable)
+          throw new McpAppHostRefusal({ message: "This app cannot call that tool." });
         if (!info.value.readOnly) {
           const approved = await ask(
             t("files.mcpApp.allowToolPrompt", {
@@ -283,7 +285,7 @@ export function McpAppFrame(props: {
               args: JSON.stringify(args, null, 2),
             }),
           );
-          if (approved !== true) throw new McpAppHostRefusal("Declined by the user.");
+          if (approved !== true) throw new McpAppHostRefusal({ message: "Declined by the user." });
         }
         const result = await readLive().callTool({
           environmentId,
@@ -303,17 +305,18 @@ export function McpAppFrame(props: {
       },
       openLink: async (url) => {
         if (document.activeElement !== frameRef.current || !navigator.userActivation?.isActive) {
-          throw new McpAppHostRefusal("Links open only from a click in the app.");
+          throw new McpAppHostRefusal({ message: "Links open only from a click in the app." });
         }
         window.open(url, "_blank", "noopener,noreferrer");
       },
       sendMessage: async (text) => {
         const send = readLive().props.onSendMessage;
-        if (send === undefined) throw new McpAppHostRefusal("Messages are not available here.");
+        if (send === undefined)
+          throw new McpAppHostRefusal({ message: "Messages are not available here." });
         const approved = await ask(
           t("files.mcpApp.sendMessagePrompt", { server: app.server, text }),
         );
-        if (approved !== true) throw new McpAppHostRefusal("Declined by the user.");
+        if (approved !== true) throw new McpAppHostRefusal({ message: "Declined by the user." });
         await send(text);
       },
       updateModelContext: async (context) => {
@@ -350,7 +353,7 @@ export function McpAppFrame(props: {
         const approved = await ask(
           t("files.mcpApp.saveFilesPrompt", { names, server: app.server }),
         );
-        if (approved !== true) throw new McpAppHostRefusal("Declined by the user.");
+        if (approved !== true) throw new McpAppHostRefusal({ message: "Declined by the user." });
         for (const file of files) {
           let bytes: Uint8Array | undefined;
           let mimeType = file.mimeType ?? "application/octet-stream";
@@ -368,9 +371,10 @@ export function McpAppFrame(props: {
             const declared = (content as { readonly mimeType?: unknown } | undefined)?.mimeType;
             if (typeof declared === "string") mimeType = declared;
           }
-          if (bytes === undefined) throw new McpAppHostRefusal(`${file.name} has no contents.`);
+          if (bytes === undefined)
+            throw new McpAppHostRefusal({ message: `${file.name} has no contents.` });
           if (bytes.byteLength > MAX_DOWNLOAD_BYTES) {
-            throw new McpAppHostRefusal(`${file.name} is too large to save.`);
+            throw new McpAppHostRefusal({ message: `${file.name} is too large to save.` });
           }
           saveBlob(new Blob([bytes.slice()], { type: mimeType }), file.name);
         }

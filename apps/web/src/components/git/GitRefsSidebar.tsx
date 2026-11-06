@@ -72,10 +72,12 @@ function RefsSidebarRow(props: {
       return (
         <button
           type="button"
-          disabled={target === null}
+          // A worktree without a commit has nothing to jump to but keeps its menu.
+          disabled={target === null && menu === null}
           className={cn(
             "relative flex w-full min-w-0 items-center rounded py-0.5 pr-1.5 text-left text-xs hover:bg-accent disabled:pointer-events-none disabled:text-muted-foreground",
             row.nested ? "pl-7" : "pl-4",
+            target === null && "text-muted-foreground",
             row.current && "font-semibold text-foreground",
           )}
           onClick={

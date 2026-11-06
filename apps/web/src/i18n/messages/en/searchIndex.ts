@@ -62,6 +62,7 @@ export const searchIndexEn = {
   "searchIndex.new-threads": "New threads",
   "searchIndex.worktree-submodules": "Submodules",
   "searchIndex.add-project-starts-in": "Add project starts in",
+  "searchIndex.ghq-clone-layout": "Clone into host folders",
   "searchIndex.unpin-confirmation": "Unpin confirmation",
   "searchIndex.archive-confirmation": "Archive confirmation",
   "searchIndex.delete-confirmation": "Delete confirmation",

@@ -1,5 +1,5 @@
 diff --git a/dist/cjs/index.js b/dist/cjs/index.js
-index b4242b0b847d33d8544832bfb2d8723a884a3072..a04d3f505ad2ed693dd31ae0d39eb0546a959fe6 100644
+index b4242b0b847d33d8544832bfb2d8723a884a3072..e3e8de287c14d27e1123ca79666e98ae52e25501 100644
 --- a/dist/cjs/index.js
 +++ b/dist/cjs/index.js
 @@ -61,6 +61,20 @@ var getExtensionUrl = (extension, uri) => {
@@ -77,7 +77,43 @@ index b4242b0b847d33d8544832bfb2d8723a884a3072..a04d3f505ad2ed693dd31ae0d39eb054
        }
      };
      this.keepAlive = keepAlive;
-@@ -1929,10 +1964,11 @@ var NativeMessagingHost = class {
+@@ -1864,15 +1899,25 @@ var NativeMessagingHost = class {
+   }
+   destroy() {
+     this.connected = false;
++    this.destroyed = true;
+     if (this.process) {
+       this.process.kill();
+       this.process = void 0;
+     }
+     if (this.keepAlive && this.sender) {
+       this.sender.ipc.off(`crx-native-msg-${this.connectionId}`, this.receiveExtensionMessage);
+-      this.sender.send(`crx-native-msg-${this.connectionId}-disconnect`);
++      try {
++        this.sender.send(`crx-native-msg-${this.connectionId}-disconnect`);
++      } catch {
++        // T3 Code: a stopped worker or destroyed page can no longer be told.
++      }
+     }
+     this.sender = void 0;
++    this.rejectResponse?.(new Error("Native host has exited."));
++    this.resolveResponse = void 0;
++    this.rejectResponse = void 0;
++    this.onDestroyed?.();
++    this.onDestroyed = void 0;
+   }
+   async launch(application, extensionId) {
+     const config = await readNativeMessagingHostConfig(application);
+@@ -1898,6 +1943,8 @@ var NativeMessagingHost = class {
+       this.destroy();
+       return;
+     }
++    // T3 Code: the port may have closed while the config was read.
++    if (this.destroyed) return;
+     d7("launch: spawning %s for %s", config.path, extensionId);
+     this.process = (0, import_node_child_process.spawn)(config.path, [extensionUrl], {
+       shell: false
+@@ -1929,17 +1976,22 @@ var NativeMessagingHost = class {
        d7("send: pending");
        return;
      }
@@ -91,7 +127,71 @@ index b4242b0b847d33d8544832bfb2d8723a884a3072..a04d3f505ad2ed693dd31ae0d39eb054
      this.process.stdin.write(buffer);
    }
    sendAndReceive(message) {
-@@ -2258,6 +2294,31 @@ var getSessionFromEvent = (event) => {
+-    this.send(message);
+-    return new Promise((resolve) => {
++    // T3 Code: a host that ends without replying fails the call instead of leaving it pending.
++    if (this.destroyed) return Promise.reject(new Error("Native host has exited."));
++    const response = new Promise((resolve, reject) => {
+       this.resolveResponse = resolve;
++      this.rejectResponse = reject;
+     });
++    this.send(message);
++    return response;
+   }
+ };
+ 
+@@ -1957,10 +2009,32 @@ var RuntimeAPI = class extends import_node_events3.EventEmitter {
+         application
+       );
+       this.hostMap[connectionId] = host;
++      // T3 Code: Chrome closes a native port when the context that opened it goes away.
++      // An MV3 worker stops when idle without calling disconnect, so without this every
++      // restart would leave its host running.
++      const stopWatching = this.watchSenderGone(event, () => host.destroy());
++      host.onDestroyed = () => {
++        stopWatching();
++        if (this.hostMap[connectionId] === host) delete this.hostMap[connectionId];
++      };
++    };
++    this.watchSenderGone = (event, onGone) => {
++      if (event.type === "service-worker") {
++        const { versionId } = event.sender;
++        const { serviceWorkers } = this.ctx.session;
++        const onStatus = (details) => {
++          if (details.versionId !== versionId) return;
++          if (details.runningStatus !== "stopping" && details.runningStatus !== "stopped") return;
++          onGone();
++        };
++        serviceWorkers.on("running-status-changed", onStatus);
++        return () => serviceWorkers.off("running-status-changed", onStatus);
++      }
++      event.sender.once("destroyed", onGone);
++      return () => event.sender.off("destroyed", onGone);
+     };
+     this.disconnectNative = (event, connectionId) => {
+       this.hostMap[connectionId]?.destroy();
+-      this.hostMap[connectionId] = void 0;
+     };
+     this.sendNativeMessage = async (event, application, message) => {
+       const connectionId = (0, import_node_crypto.randomUUID)();
+@@ -1971,8 +2045,14 @@ var RuntimeAPI = class extends import_node_events3.EventEmitter {
+         application,
+         false
+       );
+-      await host.ready;
+-      return await host.sendAndReceive(message);
++      // T3 Code: like Chrome, a one-off host lives only until its reply, or its sender.
++      host.onDestroyed = this.watchSenderGone(event, () => host.destroy());
++      try {
++        await host.ready;
++        return await host.sendAndReceive(message);
++      } finally {
++        host.destroy();
++      }
+     };
+     this.openOptionsPage = async ({ extension }) => {
+       const manifest = getExtensionManifest(extension);
+@@ -2258,6 +2338,31 @@ var getSessionFromEvent = (event) => {
      return event.sender.session;
    }
  };
@@ -123,7 +223,7 @@ index b4242b0b847d33d8544832bfb2d8723a884a3072..a04d3f505ad2ed693dd31ae0d39eb054
  var d8 = (0, import_debug8.default)("electron-chrome-extensions:router");
  var DEFAULT_SESSION = "_self";
  var gRoutingDelegate;
-@@ -2277,6 +2338,7 @@ var RoutingDelegate = class _RoutingDelegate {
+@@ -2277,6 +2382,7 @@ var RoutingDelegate = class _RoutingDelegate {
        return observer?.onExtensionMessage(event, void 0, handlerName, ...args);
      };
      this.onAddListener = (event, extensionId, eventName) => {
@@ -131,7 +231,7 @@ index b4242b0b847d33d8544832bfb2d8723a884a3072..a04d3f505ad2ed693dd31ae0d39eb054
        const observer = this.sessionMap.get(getSessionFromEvent(event));
        const listener = event.type === "frame" ? {
          type: event.type,
-@@ -2289,6 +2351,7 @@ var RoutingDelegate = class _RoutingDelegate {
+@@ -2289,6 +2395,7 @@ var RoutingDelegate = class _RoutingDelegate {
        return observer?.addListener(listener, extensionId, eventName);
      };
      this.onRemoveListener = (event, extensionId, eventName) => {
@@ -139,7 +239,7 @@ index b4242b0b847d33d8544832bfb2d8723a884a3072..a04d3f505ad2ed693dd31ae0d39eb054
        const observer = this.sessionMap.get(getSessionFromEvent(event));
        const listener = event.type === "frame" ? {
          type: event.type,
-@@ -2452,6 +2515,11 @@ var ExtensionRouter = class {
+@@ -2452,6 +2559,11 @@ var ExtensionRouter = class {
      return handler;
    }
    async onExtensionMessage(event, extensionId, handlerName, ...args) {
@@ -152,7 +252,7 @@ index b4242b0b847d33d8544832bfb2d8723a884a3072..a04d3f505ad2ed693dd31ae0d39eb054
      const eventSession = getSessionFromEvent(event);
      const eventSessionExtensions = eventSession.extensions || eventSession;
 diff --git a/dist/esm/index.mjs b/dist/esm/index.mjs
-index dc598ce8f74c1e813c4014ecf8fc6ca5809f4ba5..08a8620117f20cfcacb9297b1fd76478522c1509 100644
+index dc598ce8f74c1e813c4014ecf8fc6ca5809f4ba5..9554fbbf9c327cfcb8a71049939aec251b79b60e 100644
 --- a/dist/esm/index.mjs
 +++ b/dist/esm/index.mjs
 @@ -24,6 +24,20 @@ var getExtensionUrl = (extension, uri) => {
@@ -230,7 +330,43 @@ index dc598ce8f74c1e813c4014ecf8fc6ca5809f4ba5..08a8620117f20cfcacb9297b1fd76478
        }
      };
      this.keepAlive = keepAlive;
-@@ -1892,10 +1927,11 @@ var NativeMessagingHost = class {
+@@ -1827,15 +1862,25 @@ var NativeMessagingHost = class {
+   }
+   destroy() {
+     this.connected = false;
++    this.destroyed = true;
+     if (this.process) {
+       this.process.kill();
+       this.process = void 0;
+     }
+     if (this.keepAlive && this.sender) {
+       this.sender.ipc.off(`crx-native-msg-${this.connectionId}`, this.receiveExtensionMessage);
+-      this.sender.send(`crx-native-msg-${this.connectionId}-disconnect`);
++      try {
++        this.sender.send(`crx-native-msg-${this.connectionId}-disconnect`);
++      } catch {
++        // T3 Code: a stopped worker or destroyed page can no longer be told.
++      }
+     }
+     this.sender = void 0;
++    this.rejectResponse?.(new Error("Native host has exited."));
++    this.resolveResponse = void 0;
++    this.rejectResponse = void 0;
++    this.onDestroyed?.();
++    this.onDestroyed = void 0;
+   }
+   async launch(application, extensionId) {
+     const config = await readNativeMessagingHostConfig(application);
+@@ -1861,6 +1906,8 @@ var NativeMessagingHost = class {
+       this.destroy();
+       return;
+     }
++    // T3 Code: the port may have closed while the config was read.
++    if (this.destroyed) return;
+     d7("launch: spawning %s for %s", config.path, extensionId);
+     this.process = spawn2(config.path, [extensionUrl], {
+       shell: false
+@@ -1892,17 +1939,22 @@ var NativeMessagingHost = class {
        d7("send: pending");
        return;
      }
@@ -244,7 +380,71 @@ index dc598ce8f74c1e813c4014ecf8fc6ca5809f4ba5..08a8620117f20cfcacb9297b1fd76478
      this.process.stdin.write(buffer);
    }
    sendAndReceive(message) {
-@@ -2221,6 +2257,31 @@ var getSessionFromEvent = (event) => {
+-    this.send(message);
+-    return new Promise((resolve) => {
++    // T3 Code: a host that ends without replying fails the call instead of leaving it pending.
++    if (this.destroyed) return Promise.reject(new Error("Native host has exited."));
++    const response = new Promise((resolve, reject) => {
+       this.resolveResponse = resolve;
++      this.rejectResponse = reject;
+     });
++    this.send(message);
++    return response;
+   }
+ };
+ 
+@@ -1920,10 +1972,32 @@ var RuntimeAPI = class extends EventEmitter3 {
+         application
+       );
+       this.hostMap[connectionId] = host;
++      // T3 Code: Chrome closes a native port when the context that opened it goes away.
++      // An MV3 worker stops when idle without calling disconnect, so without this every
++      // restart would leave its host running.
++      const stopWatching = this.watchSenderGone(event, () => host.destroy());
++      host.onDestroyed = () => {
++        stopWatching();
++        if (this.hostMap[connectionId] === host) delete this.hostMap[connectionId];
++      };
++    };
++    this.watchSenderGone = (event, onGone) => {
++      if (event.type === "service-worker") {
++        const { versionId } = event.sender;
++        const { serviceWorkers } = this.ctx.session;
++        const onStatus = (details) => {
++          if (details.versionId !== versionId) return;
++          if (details.runningStatus !== "stopping" && details.runningStatus !== "stopped") return;
++          onGone();
++        };
++        serviceWorkers.on("running-status-changed", onStatus);
++        return () => serviceWorkers.off("running-status-changed", onStatus);
++      }
++      event.sender.once("destroyed", onGone);
++      return () => event.sender.off("destroyed", onGone);
+     };
+     this.disconnectNative = (event, connectionId) => {
+       this.hostMap[connectionId]?.destroy();
+-      this.hostMap[connectionId] = void 0;
+     };
+     this.sendNativeMessage = async (event, application, message) => {
+       const connectionId = randomUUID();
+@@ -1934,8 +2008,14 @@ var RuntimeAPI = class extends EventEmitter3 {
+         application,
+         false
+       );
+-      await host.ready;
+-      return await host.sendAndReceive(message);
++      // T3 Code: like Chrome, a one-off host lives only until its reply, or its sender.
++      host.onDestroyed = this.watchSenderGone(event, () => host.destroy());
++      try {
++        await host.ready;
++        return await host.sendAndReceive(message);
++      } finally {
++        host.destroy();
++      }
+     };
+     this.openOptionsPage = async ({ extension }) => {
+       const manifest = getExtensionManifest(extension);
+@@ -2221,6 +2301,31 @@ var getSessionFromEvent = (event) => {
      return event.sender.session;
    }
  };
@@ -276,7 +476,7 @@ index dc598ce8f74c1e813c4014ecf8fc6ca5809f4ba5..08a8620117f20cfcacb9297b1fd76478
  var d8 = debug8("electron-chrome-extensions:router");
  var DEFAULT_SESSION = "_self";
  var gRoutingDelegate;
-@@ -2240,6 +2301,7 @@ var RoutingDelegate = class _RoutingDelegate {
+@@ -2240,6 +2345,7 @@ var RoutingDelegate = class _RoutingDelegate {
        return observer?.onExtensionMessage(event, void 0, handlerName, ...args);
      };
      this.onAddListener = (event, extensionId, eventName) => {
@@ -284,7 +484,7 @@ index dc598ce8f74c1e813c4014ecf8fc6ca5809f4ba5..08a8620117f20cfcacb9297b1fd76478
        const observer = this.sessionMap.get(getSessionFromEvent(event));
        const listener = event.type === "frame" ? {
          type: event.type,
-@@ -2252,6 +2314,7 @@ var RoutingDelegate = class _RoutingDelegate {
+@@ -2252,6 +2358,7 @@ var RoutingDelegate = class _RoutingDelegate {
        return observer?.addListener(listener, extensionId, eventName);
      };
      this.onRemoveListener = (event, extensionId, eventName) => {
@@ -292,7 +492,7 @@ index dc598ce8f74c1e813c4014ecf8fc6ca5809f4ba5..08a8620117f20cfcacb9297b1fd76478
        const observer = this.sessionMap.get(getSessionFromEvent(event));
        const listener = event.type === "frame" ? {
          type: event.type,
-@@ -2415,6 +2478,11 @@ var ExtensionRouter = class {
+@@ -2415,6 +2522,11 @@ var ExtensionRouter = class {
      return handler;
    }
    async onExtensionMessage(event, extensionId, handlerName, ...args) {

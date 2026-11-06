@@ -30,7 +30,6 @@ export type GitRefsSidebarRow =
       readonly current: boolean;
       readonly nested: boolean;
       readonly target: GitRefsSidebarTarget | null;
-      /** Worktrees have no menu. */
       readonly menu: GitMenuTarget | null;
     };
 
@@ -119,7 +118,7 @@ export function buildRefsSidebarRows(
         `worktree:${worktree.path}`,
         worktree.name,
         worktree.hash === null ? null : { hash: worktree.hash, select: true },
-        null,
+        { kind: "worktree", path: worktree.path, name: worktree.name, hash: worktree.hash },
       );
     }
   }
