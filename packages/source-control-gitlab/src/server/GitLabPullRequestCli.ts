@@ -14,6 +14,7 @@ import type {
   PullRequestInvolvement,
   PullRequestLabel,
   PullRequestLabelCandidateList,
+  PullRequestAssigneeCandidateList,
   PullRequestListFilters,
   PullRequestListState,
   PullRequestMergeCapabilities,
@@ -219,8 +220,26 @@ export class GitLabBranchDeletionRefusedError extends Schema.TaggedError<GitLabB
   }
 }
 
+export class GitLabUserNotFoundError extends Schema.TaggedError<GitLabUserNotFoundError>()(
+  "GitLabUserNotFoundError",
+  {
+    command: Schema.Literal("glab"),
+    cwd: Schema.String,
+    login: Schema.String,
+  },
+) {
+  get detail(): string {
+    return `No GitLab user is named "${this.login}".`;
+  }
+
+  override get message(): string {
+    return `GitLab CLI failed in setAssignees: ${this.detail}`;
+  }
+}
+
 export type GitLabPullRequestCliError =
   | GitLabBranchDeletionRefusedError
+  | GitLabUserNotFoundError
   | GitLabCli.GitLabCliError
   | GitLabMergeRequestReadError
   | GitLabDiffCursorError
@@ -229,6 +248,8 @@ export type GitLabPullRequestCliError =
   | GitLabDiffFileContentsUnavailableError
   | GitLabDiffRefsUnavailableError
   | GitLabViewerUnavailableError;
+
+const assigneeIdsBody = (ids: ReadonlyArray<number>) => JSON.stringify({ assignee_ids: ids });
 
 /** GitLab's `per_page` limit. */
 const MAX_PAGE_SIZE = 100;
@@ -450,6 +471,23 @@ export class GitLabPullRequestCli extends Context.Service<
       readonly repository: string;
       readonly number: number;
     }) => Effect.Effect<PullRequestReviewerCandidateList, GitLabPullRequestCliError>;
+
+    readonly listAssigneeCandidates: (input: {
+      readonly cwd: string;
+      readonly host?: string | undefined;
+      readonly repository: string;
+      readonly number: number;
+    }) => Effect.Effect<PullRequestAssigneeCandidateList, GitLabPullRequestCliError>;
+
+    /** GitLab keeps one assignee here, so assigning replaces whoever holds it. */
+    readonly setAssignees: (input: {
+      readonly cwd: string;
+      readonly host?: string | undefined;
+      readonly repository: string;
+      readonly number: number;
+      readonly logins: ReadonlyArray<string>;
+      readonly assigned: boolean;
+    }) => Effect.Effect<ReadonlyArray<PullRequestActor>, GitLabPullRequestCliError>;
 
     readonly listProjectLabels: (input: {
       readonly cwd: string;
@@ -1317,6 +1355,40 @@ export const make = Effect.gen(function* () {
       }),
     );
 
+  const userId = (input: {
+    readonly cwd: string;
+    readonly host?: string | undefined;
+    readonly login: string;
+  }): Effect.Effect<number, GitLabPullRequestCliError> =>
+    api({
+      cwd: input.cwd,
+      host: input.host,
+      path: `users?${query([["username", input.login]])}`,
+    }).pipe(
+      Effect.flatMap((result): Effect.Effect<number, GitLabPullRequestCliError> => {
+        const decoded = decodeProjectUsersJson(result.stdout.trim());
+        if (!Result.isSuccess(decoded)) {
+          return Effect.fail(
+            new GitLabMergeRequestReadError({
+              command: "glab",
+              cwd: input.cwd,
+              operation: "setAssignees",
+              cause: decoded.failure,
+            }),
+          );
+        }
+        const login = input.login.toLowerCase();
+        const match = decoded.success.candidates.find(
+          (candidate) => candidate.login.toLowerCase() === login,
+        );
+        return match === undefined
+          ? Effect.fail(
+              new GitLabUserNotFoundError({ command: "glab", cwd: input.cwd, login: input.login }),
+            )
+          : Effect.succeed(Number(match.id));
+      }),
+    );
+
   const awardSubjectPath = (input: {
     readonly repository: string;
     readonly number: number;
@@ -1929,6 +2001,63 @@ export const make = Effect.gen(function* () {
         );
       },
     ),
+
+    listAssigneeCandidates: Effect.fn("GitLabPullRequestCli.listAssigneeCandidates")(
+      function (input) {
+        return Effect.all([mergeRequestDetail(input), projectUsers(input)], {
+          concurrency: 2,
+        }).pipe(
+          Effect.map(([mergeRequest, users]) => {
+            const assigned = new Set(
+              mergeRequest.assignees.map((assignee) => assignee.login.toLowerCase()),
+            );
+            return {
+              candidates: users.candidates.map(({ login, name, avatarUrl }) => ({
+                login,
+                name,
+                avatarUrl,
+                isAssigned: assigned.has(login.toLowerCase()),
+              })),
+              truncated: users.rawCount >= MAX_PAGE_SIZE,
+            };
+          }),
+        );
+      },
+    ),
+
+    setAssignees: Effect.fn("GitLabPullRequestCli.setAssignees")(function* (input) {
+      const mergeRequest = yield* mergeRequestDetail(input);
+      let ids: ReadonlyArray<number>;
+      if (input.assigned) {
+        ids = yield* Effect.forEach(input.logins, (login) => userId({ ...input, login }), {
+          concurrency: "unbounded",
+        });
+      } else {
+        const removed = new Set(input.logins.map((login) => login.toLowerCase()));
+        const remaining = mergeRequest.assigneeRefs.filter(
+          (ref) => !removed.has(ref.login.toLowerCase()),
+        );
+        if (remaining.length === mergeRequest.assigneeRefs.length) return mergeRequest.assignees;
+        ids = remaining.map((ref) => ref.id);
+      }
+      const result = yield* api({
+        cwd: input.cwd,
+        host: input.host,
+        path: `projects/${projectPath(input.repository)}/merge_requests/${input.number}`,
+        method: "PUT",
+        stdin: assigneeIdsBody(ids),
+      });
+      const decoded = decodeMergeRequestDetailJson(result.stdout.trim());
+      if (!Result.isSuccess(decoded)) {
+        return yield* new GitLabMergeRequestReadError({
+          command: "glab",
+          cwd: input.cwd,
+          operation: "setAssignees",
+          cause: decoded.failure,
+        });
+      }
+      return decoded.success.assignees;
+    }),
 
     setReviewerRequest: Effect.fn("GitLabPullRequestCli.setReviewerRequest")(function (input) {
       return mergeRequestDetail(input).pipe(

@@ -34,6 +34,8 @@ const CAPABILITIES: PullRequestCapabilities = {
   mergeMethods: ["merge", "squash", "rebase"],
   deleteBranch: true,
   labels: true,
+  // Free tiers keep only the first of several assignees, so one is all this offers.
+  assignees: { set: true, multiple: false },
   // GitLab has no merge-target-into-source operation.
   updateMethods: ["rebase"],
   search: true,
@@ -94,6 +96,7 @@ export function gitLabViewerPermissions(input: {
     verdicts: CAPABILITIES.review.verdicts.filter((verdict) => verdict !== "approve" || canApprove),
     requestReviewers: true,
     labels: true,
+    assignees: true,
     ...(input.viewerCanMerge ? { updateMethods: CAPABILITIES.updateMethods } : {}),
   };
 }
@@ -647,6 +650,22 @@ export const make = Effect.gen(function* () {
           applied: input.applied,
         })
         .pipe(Effect.mapError(fail("setLabels"))),
+    ),
+
+    listAssigneeCandidates: (input) =>
+      cli.listAssigneeCandidates(input).pipe(Effect.mapError(fail("listAssigneeCandidates"))),
+
+    setAssignees: writing((input) =>
+      cli
+        .setAssignees({
+          cwd: input.cwd,
+          host: input.host,
+          repository: input.repository,
+          number: input.number,
+          logins: input.logins,
+          assigned: input.assigned,
+        })
+        .pipe(Effect.mapError(fail("setAssignees"))),
     ),
 
     comment: writing((input) =>

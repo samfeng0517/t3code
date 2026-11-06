@@ -122,13 +122,14 @@ describe("decodeMergeRequestListJson", () => {
 });
 
 describe("decodeMergeRequestDetailJson", () => {
-  it("reads the description, file count and pipeline", () => {
+  it("reads the description, file count, assignees and pipeline", () => {
     const detail = expectSuccess(
       decodeMergeRequestDetailJson(
         detailJson({
           description: "Ships the page.",
           changes_count: "3",
           reviewers: [{ username: "julius", name: "Julius" }],
+          assignees: [{ id: 42, username: "octocat", name: "Octocat" }, { username: "hubot" }],
           head_pipeline: {
             status: "success",
             web_url: "https://gitlab.com/acme/web/-/pipelines/9",
@@ -141,6 +142,11 @@ describe("decodeMergeRequestDetailJson", () => {
     expect(detail.body).toBe("Ships the page.");
     expect(detail.changedFiles).toBe(3);
     expect(detail.reviewers).toEqual([{ login: "julius", name: "Julius", avatarUrl: null }]);
+    expect(detail.assignees).toEqual([
+      { login: "octocat", name: "Octocat", avatarUrl: null },
+      { login: "hubot", name: null, avatarUrl: null },
+    ]);
+    expect(detail.assigneeRefs).toEqual([{ login: "octocat", id: 42 }]);
     expect(detail.checks).toEqual([
       {
         name: "Pipeline",

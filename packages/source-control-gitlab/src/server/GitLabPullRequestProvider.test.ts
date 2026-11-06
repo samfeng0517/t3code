@@ -145,6 +145,7 @@ describe("gitLabViewerPermissions", () => {
       verdicts: ["comment", "approve"],
       requestReviewers: true,
       labels: true,
+      assignees: true,
       updateMethods: ["rebase"],
     });
   });
@@ -157,6 +158,7 @@ describe("gitLabViewerPermissions", () => {
       verdicts: ["comment", "approve"],
       requestReviewers: true,
       labels: true,
+      assignees: true,
     });
   });
 
@@ -209,6 +211,8 @@ describe("getChangeRequest base freshness", () => {
     checks: [],
     viewerCanMerge: true,
     reviewerIds: [],
+    assignees: [],
+    assigneeRefs: [],
   };
 
   it.effect.each(["getChangeRequestPreview", "getChangeRequestSummary"] as const)(
@@ -360,6 +364,8 @@ describe("merge request reads", () => {
     checks: [],
     viewerCanMerge: true,
     reviewerIds: [],
+    assignees: [],
+    assigneeRefs: [],
   };
 
   const countingProvider = Effect.gen(function* () {
@@ -654,6 +660,8 @@ describe("getChangeRequest approvals and pipeline", () => {
     checks: [{ name: "Pipeline", status: "failure" as const, description: "push", url: null }],
     viewerCanMerge: true,
     reviewerIds: [],
+    assignees: [],
+    assigneeRefs: [],
     headPipeline: { id: 99, projectId: 12 },
   };
   const approver = { login: "octocat", name: null, avatarUrl: null };
@@ -845,6 +853,8 @@ describe("deleting an ended merge request's source branch", () => {
     checks: [],
     viewerCanMerge: true,
     reviewerIds: [],
+    assignees: [],
+    assigneeRefs: [],
     headSha: "head-sha",
     sourceProjectId: 42,
   };
@@ -956,6 +966,8 @@ describe("review decisions", () => {
     checks: [],
     viewerCanMerge: true,
     reviewerIds: [],
+    assignees: [],
+    assigneeRefs: [],
   };
   const providerWith = (
     getReviewDecisions: GitLabPullRequestCli.GitLabPullRequestCli["Service"]["getReviewDecisions"],

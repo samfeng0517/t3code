@@ -1234,6 +1234,94 @@ layer("GitLabPullRequestCli.layer", (it) => {
       expect(JSON.parse(callAt(1).stdin ?? "")).toEqual({ reviewer_ids: [5] });
     }),
   );
+
+  it.effect("setAssignees should look up the login and replace assignee_ids when assigning", () =>
+    Effect.gen(function* () {
+      const hubot = { id: 42, username: "hubot", name: "Hubot" };
+      mockedExecute
+        .mockReturnValueOnce(Effect.succeed(output(mergeRequestJson({ assignees: [reviewer] }))))
+        .mockReturnValueOnce(Effect.succeed(output(JSON.stringify([hubot]))))
+        .mockReturnValueOnce(Effect.succeed(output(mergeRequestJson({ assignees: [hubot] }))));
+      const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+
+      const assignees = yield* cli.setAssignees({
+        cwd: "/w",
+        repository: "acme/web",
+        number: 7,
+        logins: ["Hubot"],
+        assigned: true,
+      });
+
+      expect(argsOfCall(1)[1]).toBe("users?username=Hubot");
+      expect(argsOfCall(2)).toContain("PUT");
+      expect(JSON.parse(callAt(2).stdin ?? "")).toEqual({ assignee_ids: [42] });
+      expect(assignees).toEqual([{ login: "hubot", name: "Hubot", avatarUrl: null }]);
+    }),
+  );
+
+  it.effect("setAssignees should fail naming the login when GitLab has no such user", () =>
+    Effect.gen(function* () {
+      mockedExecute
+        .mockReturnValueOnce(Effect.succeed(output(mergeRequestJson({}))))
+        .mockReturnValueOnce(Effect.succeed(output("[]")));
+      const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+
+      const error = yield* Effect.flip(
+        cli.setAssignees({
+          cwd: "/w",
+          repository: "acme/web",
+          number: 7,
+          logins: ["nobody"],
+          assigned: true,
+        }),
+      );
+
+      assert.strictEqual(error._tag, "GitLabUserNotFoundError");
+      assert.strictEqual(error.detail, 'No GitLab user is named "nobody".');
+      expect(mockedExecute).toHaveBeenCalledTimes(2);
+    }),
+  );
+
+  it.effect("setAssignees should skip the write when unassigning someone who is not assigned", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(output(mergeRequestJson({ assignees: [reviewer] }))),
+      );
+      const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+
+      const assignees = yield* cli.setAssignees({
+        cwd: "/w",
+        repository: "acme/web",
+        number: 7,
+        logins: ["hubot"],
+        assigned: false,
+      });
+
+      expect(mockedExecute).toHaveBeenCalledTimes(1);
+      expect(assignees).toEqual([{ login: "octocat", name: null, avatarUrl: null }]);
+    }),
+  );
+
+  it.effect("setAssignees should send an empty assignee list when unassigning the last one", () =>
+    Effect.gen(function* () {
+      mockedExecute
+        .mockReturnValueOnce(Effect.succeed(output(mergeRequestJson({ assignees: [reviewer] }))))
+        .mockReturnValueOnce(Effect.succeed(output(mergeRequestJson({ assignees: [] }))));
+      const cli = yield* GitLabPullRequestCli.GitLabPullRequestCli;
+
+      const assignees = yield* cli.setAssignees({
+        cwd: "/w",
+        repository: "acme/web",
+        number: 7,
+        logins: ["OctoCat"],
+        assigned: false,
+      });
+
+      expect(JSON.parse(callAt(1).stdin ?? "")).toEqual({ assignee_ids: [] });
+      expect(assignees).toEqual([]);
+    }),
+  );
+
   it.effect("reads blob ids for the marked paths at the merge request's head", () =>
     Effect.gen(function* () {
       mockedExecute.mockReturnValueOnce(
