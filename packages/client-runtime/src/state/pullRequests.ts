@@ -306,6 +306,14 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       staleTimeMs: 60_000,
     }),
   );
+  const assigneeCandidates = writableQueryFamily(
+    createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:pull-requests:assignee-candidates",
+      tag: WS_METHODS.pullRequestsAssigneeCandidates,
+      execute: (input) => routedRequest(WS_METHODS.pullRequestsAssigneeCandidates, input),
+      staleTimeMs: 60_000,
+    }),
+  );
   const reviewGuide = writableQueryFamily(
     createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:pull-requests:review-guide",
@@ -693,6 +701,32 @@ export function createPullRequestEnvironmentAtoms<R, E>(
                   ]
                 : value.labels.filter((label) => !names.has(label.name)),
             }));
+          }
+        }),
+    }),
+    assigneeCandidates,
+    // The host's answer replaces the cached list, since GitLab swaps the previous assignee out
+    // and GitHub silently drops people it will not assign.
+    setAssignees: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:set-assignees",
+      tag: WS_METHODS.pullRequestsSetAssignees,
+      execute: (input) => routedRequest(WS_METHODS.pullRequestsSetAssignees, input),
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
+      onSuccess: (target, registry, result) =>
+        Effect.sync(() => {
+          const assigned = new Set(
+            result.assignees.map((assignee) => assignee.login.toLowerCase()),
+          );
+          updateCached(registry, assigneeCandidates(target), (value) => ({
+            ...value,
+            candidates: value.candidates.map((candidate) => ({
+              ...candidate,
+              isAssigned: assigned.has(candidate.login.toLowerCase()),
+            })),
+          }));
+          for (const atom of cachedDetails(registry, target)) {
+            updateCached(registry, atom, (value) => ({ ...value, assignees: result.assignees }));
           }
         }),
     }),

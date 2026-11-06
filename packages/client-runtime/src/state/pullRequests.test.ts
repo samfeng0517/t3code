@@ -1441,6 +1441,68 @@ it.effect("keeps live detail reads separate from reads that allow stale data", (
   ),
 );
 
+it.effect(
+  "setAssignees should overwrite cached assignees with the host's answer when the host differs from the request",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let detailReads = 0;
+        const octocat = { login: "octocat", name: null, avatarUrl: null };
+        const client = {
+          [WS_METHODS.pullRequestsSubscribeRefreshes]: () => Stream.never,
+          [WS_METHODS.pullRequestsDetail]: () =>
+            Effect.sync(() => {
+              detailReads++;
+              return { title: "keep this title", assignees: [octocat] };
+            }),
+          [WS_METHODS.pullRequestsAssigneeCandidates]: () =>
+            Effect.succeed({
+              candidates: [
+                { ...octocat, isAssigned: true },
+                { login: "new", name: null, avatarUrl: null, isAssigned: false },
+              ],
+              truncated: false,
+            }),
+          [WS_METHODS.pullRequestsSetAssignees]: () => Effect.succeed({ assignees: [] }),
+        } as unknown as WsRpcProtocolClient;
+        const { atoms, registry } = yield* makeTestRuntime(client);
+        const target = {
+          environmentId: TARGET.environmentId,
+          input: {
+            projectId: ProjectId.make("project-1"),
+            repository: "acme/web",
+            number: 1,
+            host: "gitlab.example.com",
+          },
+        };
+        const detail = atoms.detail(target);
+        const candidates = atoms.assigneeCandidates(target);
+        registry.mount(detail);
+        registry.mount(candidates);
+        yield* AtomRegistry.getResult(registry, detail, { suspendOnWaiting: true });
+        yield* AtomRegistry.getResult(registry, candidates, { suspendOnWaiting: true });
+
+        const result = yield* Effect.promise(() =>
+          atoms.setAssignees.run(registry, {
+            ...target,
+            input: { ...target.input, logins: ["new"], assigned: true },
+          }),
+        );
+
+        expect(AsyncResult.isSuccess(result)).toBe(true);
+        expect(yield* AtomRegistry.getResult(registry, detail)).toEqual({
+          title: "keep this title",
+          assignees: [],
+        });
+        expect((yield* AtomRegistry.getResult(registry, candidates)).candidates).toMatchObject([
+          { login: "octocat", isAssigned: false },
+          { login: "new", isAssigned: false },
+        ]);
+        expect(detailReads).toBe(1);
+      }),
+    ),
+);
+
 it.effect("updates cached labels after successful edits without rereading the host", () =>
   Effect.scoped(
     Effect.gen(function* () {
