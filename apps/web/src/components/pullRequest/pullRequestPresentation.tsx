@@ -31,14 +31,14 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { PullRequestReviewOutcome } from "@t3tools/client-runtime/pull-request-reviews";
 import { pullRequestLabelColor } from "./pullRequestList.logic";
 import type { pullRequestHeaderPerson } from "./pullRequestDetail.logic";
-
-type PullRequestHeaderPersonView = ReturnType<typeof pullRequestHeaderPerson>;
 import {
   PULL_REQUEST_STATE_PRESENTATION,
   PullRequestGlyph,
   type PullRequestStatePresentation,
   type PullRequestGlyphIcon,
 } from "./pullRequestIcons";
+
+type PullRequestHeaderPersonView = ReturnType<typeof pullRequestHeaderPerson>;
 
 export function PullRequestLabelChip({
   label,
@@ -525,7 +525,9 @@ export function PullRequestHeaderPerson({
       {...(className ? { className } : {})}
       leading={
         <UserCheckIcon
-          aria-label={t("pullRequestDetail.assignees.alreadyAssigned")}
+          {...(variant === "avatar"
+            ? { "aria-hidden": true }
+            : { "aria-label": t("pullRequestDetail.assignees.alreadyAssigned") })}
           className="size-3.5 shrink-0 self-center"
         />
       }

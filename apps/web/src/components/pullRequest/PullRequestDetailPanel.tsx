@@ -1423,12 +1423,14 @@ export function PullRequestDetailPanel({
               <div className="col-span-2 min-w-0 px-4 pb-2 pt-1">
                 <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
                   <span className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden text-xs text-muted-foreground">
-                    <PullRequestHeaderPerson
-                      person={pullRequestHeaderPerson(detail)}
-                      profileUrl={headerPersonProfileUrl}
-                      variant="avatar"
-                      className="shrink-0"
-                    />
+                    {headerPerson ? (
+                      <PullRequestHeaderPerson
+                        person={headerPerson}
+                        profileUrl={headerPersonProfileUrl}
+                        variant="avatar"
+                        className="shrink-0"
+                      />
+                    ) : null}
                     <span className="shrink-0">
                       <RelativeTime timestamp={detail.updatedAt} />
                     </span>
@@ -1517,10 +1519,12 @@ export function PullRequestDetailPanel({
                   />
                 }
                 author={
-                  <PullRequestHeaderPerson
-                    person={pullRequestHeaderPerson(detail)}
-                    profileUrl={headerPersonProfileUrl}
-                  />
+                  headerPerson ? (
+                    <PullRequestHeaderPerson
+                      person={headerPerson}
+                      profileUrl={headerPersonProfileUrl}
+                    />
+                  ) : null
                 }
                 updated={
                   <span>

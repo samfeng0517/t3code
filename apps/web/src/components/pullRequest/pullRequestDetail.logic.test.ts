@@ -1590,6 +1590,22 @@ describe("pull request assignees", () => {
         after: [person("ada"), person("grace")],
       }),
     ).toEqual({ type: "success", key: "assigned" });
+    expect(
+      pullRequestAssigneeToast({
+        before: [person("grace")],
+        login: "GRACE",
+        assigned: true,
+        after: [person("grace")],
+      }),
+    ).toEqual({ type: "success", key: "assigned" });
+    expect(
+      pullRequestAssigneeToast({
+        before: [person("ada"), person("grace")],
+        login: "grace",
+        assigned: false,
+        after: [person("ada")],
+      }),
+    ).toEqual({ type: "success", key: "unassigned" });
   });
 
   it.each([
