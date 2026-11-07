@@ -57,15 +57,6 @@ describe("GitLab change request URLs", () => {
     }
   });
 
-  it("authorProfileUrl should link a person at the host root and skip access-token bots when given a login", () => {
-    expect(definition.authorProfileUrl("sam", "https://gitlab.example.com/group/project")).toBe(
-      "https://gitlab.example.com/sam",
-    );
-    expect(
-      definition.authorProfileUrl("project_510_bot_abc123", "https://gitlab.example.com/g/p"),
-    ).toBeNull();
-  });
-
   it("builds merge request URLs below the repository", () => {
     expect(
       definition.changeRequestUrl({
@@ -98,6 +89,18 @@ describe("GitLab change request URLs", () => {
         webUrl: "https://gitlab.com/group/sub/project",
       }),
     ).toBe("https://gitlab.com/group/sub/project/-/merge_requests/4");
+  });
+
+  it("links authors, bots included, to their profile on the repository's host", () => {
+    expect(definition.authorProfileUrl("TonybynMp4", "https://gitlab.com/group/sub/project")).toBe(
+      "https://gitlab.com/TonybynMp4",
+    );
+    expect(
+      definition.authorProfileUrl(
+        "project_278964_bot_89f97e2c",
+        "http://gitlab.internal:8080/team/app/-/merge_requests/5",
+      ),
+    ).toBe("http://gitlab.internal:8080/project_278964_bot_89f97e2c");
   });
 });
 

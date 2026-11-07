@@ -87,6 +87,7 @@ export interface NewProjectScriptInput {
   waitForSetup: boolean;
   runOnSettle: boolean;
   runOnWorktreeRemove: boolean;
+  stopOnSettle?: boolean;
   /** Omit to preserve the current shortcut when the form did not edit it. */
   keybinding?: string | null;
   previewUrl: string | null;
@@ -103,6 +104,7 @@ export const EMPTY_PROJECT_SCRIPT_INPUT: NewProjectScriptInput = {
   waitForSetup: false,
   runOnSettle: false,
   runOnWorktreeRemove: false,
+  stopOnSettle: false,
   keybinding: null,
   previewUrl: null,
   autoOpenPreview: false,
@@ -128,6 +130,7 @@ export function editorRequestForScript(
       waitForSetup: script.runOnWorktreeCreate && script.async === false,
       runOnSettle: script.runOnSettle ?? false,
       runOnWorktreeRemove: script.runOnWorktreeRemove ?? false,
+      stopOnSettle: script.stopOnSettle ?? false,
       keybinding: keybindingValueForCommand(keybindings, commandForProjectScript(script.id)),
       previewUrl: script.previewUrl ?? null,
       autoOpenPreview: script.autoOpenPreview ?? false,
@@ -290,6 +293,7 @@ function ProjectScriptEditorForm({
   const [runOnWorktreeRemove, setRunOnWorktreeRemove] = useState(
     request.initial.runOnWorktreeRemove,
   );
+  const [stopOnSettle, setStopOnSettle] = useState(request.initial.stopOnSettle ?? false);
   const [keybinding, setKeybinding] = useState(request.initial.keybinding ?? "");
   const [previewUrl, setPreviewUrl] = useState(request.initial.previewUrl ?? "");
   const [autoOpenPreview, setAutoOpenPreview] = useState(request.initial.autoOpenPreview);
@@ -375,6 +379,7 @@ function ProjectScriptEditorForm({
         waitForSetup: runOnWorktreeCreate && waitForSetup,
         runOnSettle,
         runOnWorktreeRemove,
+        stopOnSettle,
         ...((request.scriptId === null && canChangeKeybinding) || changesKeybinding
           ? { keybinding: keybindingRule?.key ?? null }
           : {}),
@@ -549,6 +554,13 @@ function ProjectScriptEditorForm({
               <Switch
                 checked={runOnWorktreeRemove}
                 onCheckedChange={(checked) => setRunOnWorktreeRemove(Boolean(checked))}
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2 text-sm dark:border-transparent dark:bg-white/[0.035]">
+              <span>Stop this action when the thread settles</span>
+              <Switch
+                checked={stopOnSettle}
+                onCheckedChange={(checked) => setStopOnSettle(Boolean(checked))}
               />
             </label>
             <label

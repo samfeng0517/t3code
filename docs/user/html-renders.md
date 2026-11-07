@@ -8,6 +8,8 @@ Agents can place local images in a page by file path. T3 Code embeds them when t
 
 Before publishing, agents check their work with screenshots from a small headless browser that T3 Code keeps for itself; it never uses a browser you installed. The first preview on a machine downloads it once (about 120 MB) into T3 Code's data folder, so that preview can take a minute. Browser tabs on a remote environment use the same browser, so whichever comes first downloads it. Some Linux hosts need [setup](remote-access.md#browser-host-setup) before it can start. Pages publish without it.
 
+Previews can load public resources such as CDN scripts, but nothing on your local network. The machine running the environment looks up each name, and previews block names that resolve to private or reserved addresses. Clash or Mihomo in fake-IP DNS mode can return these addresses, so external resources can fail there. The preview's console messages can identify affected hostnames. Inline the resource, add its host to `fake-ip-filter`, or switch that machine's proxy DNS to `redir-host`.
+
 ## Comment on a page
 
 To give the agent feedback on a visual reply, hover it and choose **Comment on page**, then click an element or drag across an area and write your comment. Each comment is pinned where you placed it and listed under the page, where you can edit, resolve, reopen, or delete it, or clear them all. **Send to agent** adds the comments you haven't sent yet to your message with what they point at: the element, its text, and where it sits on the page. Sent comments stay listed and marked as sent; editing one queues it to send again. Press Escape to stop commenting.

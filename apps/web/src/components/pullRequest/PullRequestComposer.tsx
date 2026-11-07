@@ -17,6 +17,7 @@ import {
   usePullRequestReviewStore,
 } from "./pullRequestReviewStore";
 import { useT } from "~/i18n";
+import { pullRequestCompletionScope } from "./PullRequestMarkdownTextarea";
 
 export function PullRequestComposer({
   environmentId,
@@ -164,8 +165,10 @@ export function PullRequestComposer({
         {verdicts.length > 0 ? (
           <div hidden={mode !== "review"}>
             <PullRequestReviewForm
+              active={open && mode === "review"}
               environmentId={environmentId}
               reference={reference}
+              completionScope={pullRequestCompletionScope(detail, environmentId, reference)}
               term={term}
               verdicts={verdicts}
               requestChangesSummaryRequired={sourceControlClients
@@ -184,6 +187,7 @@ export function PullRequestComposer({
         {canComment ? (
           <div hidden={mode !== "comment"}>
             <PullRequestCommentForm
+              active={open && mode === "comment"}
               environmentId={environmentId}
               reference={reference}
               detail={detail}
