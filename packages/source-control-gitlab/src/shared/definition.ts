@@ -125,11 +125,9 @@ export const definition = defineSourceControl({
   checkoutCommand: ({ number }) => `glab mr checkout ${number}`,
   changeRequestCloseCommand: /\bglab\s+mr\s+(?:merge|close)\b/u,
   changeRequestCreateCommand: /\bglab\s+mr\s+create\b/u,
-  // Project and group access tokens act as bot users whose profile pages are not public.
+  // Bot users, unlike GitHub's, have real profile pages.
   authorProfileUrl: (login, repositoryUrl) =>
-    /^(?:project|group)_\d+_bot_/u.test(login)
-      ? null
-      : new URL(`/${encodeURIComponent(login)}`, repositoryUrl).toString(),
+    new URL(`/${encodeURIComponent(login)}`, repositoryUrl).toString(),
   referenceAutolinks: gitLabReferenceAutolinks,
   reviewSummaryRequired: () => false,
   checkoutCommandArgument: (input) => CHECKOUT_COMMAND.exec(input)?.[1]?.trim() ?? null,
